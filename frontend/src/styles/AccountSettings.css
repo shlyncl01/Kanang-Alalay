@@ -1,0 +1,113 @@
+/* AccountSettings.css — shares .page-wrapper, .content-container, .page-header, .back-btn from ViewProfile.css */
+
+/* ── Settings Card ── */
+.settings-card {
+  background: #FFFFFF;
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(249,107,56,.1);
+  padding: 40px;
+  border: 1px solid #E8D6CC;
+}
+
+/* ── Card Header (inside settings) ── */
+.settings-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 30px;
+  padding-bottom: 22px;
+  border-bottom: 1.5px solid #E8D6CC;
+}
+
+.settings-card .card-header .header-icon {
+  color: #F96B38;
+  font-size: 1.4rem;
+}
+
+.settings-card .card-header h3 {
+  margin: 0;
+  font-family: 'Playfair Display', Georgia, serif;
+  color: #1A0A00;
+  font-size: 1.25rem;
+}
+
+/* ── Settings Form ── */
+.settings-form {
+  max-width: 520px;
+}
+
+/* ── Input Group ── */
+.input-group {
+  margin-bottom: 22px;
+}
+
+.input-group label {
+  display: block;
+  font-size: .82rem;
+  font-weight: 700;
+  color: #7A5C4E;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 8px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid #E8D6CC;
+  border-radius: 10px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: .95rem;
+  color: #1A0A00;
+  background: #FFF8F3;
+  transition: border-color .2s, box-shadow .2s;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input-group input:hover { border-color: #F96B38; }
+
+.input-group input:focus {
+  border-color: #F96B38;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(249,107,56,.12);
+}
+
+/* ── Form Actions ── */
+.form-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1.5px solid #E8D6CC;
+}
+
+/* Cancel button (standalone, not inherited) */
+.cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #FFFFFF;
+  color: #7A5C4E;
+  border: 1.5px solid #E8D6CC;
+  padding: 11px 24px;
+  border-radius: 10px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.cancel-btn:hover {
+  background: #FFF8F3;
+  border-color: #F96B38;
+  color: #D94E1B;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .settings-card { padding: 22px 16px; }
+  .form-actions { flex-direction: column; }
+  .cancel-btn, .brand-btn { width: 100%; justify-content: center; }
+}

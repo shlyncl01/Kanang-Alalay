@@ -27,6 +27,8 @@ const RegistrationCodesPanel = () => {
         }
     };
 
+    
+
     return (
         <div className="codes-panel">
             <h3>Registration Code Management</h3>

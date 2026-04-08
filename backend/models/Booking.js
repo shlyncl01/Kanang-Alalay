@@ -54,17 +54,13 @@ const bookingSchema = new mongoose.Schema({
         min: 1,
         max: 10
     },
-    status: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected', 'cancelled', 'completed'],
-        default: 'pending'
+    status: { 
+        type: String, 
+        enum: ['pending', 'approved', 'cancelled', 'completed'], 
+        default: 'pending' 
     },
-    notes: String,
-    approvedBy: String,
-    approvalDate: Date,
-    rejectionReason: String
-}, {
-    timestamps: true
-});
+    
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+}, { timestamps: true });
 
 module.exports = mongoose.model('Booking', bookingSchema);

@@ -1,0 +1,47 @@
+/* StaffDashboard.css — Staff role overrides (shares Dashboard.css + AdminDashboard.css) */
+
+/* Staff sidebar accent */
+.sidebar .brand-text h5 {
+    color: var(--d-orange-lt);
+}
+
+/* Stat icon override — staff uses brand palette */
+.stat-card .stat-icon {
+    background: var(--d-orange);
+}
+
+/* Donation preview item */
+.donation-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.donation-top .amount {
+    font-weight: 700;
+    color: #1E7D56;
+    font-family: var(--d-font-head);
+}
+
+/* Alert item */
+.alert-item {
+    padding: 14px 16px;
+    border-left: 4px solid var(--d-orange);
+    background: var(--d-orange-lt);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.alert-item strong {
+    display: block;
+    color: var(--d-orange-dk);
+    font-size: .9rem;
+    margin-bottom: 4px;
+}
+
+.alert-item p {
+    margin: 0;
+    color: var(--d-muted);
+    font-size: .85rem;
+}

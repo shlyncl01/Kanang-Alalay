@@ -2,144 +2,114 @@ const express = require('express');
 const router = express.Router();
 const Booking = require('../models/Booking');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
-const nodemailer = require('nodemailer');
+const Alert = require('../models/Alert');
+const { sendEmail, generateBookingTemplate } = require('../models/mailer');
 
-// Create booking with validation
+// Create booking with validation, real email, and socket event
 router.post('/', async (req, res) => {
     try {
-        const { visitDate, visitTime, numberOfVisitors } = req.body;
+        // 1. Explicitly extract all fields so we know exactly what is going to the database
+        const { firstName, middleName, lastName, name, email, phone, visitDate, visitTime, purpose, numberOfVisitors, notes } = req.body;
         
-        // Validate date not in past
+        // 2. Strict frontend-to-backend validation
+        if (!firstName || !lastName || !name || !email || !phone || !visitDate || !visitTime || !purpose || !numberOfVisitors) {
+            return res.status(400).json({ message: 'Missing required fields. Please fill out all required inputs.' });
+        }
+
+        // 3. Timezone-safe date validation
         const selectedDate = new Date(visitDate);
+        selectedDate.setHours(0, 0, 0, 0); // Strip time to ensure accurate day comparison
+        
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
         if (selectedDate < today) {
-            return res.status(400).json({ message: 'Cannot book in the past' });
+            return res.status(400).json({ message: 'Cannot book in the past. Please select today or a future date.' });
         }
 
-        // Validate visiting hours (9AM-5PM)
         const hour = parseInt(visitTime.split(':')[0]);
-        if (hour < 9 || hour > 17) {
-            return res.status(400).json({ message: 'Visiting hours are 9AM-5PM' });
-        }
+        if (hour < 9 || hour > 17) return res.status(400).json({ message: 'Visiting hours are 9AM - 5PM' });
 
-        // Check slot availability
         const existingBookings = await Booking.countDocuments({
-            visitDate: selectedDate,
+            visitDate: {
+                $gte: selectedDate,
+                $lt: new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000)
+            },
             visitTime: visitTime,
-            status: { $in: ['pending', 'confirmed'] }
+            status: { $in: ['pending', 'approved'] }
         });
 
-        const maxVisitorsPerSlot = 10;
-        if (existingBookings >= maxVisitorsPerSlot) {
-            return res.status(400).json({ message: 'Time slot is fully booked' });
-        }
+        if (existingBookings >= 10) return res.status(400).json({ message: 'Time slot is fully booked' });
 
-        // Create booking
-        const booking = new Booking({
+        // 4. Construct the exact object Mongoose expects
+        const bookingData = {
             bookingId: `BK${Date.now()}`,
-            ...req.body
-        });
+            firstName,
+            middleName: middleName || '',
+            lastName,
+            name,
+            email,
+            phone,
+            visitDate: selectedDate,
+            visitTime,
+            purpose,
+            numberOfVisitors: Number(numberOfVisitors),
+            notes: notes || ''
+        };
 
+        const booking = new Booking(bookingData);
         await booking.save();
 
-        // Send confirmation email
-        sendBookingConfirmationEmail(booking);
+        // 5. Emit Real-Time Socket Event
+        const io = req.app.get('io');
+        if (io) io.emit('new_booking', booking);
 
-        res.status(201).json({ 
-            message: 'Booking submitted successfully',
-            bookingId: booking.bookingId
-        });
+        // 6. Send Automated Email
+        await sendEmail(booking.email, 'Booking Request Received - Kanang Alalay', generateBookingTemplate(booking));
+
+        res.status(201).json({ message: 'Booking submitted successfully', bookingId: booking.bookingId });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        console.error('Booking error:', error);
+        // We now send the EXACT error back to the frontend so it shows up in your red Alert box!
+        res.status(500).json({ message: error.message || 'Internal server error' });
     }
 });
 
-// Admin approve/reject booking
-router.patch('/:id/status', authMiddleware, roleMiddleware('admin'), async (req, res) => {
+// Admin update booking status
+router.put('/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body; 
+    const booking = await Booking.findByIdAndUpdate(req.params.id, { status }, { new: true });
+
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    if (status === 'approved' || status === 'Approved') {
+      await Alert.create({
+        type: "Booking", title: "Booking Approved",
+        message: `Booking for ${booking.name || 'Applicant'} has been approved.`,
+        details: { bookingId: booking._id, date: booking.visitDate }
+      });
+    }
+
+    // Emit Real-Time Update
+    const io = req.app.get('io');
+    if (io) io.emit('update_booking', booking);
+
+    res.status(200).json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/', async (req, res) => {
     try {
-        const { status } = req.body;
-        const booking = await Booking.findById(req.params.id);
-
-        if (!booking) {
-            return res.status(404).json({ message: 'Booking not found' });
-        }
-
-        booking.status = status;
-        booking.confirmedBy = req.user._id;
-        booking.confirmationDate = new Date();
-        
-        await booking.save();
-
-        // Send status update email
-        sendBookingStatusEmail(booking);
-
-        res.json({ 
-            message: `Booking ${status} successfully`,
-            booking 
-        });
-
+        const limit = parseInt(req.query.limit) || 50;
+        const bookings = await Booking.find().sort({ createdAt: -1 }).limit(limit);
+        res.json({ success: true, data: bookings });
     } catch (error) {
-        console.error(error);
         res.status(500).json({ message: 'Server error' });
     }
 });
-
-// Get bookings with filters
-router.get('/', authMiddleware, async (req, res) => {
-    try {
-        const { status, date, purpose } = req.query;
-        const filter = {};
-
-        if (status) filter.status = status;
-        if (date) filter.visitDate = new Date(date);
-        if (purpose) filter.purpose = purpose;
-
-        const bookings = await Booking.find(filter)
-            .sort({ visitDate: 1, visitTime: 1 })
-            .populate('confirmedBy', 'firstName lastName');
-
-        res.json(bookings);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// Email sending functions
-const sendBookingConfirmationEmail = async (booking) => {
-    const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-        }
-    });
-
-    const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: booking.email,
-        subject: 'Booking Confirmation - Kanang Alalay',
-        html: `
-            <h2>Booking Received!</h2>
-            <p>Dear ${booking.name},</p>
-            <p>Your visit has been scheduled:</p>
-            <ul>
-                <li><strong>Date:</strong> ${new Date(booking.visitDate).toDateString()}</li>
-                <li><strong>Time:</strong> ${booking.visitTime}</li>
-                <li><strong>Purpose:</strong> ${booking.purpose}</li>
-                <li><strong>Visitors:</strong> ${booking.numberOfVisitors}</li>
-            </ul>
-            <p>Status: <strong>Pending Approval</strong></p>
-            <p>We will notify you once your booking is approved.</p>
-        `
-    };
-
-    await transporter.sendMail(mailOptions);
-};
 
 module.exports = router;
