@@ -2,25 +2,29 @@ services:
   - type: web
     name: kanang-alalay-backend
     runtime: node
-    repo: https://github.com/shlyncl01/Kanang-Alalay.git
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: node server.js
     plan: free
+    
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    
+    root_dir: .
+    
     envVars:
-      - key: NODE_VERSION
-        value: 18
-      - key: PORT
-        value: 5000
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 5000
       - key: MONGODB_URI
-        value: $MONGODB_URI
+        sync: false
       - key: JWT_SECRET
-        value: $JWT_SECRET
+        sync: false
       - key: FRONTEND_URL
-        value: https://kanang-alalay.vercel.app
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
       - key: PAYMONGO_SECRET_KEY
-        value: $PAYMONGO_SECRET_KEY
+        sync: false
       - key: PAYMONGO_PUBLIC_KEY
-        value: $PAYMONGO_PUBLIC_KEY
+        sync: false

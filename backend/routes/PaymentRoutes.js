@@ -15,7 +15,24 @@ router.post('/create-intent', async (req, res) => {
             return res.status(404).json({ message: 'Donation not found' });
         }
 
-        // Create payment intent with PayMongo
+        // QRPH and cash are manual — no gateway needed
+        if (paymentService.isManualMethod(paymentMethod)) {
+            const payment = new Payment({
+                paymentId: `PAY${Date.now()}`,
+                donationId,
+                amount,
+                paymentMethod,
+                status: paymentMethod === 'cash' ? 'pending' : 'processing'
+            });
+            await payment.save();
+
+            return res.json({
+                paymentId: payment.paymentId,
+                status: payment.status
+            });
+        }
+
+        // Create payment intent with PayMongo for gateway methods
         const paymentIntent = await paymentService.createPaymentIntent({
             amount: amount * 100, // Convert to centavos
             paymentMethod: paymentMethod,

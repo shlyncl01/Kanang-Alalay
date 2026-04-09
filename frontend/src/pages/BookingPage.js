@@ -7,6 +7,13 @@ import '../styles/BookingPage.css';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const uid = () => 'BK-' + Math.random().toString(36).slice(2, 9).toUpperCase();
+const API_BASE = (() => {
+    const raw =
+        process.env.REACT_APP_API_BASE_URL ||
+        process.env.REACT_APP_API_URL ||
+        'https://kanang-alalay-backend.onrender.com';
+    return raw.replace(/\/api\/?$/, '');
+})();
 
 const TIME_SLOTS = [
     { value: '09:00', label: '9:00 AM' },
@@ -106,7 +113,7 @@ const BookingPage = () => {
                 visitDate: selectedDate.toISOString(),
             };
 
-            await axios.post('https://kanang-alalay-backend.onrender.com/api/bookings', submissionData);
+            await axios.post(`${API_BASE}/api/bookings`, submissionData);
 
             setReceipt({
                 refId: uid(),

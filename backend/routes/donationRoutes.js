@@ -7,7 +7,7 @@ const { sendEmail, generateDonationTemplate } = require('../models/mailer');
 router.post('/', async (req, res) => {
     try {
         // 1. Added firstName, middleName, and lastName here
-        const { firstName, middleName, lastName, donorName, email, donationType, phone, amount } = req.body;
+        const { firstName, middleName, lastName, donorName, email, donationType, phone, amount, appointmentDate, appointmentTime } = req.body;
 
         // 2. Added firstName and lastName to the strict validation check
         if (!firstName || !lastName || !donorName || !email || !donationType || !phone || !amount) {
@@ -17,6 +17,12 @@ router.post('/', async (req, res) => {
         const amountNum = Number(amount);
         if (isNaN(amountNum) || amountNum < 100) {
             return res.status(400).json({ success: false, message: 'Amount must be at least ₱100' });
+        }
+
+        if (donationType === 'cash') {
+            if (!appointmentDate || !appointmentTime) {
+                return res.status(400).json({ success: false, message: 'Appointment date and time are required for in-person donations' });
+            }
         }
 
         // 3. Included the names in the data payload being sent to MongoDB
@@ -31,7 +37,9 @@ router.post('/', async (req, res) => {
             donationType,
             notes: req.body.notes || '',
             anonymous: req.body.anonymous || false,
-            paymentMethod: req.body.paymentMethod || null
+            paymentMethod: req.body.paymentMethod || null,
+            appointmentDate: donationType === 'cash' ? appointmentDate : undefined,
+            appointmentTime: donationType === 'cash' ? appointmentTime : undefined
         };        
         
         const donation = new Donation(donationData);
@@ -41,11 +49,16 @@ router.post('/', async (req, res) => {
         if (io) io.emit('new_donation', donation);
 
         // Send Automated Email
-        await sendEmail(donation.email, 'Thank You For Your Donation - Kanang Alalay', generateDonationTemplate(donation));
+        try {
+            await sendEmail(donation.email, 'Thank You For Your Donation - Kanang Alalay', generateDonationTemplate(donation));
+        } catch (emailErr) {
+            console.warn('Donation email failed (non-blocking):', emailErr?.message || emailErr);
+        }
 
-        const checkoutUrl = donationType === 'online' 
-        ? `http://localhost:3000/donation/success/${donation._id}`
-        : null;
+        const frontendBaseUrl = process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app';
+        const checkoutUrl = donationType === 'qrph'
+            ? `${frontendBaseUrl}/donation/success/${donation._id}`
+            : null;
 
         res.status(201).json({ 
             success: true, 
@@ -57,7 +70,7 @@ router.post('/', async (req, res) => {
 
     } catch (error) {
         console.error('Donation error:', error);
-        res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+        res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
 });
 
@@ -99,7 +112,7 @@ router.put('/:id/payment', async (req, res) => {
         res.json({ success: true, data: donation });
         
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Server error updating donation' });
+        res.status(500).json({ success: false, message: error.message || 'Server error updating donation' });
     }
 });
 

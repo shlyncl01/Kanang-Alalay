@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import '../styles/DonationPage.css';
 
@@ -7,6 +7,13 @@ import '../styles/DonationPage.css';
 const fmt = (n) => `₱${Number(n).toLocaleString()}`;
 const uid = () => 'DN-' + Math.random().toString(36).slice(2,9).toUpperCase();
 const today = () => new Date().toISOString().split('T')[0];
+const API_BASE = (() => {
+  const raw =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_API_URL ||
+    'https://kanang-alalay-backend.onrender.com';
+  return raw.replace(/\/api\/?$/, '');
+})();
 
 const PRESETS  = [500, 1000, 2000, 5000, 10000];
 const TIMES    = ['09:00 AM','10:00 AM','11:00 AM','01:00 PM','02:00 PM','03:00 PM','04:00 PM'];
@@ -16,151 +23,20 @@ const IMPACTS  = [
   { icon: '🛏️', text: 'Care & Comfort', sub: '₱2,000 provides bedding & hygiene kits' },
   { icon: '🎉', text: 'Events & Joy',   sub: '₱5,000 sponsors a celebration' },
 ];
-const PAY_METHODS = [
-  { value: 'gcash',       label: 'GCash',            desc: 'Send via GCash number',        color: '#007DFB', bg: '#EAF3FF', abbr: 'G' },
-  { value: 'maya',        label: 'Maya',             desc: 'Pay with Maya wallet',         color: '#00C66B', bg: '#E6FAF1', abbr: 'M' },
-  { value: 'credit_card', label: 'Credit / Debit',   desc: 'Visa, Mastercard, JCB',        color: '#F96B38', bg: '#FFF0E8', abbr: '💳' },
-];
 
-// ── Payment Gateway Modals ────────────────────────────────────────────────────
-function GCashModal({ amount, onPay, onClose, loading }) {
-  const [num, setNum] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState(1);
-  return (
-    <div className="dp-modal">
-      <div className="dp-modal-top dp-gcash-modal-top">
-        <button className="dp-modal-close" onClick={onClose}>✕</button>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-          <div style={{width:40,height:40,borderRadius:10,background:'rgba(255,255,255,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:20}}>G</div>
-          <div><h3>GCash Payment</h3><p>Secure e-wallet transaction</p></div>
-        </div>
-      </div>
-      <div className="dp-modal-body">
-        <div className="dp-modal-amount">{fmt(amount)}</div>
-        <div className="dp-modal-ref">Reference: {uid()}</div>
-        {step === 1 && <>
-          <div className="dp-modal-field">
-            <label>GCash Mobile Number</label>
-            <input className="dp-modal-input" placeholder="09XXXXXXXXX" maxLength={11}
-              value={num} onChange={e=>setNum(e.target.value.replace(/\D/g,''))} />
-          </div>
-          <button className="dp-modal-pay-btn" style={{background:'linear-gradient(135deg,#007DFB,#0050C8)'}}
-            onClick={()=>num.length===11?setStep(2):null}>
-            Send OTP
-          </button>
-        </>}
-        {step === 2 && <>
-          <p style={{fontSize:13,color:'#555',marginBottom:16,textAlign:'center'}}>Enter the 6-digit OTP sent to {num}</p>
-          <div className="dp-modal-field">
-            <label>One-Time PIN</label>
-            <input className="dp-modal-input" placeholder="6-digit OTP" maxLength={6}
-              value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))} style={{textAlign:'center',fontSize:22,letterSpacing:8}} />
-          </div>
-          <button className="dp-modal-pay-btn" style={{background:'linear-gradient(135deg,#007DFB,#0050C8)'}}
-            disabled={loading||otp.length<6} onClick={onPay}>
-            {loading ? '⏳ Processing…' : 'Confirm Payment'}
-          </button>
-        </>}
-        <div className="dp-modal-secure">🔒 256-bit SSL encrypted · PayMongo</div>
-      </div>
-    </div>
-  );
-}
 
-function MayaModal({ amount, onPay, onClose, loading }) {
-  const [num, setNum] = useState('');
-  const [pin, setPin] = useState('');
-  return (
-    <div className="dp-modal">
-      <div className="dp-modal-top dp-maya-modal-top">
-        <button className="dp-modal-close" onClick={onClose}>✕</button>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-          <div style={{width:40,height:40,borderRadius:10,background:'rgba(255,255,255,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:20}}>M</div>
-          <div><h3>Maya Payment</h3><p>Secure e-wallet transaction</p></div>
-        </div>
-      </div>
-      <div className="dp-modal-body">
-        <div className="dp-modal-amount">{fmt(amount)}</div>
-        <div className="dp-modal-ref">Reference: {uid()}</div>
-        <div className="dp-modal-field">
-          <label>Maya Mobile Number</label>
-          <input className="dp-modal-input" placeholder="09XXXXXXXXX" maxLength={11}
-            value={num} onChange={e=>setNum(e.target.value.replace(/\D/g,''))} />
-        </div>
-        <div className="dp-modal-field">
-          <label>Maya PIN</label>
-          <input className="dp-modal-input" placeholder="6-digit PIN" type="password" maxLength={6}
-            value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} style={{textAlign:'center',letterSpacing:8}} />
-        </div>
-        <button className="dp-modal-pay-btn" style={{background:'linear-gradient(135deg,#00C66B,#007A40)'}}
-          disabled={loading||num.length<11||pin.length<6} onClick={onPay}>
-          {loading ? '⏳ Processing…' : 'Pay with Maya'}
-        </button>
-        <div className="dp-modal-secure">🔒 256-bit SSL encrypted · PayMongo</div>
-      </div>
-    </div>
-  );
-}
 
-function CardModal({ amount, onPay, onClose, loading }) {
-  const [cn, setCn] = useState('');
-  const [exp, setExp] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [name, setName] = useState('');
-  const fmtCard = v => v.replace(/\D/g,'').replace(/(.{4})/g,'$1 ').trim().slice(0,19);
-  const fmtExp  = v => { const d=v.replace(/\D/g,''); return d.length>2?d.slice(0,2)+'/'+d.slice(2,4):d; };
-  return (
-    <div className="dp-modal">
-      <div className="dp-modal-top">
-        <button className="dp-modal-close" onClick={onClose}>✕</button>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-          <div style={{width:40,height:40,borderRadius:10,background:'rgba(255,255,255,.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>💳</div>
-          <div><h3>Card Payment</h3><p>Visa · Mastercard · JCB</p></div>
-        </div>
-      </div>
-      <div className="dp-modal-body">
-        <div className="dp-modal-amount">{fmt(amount)}</div>
-        <div className="dp-modal-ref">Reference: {uid()}</div>
-        <div className="dp-modal-field">
-          <label>Cardholder Name</label>
-          <input className="dp-modal-input" placeholder="Name on card" value={name} onChange={e=>setName(e.target.value)} />
-        </div>
-        <div className="dp-modal-field">
-          <label>Card Number</label>
-          <input className="dp-modal-input" placeholder="1234 5678 9012 3456" value={cn} onChange={e=>setCn(fmtCard(e.target.value))} maxLength={19} />
-        </div>
-        <div className="dp-card-row">
-          <div className="dp-modal-field" style={{flex:1}}>
-            <label>Expiry</label>
-            <input className="dp-modal-input" placeholder="MM/YY" value={exp} onChange={e=>setExp(fmtExp(e.target.value))} maxLength={5} />
-          </div>
-          <div className="dp-modal-field" style={{flex:1}}>
-            <label>CVV</label>
-            <input className="dp-modal-input" placeholder="•••" type="password" maxLength={4} value={cvv} onChange={e=>setCvv(e.target.value.replace(/\D/g,''))} />
-          </div>
-        </div>
-        <button className="dp-modal-pay-btn" disabled={loading||!name||cn.length<19||exp.length<5||cvv.length<3} onClick={onPay}>
-          {loading ? '⏳ Processing…' : `Pay ${fmt(amount)}`}
-        </button>
-        <div className="dp-modal-secure">🔒 3D-Secure · PCI DSS Compliant · PayMongo</div>
-      </div>
-    </div>
-  );
-}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DonationPage() {
   const [form, setForm] = useState({
     firstName:'', middleName:'', lastName:'', email:'', phone:'',
-    amount:'', donationType:'online', paymentMethod:'gcash',
+    amount:'', donationType:'qrph',
     notes:'', anonymous:false, appointmentDate:'', appointmentTime:''
   });
   const [errors,    setErrors]    = useState({});
   const [apiError,  setApiError]  = useState('');
   const [loading,   setLoading]   = useState(false);
-  const [gwLoading, setGwLoading] = useState(false);
-  const [showGW,    setShowGW]    = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [receipt,   setReceipt]   = useState(null);
 
@@ -210,17 +86,17 @@ export default function DonationPage() {
         anonymous: form.anonymous
       };
 
-      if (form.donationType === 'online') {
-        submissionData.paymentMethod = form.paymentMethod;
+      if (form.donationType === 'qrph') {
+        submissionData.paymentMethod = 'qrph';
       } else {
         submissionData.appointmentDate = form.appointmentDate;
         submissionData.appointmentTime = form.appointmentTime;
       }
 
-      const response = await axios.post('https://kanang-alalay-backend.onrender.com/api/donations', submissionData);
+      const response = await axios.post(`${API_BASE}/api/donations`, submissionData);
 
       if (response.data.success) {
-        const method = form.donationType === 'online' ? form.paymentMethod.toUpperCase() : 'Cash';
+        const method = form.donationType === 'qrph' ? 'QRPH' : 'Cash';
         setReceipt({
           refId: response.data.donationId,
           name: fullName,
@@ -232,7 +108,6 @@ export default function DonationPage() {
           checkoutUrl: response.data.checkoutUrl
         });
         setSubmitted(true);
-        setShowGW(false);
       } else {
         throw new Error(response.data.message || 'Donation submission failed');
       }
@@ -241,7 +116,6 @@ export default function DonationPage() {
       setApiError(err.response?.data?.message || err.message || 'Donation submission failed');
     } finally {
       setLoading(false);
-      setGwLoading(false);
     }
   };
 
@@ -249,12 +123,6 @@ export default function DonationPage() {
     e.preventDefault();
     setApiError('');
     if (!validate()) return;
-    if (form.donationType==='online') { setShowGW(true); return; }
-    submitDonation();
-  };
-
-  const handleGWPay = () => {
-    setGwLoading(true);
     submitDonation();
   };
 
@@ -278,7 +146,7 @@ export default function DonationPage() {
             </div>
           ))}
         </div>
-        {receipt.type === 'online' && receipt.checkoutUrl && (
+        {receipt.type === 'qrph' && (
           <div className="dp-redirect-message" style={{marginTop: '16px', padding: '12px', background: '#fff3e0', borderRadius: '8px', textAlign: 'center'}}>
             <strong style={{color: '#ff8c42'}}>Redirecting to secure payment gateway...</strong>
           </div>
@@ -289,7 +157,7 @@ export default function DonationPage() {
             setReceipt(null);
             setForm({
               firstName:'', middleName:'', lastName:'', email:'', phone:'',
-              amount:'', donationType:'online', paymentMethod:'gcash',
+              amount:'', donationType:'qrph',
               notes:'', anonymous:false, appointmentDate:'', appointmentTime:''
             });
           }}>Donate Again</button>
@@ -298,8 +166,6 @@ export default function DonationPage() {
       </div>
     </div>
   );
-
-  const selPay = PAY_METHODS.find(p=>p.value===form.paymentMethod);
 
   return (
     <div className="dp-shell">
@@ -351,29 +217,24 @@ export default function DonationPage() {
                 {/* Donation Type */}
                 <div className="dp-section-label" style={{marginTop:8}}>Donation Type</div>
                 <div className="dp-tabs">
-                  {[{v:'online',l:'💳 Online Payment'},{v:'cash',l:'🏢 In-Person / Cash'}].map(t=>(
+                  {[{v:'qrph',l:'QRPH'},{v:'cash',l:'In-Person / Cash'}].map(t=>(
                     <div key={t.v} className={`dp-tab${form.donationType===t.v?' active':''}`}
                       onClick={()=>!loading && set('donationType',t.v)}>{t.l}</div>
                   ))}
                 </div>
 
-                {/* Payment Method */}
-                {form.donationType==='online' && <>
-                  <div className="dp-section-label">Payment Method</div>
-                  <div className="dp-pay-methods">
-                    {PAY_METHODS.map(m=>(
-                      <div key={m.value} className={`dp-pay-card${form.paymentMethod===m.value?' active':''}`}
-                        onClick={()=>!loading && set('paymentMethod',m.value)}>
-                        <div className="dp-pay-radio"><div className="dp-pay-radio-dot"/></div>
-                        <div className="dp-pay-icon" style={{background:m.bg,color:m.color}}>{m.abbr}</div>
-                        <div className="dp-pay-text">
-                          <div className="dp-pay-name">{m.label}</div>
-                          <div className="dp-pay-desc">{m.desc}</div>
-                        </div>
-                      </div>
-                    ))}
+                {/* QRPH QR Code */}
+                {form.donationType==='qrph' && (
+                  <div className="dp-qrph-box" style={{marginTop:16,textAlign:'center',padding:'20px',background:'#f8f9ff',borderRadius:12,border:'1.5px solid #e0e4ff'}}>
+                    <div style={{fontSize:14,fontWeight:600,color:'#555',marginBottom:12}}>Scan to Pay via QRPH</div>
+                    <img
+                      src="/images/QRPH.jpg"
+                      alt="QRPH QR Code"
+                      style={{width:200,height:200,objectFit:'contain',borderRadius:8,border:'1px solid #ddd',background:'#fff',padding:8}}
+                    />
+                    <div style={{marginTop:12,fontSize:13,color:'#777'}}>Use any bank app or e-wallet that supports QRPh to scan and complete your donation.</div>
                   </div>
-                </>}
+                )}
 
                 {/* Appointment */}
                 {form.donationType==='cash' && (
@@ -429,7 +290,7 @@ export default function DonationPage() {
 
                 <button type="submit" className="dp-submit" disabled={loading}>
                   {loading ? <><div className="dp-spin"/> Processing…</> :
-                   form.donationType==='online' ? `Proceed to ${selPay?.label||'Payment'} →` :
+                   form.donationType==='qrph' ? 'Confirm QRPH Donation →' :
                    'Schedule Appointment →'}
                 </button>
               </form>
@@ -445,7 +306,7 @@ export default function DonationPage() {
               <h6>Donation Summary</h6>
               {[
                 ['Donor', form.anonymous?'Anonymous':`${form.firstName||'—'} ${form.lastName||''}`.trim()],
-                ['Type', form.donationType==='online'?`Online · ${selPay?.label||''}` : 'Cash (In-person)'],
+                ['Type', form.donationType==='qrph'?'QRPH (Online)' : 'Cash (In-person)'],
                 form.donationType==='cash'&&form.appointmentDate&&[
                   'Appointment', `${form.appointmentDate} ${form.appointmentTime}`
                 ],
@@ -460,14 +321,6 @@ export default function DonationPage() {
         </div>
       </div>
 
-      {/* Payment Gateway Modal */}
-      {showGW && (
-        <div className="dp-modal-overlay" onClick={e=>{if(e.target.className==='dp-modal-overlay')setShowGW(false)}}>
-          {form.paymentMethod==='gcash'       && <GCashModal amount={form.amount} onPay={handleGWPay} onClose={()=>setShowGW(false)} loading={gwLoading}/>}
-          {form.paymentMethod==='maya'        && <MayaModal  amount={form.amount} onPay={handleGWPay} onClose={()=>setShowGW(false)} loading={gwLoading}/>}
-          {form.paymentMethod==='credit_card' && <CardModal  amount={form.amount} onPay={handleGWPay} onClose={()=>setShowGW(false)} loading={gwLoading}/>}
-        </div>
-      )}
     </div>
   );
 }

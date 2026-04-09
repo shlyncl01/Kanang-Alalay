@@ -45,10 +45,21 @@ io.on('connection', (socket) => {
 });
 
 // ==================== MIDDLEWARE =============================================
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'https://kanang-alalay.vercel.app',
+    'http://localhost:3000'
+].filter(Boolean);
+
 app.use(cors({
-    origin:         process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app',
-    credentials:    true,
-    methods:        ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    origin: (origin, callback) => {
+        // allow non-browser tools / same-origin
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -114,36 +125,6 @@ app.get('/api/stats', async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error fetching stats' });
-    }
-});
-
-// ==================== UPDATE BOOKING STATUS ==================================
-app.put('/api/bookings/:id/status', async (req, res) => {
-    try {
-        const { status } = req.body;
-        const booking = await Booking.findByIdAndUpdate(
-            req.params.id,
-            { status },
-            { new: true }
-        );
-        res.json({ success: true, data: booking });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// ==================== UPDATE DONATION PAYMENT STATUS =========================
-app.put('/api/donations/:id/payment', async (req, res) => {
-    try {
-        const { paymentStatus } = req.body;
-        const donation = await Donation.findByIdAndUpdate(
-            req.params.id,
-            { paymentStatus },
-            { new: true }
-        );
-        res.json({ success: true, data: donation });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
     }
 });
 

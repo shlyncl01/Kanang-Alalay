@@ -7,6 +7,7 @@ class PaymentService {
         this.baseURL = 'https://api.paymongo.com/v1';
     }
 
+    // Only used for gateway-based methods (gcash, maya, credit_card, bank_transfer)
     async createPaymentIntent(data) {
         const payload = {
             data: {
@@ -55,6 +56,10 @@ class PaymentService {
         const hmac = crypto.createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET);
         const digest = hmac.update(payload).digest('hex');
         return digest === signature;
+    }
+
+    isManualMethod(paymentMethod) {
+        return ['qrph', 'cash'].includes(paymentMethod);
     }
 }
 
