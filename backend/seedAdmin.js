@@ -10,19 +10,32 @@ async function seedAdmin() {
         await mongoose.connect(MONGODB_URI);
         console.log('✅ Connected to MongoDB Atlas!');
 
-        // Create the Master Admin account
-        const adminUser = new User({
-            username: 'admin',
-            email: 'admin@kanangalalay.org',
-            password: 'admin123', 
-            firstName: 'Master',
-            lastName: 'Admin',
-            role: 'admin',
-            isActive: true,       
-            isVerified: true      
-        });
-
-        await adminUser.save();
+        // Upsert the Master Admin account to avoid duplicate-key failures.
+        const existingAdmin = await User.findOne({ username: 'admin' });
+        if (existingAdmin) {
+            existingAdmin.staffId = existingAdmin.staffId || 'LSAE-ADMIN-0001';
+            existingAdmin.email = 'admin@kanangalalay.org';
+            existingAdmin.password = 'admin123';
+            existingAdmin.firstName = 'Master';
+            existingAdmin.lastName = 'Admin';
+            existingAdmin.role = 'admin';
+            existingAdmin.isActive = true;
+            existingAdmin.isVerified = true;
+            await existingAdmin.save();
+        } else {
+            const adminUser = new User({
+                staffId: 'LSAE-ADMIN-0001',
+                username: 'admin',
+                email: 'admin@kanangalalay.org',
+                password: 'admin123',
+                firstName: 'Master',
+                lastName: 'Admin',
+                role: 'admin',
+                isActive: true,
+                isVerified: true
+            });
+            await adminUser.save();
+        }
         
         console.log('🎉 SUCCESS! Master Admin account recreated.');
         console.log('-----------------------------------');

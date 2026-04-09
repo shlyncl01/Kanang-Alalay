@@ -18,7 +18,9 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { v4 as uuidv4 } from 'uuid';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://kanang-alalay-backend.onrender.com/api';
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
 
 const AdminDashboard = () => {
     const { user, logout } = useAuth();
@@ -600,7 +602,7 @@ const AdminDashboard = () => {
                 <div className="main-content-wrapper">
                     <div className="admin-topbar">
                         <div className="topbar-left">
-                            <button className="hamburger-btn" onClick={()=>setSidebarOpen(o=>!o)}><FaBars/></button>
+                            {/* <button className="hamburger-btn" onClick={()=>setSidebarOpen(o=>!o)}><FaBars/></button> */}
                             <div className="topbar-search-wrapper">
                                 <FaSearch className="topbar-search-icon"/>
                                 <input

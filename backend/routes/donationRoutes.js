@@ -8,9 +8,13 @@ router.post('/', async (req, res) => {
     try {
         // 1. Added firstName, middleName, and lastName here
         const { firstName, middleName, lastName, donorName, email, donationType, phone, amount, appointmentDate, appointmentTime } = req.body;
+        const normalizedDonationType = (donationType || '').toString().trim().toLowerCase();
+        const normalizedPaymentMethod = req.body.paymentMethod
+            ? req.body.paymentMethod.toString().trim().toLowerCase()
+            : null;
 
         // 2. Added firstName and lastName to the strict validation check
-        if (!firstName || !lastName || !donorName || !email || !donationType || !phone || !amount) {
+        if (!firstName || !lastName || !donorName || !email || !normalizedDonationType || !phone || !amount) {
             return res.status(400).json({ success: false, message: 'Missing required fields' });
         }
 
@@ -19,7 +23,7 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Amount must be at least ₱100' });
         }
 
-        if (donationType === 'cash') {
+        if (normalizedDonationType === 'cash') {
             if (!appointmentDate || !appointmentTime) {
                 return res.status(400).json({ success: false, message: 'Appointment date and time are required for in-person donations' });
             }
@@ -34,12 +38,12 @@ router.post('/', async (req, res) => {
             email,
             phone,
             amount: amountNum,
-            donationType,
+            donationType: normalizedDonationType,
             notes: req.body.notes || '',
             anonymous: req.body.anonymous || false,
-            paymentMethod: req.body.paymentMethod || null,
-            appointmentDate: donationType === 'cash' ? appointmentDate : undefined,
-            appointmentTime: donationType === 'cash' ? appointmentTime : undefined
+            paymentMethod: normalizedPaymentMethod,
+            appointmentDate: normalizedDonationType === 'cash' ? appointmentDate : undefined,
+            appointmentTime: normalizedDonationType === 'cash' ? appointmentTime : undefined
         };        
         
         const donation = new Donation(donationData);
@@ -56,7 +60,7 @@ router.post('/', async (req, res) => {
         }
 
         const frontendBaseUrl = process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app';
-        const checkoutUrl = donationType === 'qrph'
+        const checkoutUrl = normalizedDonationType === 'online'
             ? `${frontendBaseUrl}/donation/success/${donation._id}`
             : null;
 

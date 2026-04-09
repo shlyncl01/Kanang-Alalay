@@ -3,6 +3,10 @@ import { Container, Row, Col, Card, Form, Button, Alert } from 'react-bootstrap'
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
+
 const ResetPassword = () => {
     const { token } = useParams();
     const navigate = useNavigate();
@@ -36,7 +40,7 @@ const ResetPassword = () => {
         setLoading(true);
         
         try {
-            await axios.post(`https://kanang-alalay-backend.onrender.com/api/auth/reset-password/${token}`, {
+            await axios.post(`${API_BASE_URL}/auth/reset-password/${token}`, {
                 password: formData.password
             });
             

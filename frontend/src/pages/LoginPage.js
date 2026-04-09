@@ -4,7 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { FaUser, FaLock, FaEye, FaEyeSlash, FaSpinner } from 'react-icons/fa';
 import '../styles/LoginPage.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://kanang-alalay-backend.onrender.com/api';
+const getApiBaseUrl = () => {
+    const fallback = process.env.NODE_ENV === 'production'
+        ? 'https://kanang-alalay-backend.onrender.com/api'
+        : 'http://localhost:5000/api';
+    const raw = process.env.REACT_APP_API_URL || fallback;
+    const trimmed = raw.replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const LoginPage = () => {
     const { login, user, getHomeRoute } = useAuth();

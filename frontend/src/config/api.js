@@ -1,11 +1,12 @@
 // API Configuration
 const getApiUrl = () => {
-  // Production (Vercel)
-  if (process.env.NODE_ENV === 'production') {
-    return 'https://kanang-alalay-backend.onrender.com/api';
-  }
-  // Development (localhost)
-  return 'http://localhost:5000/api';
+  const fallback =
+    process.env.NODE_ENV === 'production'
+      ? 'https://kanang-alalay-backend.onrender.com/api'
+      : 'http://localhost:5000/api';
+  const raw = process.env.REACT_APP_API_URL || fallback;
+  const trimmed = raw.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 };
 
 export const API_URL = getApiUrl();

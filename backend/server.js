@@ -5,12 +5,6 @@ const cors      = require('cors');
 const http      = require('http');
 const { Server } = require('socket.io');
 
-// ── Validate required env vars ────────────────────────────────────────────────
-if (!process.env.MONGODB_URI) {
-    console.error('❌ MONGODB_URI is not set in environment variables!');
-    process.exit(1);
-}
-
 // ── Models ────────────────────────────────────────────────────────────────────
 const Donation = require('./models/Donation');
 const Booking  = require('./models/Booking');
@@ -51,10 +45,14 @@ const allowedOrigins = [
     'http://localhost:3000'
 ].filter(Boolean);
 
+const isLocalDevOrigin = (origin = '') =>
+    /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
+
 app.use(cors({
     origin: (origin, callback) => {
         // allow non-browser tools / same-origin
         if (!origin) return callback(null, true);
+        if (isLocalDevOrigin(origin)) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
         return callback(new Error(`CORS blocked for origin: ${origin}`));
     },

@@ -2,7 +2,16 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext(null);
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://kanang-alalay-backend.onrender.com/api';
+const getApiBaseUrl = () => {
+    const fallback = process.env.NODE_ENV === 'production'
+        ? 'https://kanang-alalay-backend.onrender.com/api'
+        : 'http://localhost:5000/api';
+    const raw = process.env.REACT_APP_API_URL || fallback;
+    const trimmed = raw.replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser]       = useState(null);

@@ -50,10 +50,10 @@ const ProtectedRoute = ({
                     fallbackRoute = '/nurse';
                     break;
                 case 'caregiver':
-                    fallbackRoute = '/caregiver';
+                    fallbackRoute = '/nurse';
                     break;
                 case 'staff':
-                    fallbackRoute = '/dashboard';
+                    fallbackRoute = '/staff';
                     break;
                 default:
                     fallbackRoute = '/';

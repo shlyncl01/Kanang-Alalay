@@ -11,7 +11,7 @@ const API_BASE = (() => {
     const raw =
         process.env.REACT_APP_API_BASE_URL ||
         process.env.REACT_APP_API_URL ||
-        'https://kanang-alalay-backend.onrender.com';
+        (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
     return raw.replace(/\/api\/?$/, '');
 })();
 

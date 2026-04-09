@@ -11,7 +11,7 @@ const API_BASE = (() => {
   const raw =
     process.env.REACT_APP_API_BASE_URL ||
     process.env.REACT_APP_API_URL ||
-    'https://kanang-alalay-backend.onrender.com';
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
   return raw.replace(/\/api\/?$/, '');
 })();
 
@@ -31,7 +31,7 @@ const IMPACTS  = [
 export default function DonationPage() {
   const [form, setForm] = useState({
     firstName:'', middleName:'', lastName:'', email:'', phone:'',
-    amount:'', donationType:'qrph',
+    amount:'', donationType:'online',
     notes:'', anonymous:false, appointmentDate:'', appointmentTime:''
   });
   const [errors,    setErrors]    = useState({});
@@ -86,7 +86,7 @@ export default function DonationPage() {
         anonymous: form.anonymous
       };
 
-      if (form.donationType === 'qrph') {
+      if (form.donationType === 'online') {
         submissionData.paymentMethod = 'qrph';
       } else {
         submissionData.appointmentDate = form.appointmentDate;
@@ -96,7 +96,7 @@ export default function DonationPage() {
       const response = await axios.post(`${API_BASE}/api/donations`, submissionData);
 
       if (response.data.success) {
-        const method = form.donationType === 'qrph' ? 'QRPH' : 'Cash';
+        const method = form.donationType === 'online' ? 'QRPH' : 'Cash';
         setReceipt({
           refId: response.data.donationId,
           name: fullName,
@@ -146,7 +146,7 @@ export default function DonationPage() {
             </div>
           ))}
         </div>
-        {receipt.type === 'qrph' && (
+        {receipt.type === 'online' && (
           <div className="dp-redirect-message" style={{marginTop: '16px', padding: '12px', background: '#fff3e0', borderRadius: '8px', textAlign: 'center'}}>
             <strong style={{color: '#ff8c42'}}>Redirecting to secure payment gateway...</strong>
           </div>
@@ -157,7 +157,7 @@ export default function DonationPage() {
             setReceipt(null);
             setForm({
               firstName:'', middleName:'', lastName:'', email:'', phone:'',
-              amount:'', donationType:'qrph',
+              amount:'', donationType:'online',
               notes:'', anonymous:false, appointmentDate:'', appointmentTime:''
             });
           }}>Donate Again</button>
@@ -217,14 +217,14 @@ export default function DonationPage() {
                 {/* Donation Type */}
                 <div className="dp-section-label" style={{marginTop:8}}>Donation Type</div>
                 <div className="dp-tabs">
-                  {[{v:'qrph',l:'QRPH'},{v:'cash',l:'In-Person / Cash'}].map(t=>(
+                  {[{v:'online',l:'QRPH'},{v:'cash',l:'In-Person / Cash'}].map(t=>(
                     <div key={t.v} className={`dp-tab${form.donationType===t.v?' active':''}`}
                       onClick={()=>!loading && set('donationType',t.v)}>{t.l}</div>
                   ))}
                 </div>
 
                 {/* QRPH QR Code */}
-                {form.donationType==='qrph' && (
+                {form.donationType==='online' && (
                   <div className="dp-qrph-box" style={{marginTop:16,textAlign:'center',padding:'20px',background:'#f8f9ff',borderRadius:12,border:'1.5px solid #e0e4ff'}}>
                     <div style={{fontSize:14,fontWeight:600,color:'#555',marginBottom:12}}>Scan to Pay via QRPH</div>
                     <img
@@ -290,7 +290,7 @@ export default function DonationPage() {
 
                 <button type="submit" className="dp-submit" disabled={loading}>
                   {loading ? <><div className="dp-spin"/> Processing…</> :
-                   form.donationType==='qrph' ? 'Confirm QRPH Donation →' :
+                   form.donationType==='online' ? 'Confirm QRPH Donation →' :
                    'Schedule Appointment →'}
                 </button>
               </form>
@@ -306,7 +306,7 @@ export default function DonationPage() {
               <h6>Donation Summary</h6>
               {[
                 ['Donor', form.anonymous?'Anonymous':`${form.firstName||'—'} ${form.lastName||''}`.trim()],
-                ['Type', form.donationType==='qrph'?'QRPH (Online)' : 'Cash (In-person)'],
+                ['Type', form.donationType==='online'?'QRPH (Online)' : 'Cash (In-person)'],
                 form.donationType==='cash'&&form.appointmentDate&&[
                   'Appointment', `${form.appointmentDate} ${form.appointmentTime}`
                 ],

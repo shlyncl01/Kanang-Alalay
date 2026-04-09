@@ -3,12 +3,27 @@ const router   = express.Router();
 const User     = require('../models/User');
 const Booking  = require('../models/Booking');
 const Donation = require('../models/Donation');
+const Inventory = require('../models/Inventory');
 const RegistrationCode = require('../models/VerificationCode');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 // ── Apply protect + adminOnly to EVERY route in this file ────────────────────
 // Any request without a valid Admin JWT is rejected before reaching any handler.
 router.use(protect, adminOnly);
+
+const sanitizeUser = (user) => ({
+    id: user._id,
+    staffId: user.staffId,
+    username: user.username,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    role: user.role,
+    isActive: user.isActive,
+    isVerified: user.isVerified,
+    createdAt: user.createdAt
+});
 
 // ── 1. GET all staff/users ────────────────────────────────────────────────────
 // GET /api/admin/staff

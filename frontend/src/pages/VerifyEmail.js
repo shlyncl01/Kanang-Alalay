@@ -3,6 +3,10 @@ import { Container, Row, Col, Card, Alert, Spinner } from 'react-bootstrap';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
 
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
+
 const VerifyEmail = () => {
     const { token } = useParams();
     const [status, setStatus] = useState('verifying');
@@ -11,7 +15,7 @@ const VerifyEmail = () => {
     useEffect(() => {
         const verifyEmail = async () => {
             try {
-                const response = await axios.get(`https://kanang-alalay-backend.onrender.com/api/auth/verify-email/${token}`);
+                const response = await axios.get(`${API_BASE_URL}/auth/verify-email/${token}`);
                 setStatus('success');
                 setMessage(response.data.message);
             } catch (error) {

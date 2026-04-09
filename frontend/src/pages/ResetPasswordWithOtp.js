@@ -4,6 +4,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './ResetPassword.css'; // Optional: Create for styling
 
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
+
 const ResetPasswordWithOtp = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -46,7 +50,7 @@ const ResetPasswordWithOtp = () => {
         setLoading(true);
         
         try {
-            const response = await axios.post('https://kanang-alalay-backend.onrender.com/api/auth/verify-reset-otp', {
+            const response = await axios.post(`${API_BASE_URL}/auth/verify-reset-otp`, {
                 email: formData.email,
                 otp: formData.otp
             });
@@ -87,7 +91,7 @@ const ResetPasswordWithOtp = () => {
         setLoading(true);
         
         try {
-            const response = await axios.post('https://kanang-alalay-backend.onrender.com/api/auth/reset-password-with-otp', {
+            const response = await axios.post(`${API_BASE_URL}/auth/reset-password-with-otp`, {
                 email: formData.email,
                 otp: formData.otp,
                 password: formData.password
@@ -113,7 +117,7 @@ const ResetPasswordWithOtp = () => {
         setMessage('Resending OTP...');
         
         try {
-            const response = await axios.post('https://kanang-alalay-backend.onrender.com/api/auth/resend-reset-otp', {
+            const response = await axios.post(`${API_BASE_URL}/auth/resend-reset-otp`, {
                 email: formData.email
             });
             
@@ -139,7 +143,7 @@ const ResetPasswordWithOtp = () => {
         setLoading(true);
         
         try {
-            const response = await axios.post('https://kanang-alalay-backend.onrender.com/api/auth/forgot-password', {
+            const response = await axios.post(`${API_BASE_URL}/auth/forgot-password`, {
                 email: formData.email
             });
             

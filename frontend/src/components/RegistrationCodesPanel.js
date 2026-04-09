@@ -45,8 +45,6 @@ const RegistrationCodesPanel = () => {
                     onChange={(e) => setForm({...form, role: e.target.value})}
                 >
                     <option value="staff">Staff</option>
-                    <option value="caregiver">Caregiver</option>
-                    <option value="nurse">Nurse</option>
                     <option value="admin">Admin</option>
                 </select>
                 <button onClick={generateCodes} disabled={generating}>

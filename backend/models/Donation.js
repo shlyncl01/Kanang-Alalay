@@ -44,16 +44,22 @@ const donationSchema = new mongoose.Schema({
     
     donationType: {
         type: String,
-        enum: ['online', 'bank_transfer', 'cash', 'check', 'qrph'],
+        lowercase: true,
+        trim: true,
+        enum: ['online', 'cash'],
         required: true
     },
+    
     paymentMethod: {
         type: String,
-        enum: ['gcash', 'maya', 'paypal', 'credit_card', 'debit_card', 'qrph', 'cash', null],
+        lowercase: true,
+        trim: true,
+        enum: ['gcash', 'maya', 'paypal', 'credit_card', 'debit_card', 'qrph'],
         required: function() {
             return this.donationType === 'online';
         }
     },
+    
     paymentStatus: {
         type: String,
         enum: ['pending', 'processing', 'paid', 'failed', 'refunded', 'cancelled'],

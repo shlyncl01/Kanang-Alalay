@@ -20,7 +20,9 @@ import {
 } from 'react-icons/fa';
 import '../styles/StaffRegistration.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://kanang-alalay-backend.onrender.com/api';
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
 
 const StaffRegistration = () => {
     const [formData, setFormData] = useState({

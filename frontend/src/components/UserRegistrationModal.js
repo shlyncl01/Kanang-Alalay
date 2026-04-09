@@ -3,8 +3,9 @@ import { FaTimes, FaEye, FaEyeSlash } from 'react-icons/fa';
 import '../styles/UserRegistrationModal.css';
 import axios from 'axios';
 
-// 1. ADD THIS LINE: This tells the app to use your live URL if deployed, or localhost if testing.
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://kanang-alalay-backend.onrender.com/api';
+const API_BASE_URL =
+    process.env.REACT_APP_API_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://kanang-alalay-backend.onrender.com/api' : 'http://localhost:5000/api');
 
 const UserRegistrationModal = ({ isOpen, onClose, onRegister }) => {
     const [email, setEmail] = useState('');
