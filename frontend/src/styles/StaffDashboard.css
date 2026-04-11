@@ -27,7 +27,7 @@
 /* Alert item */
 .alert-item {
     padding: 14px 16px;
-    border-left: 4px solid var(--d-orange);
+    /* border-left: 4px solid var(--d-orange); */
     background: var(--d-orange-lt);
     border-radius: 8px;
     margin-bottom: 12px;

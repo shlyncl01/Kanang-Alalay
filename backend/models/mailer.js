@@ -4,10 +4,22 @@ require('dotenv').config();
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, 
+    secure: true,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
+    }
+});
+
+// Verify SMTP on startup — prints a clear error if credentials are misconfigured
+transporter.verify((error) => {
+    if (error) {
+        console.error('❌ SMTP CONNECTION FAILED:', error.message);
+        console.error('   → Check EMAIL_USER and EMAIL_PASS in your .env file');
+        console.error('   → Gmail requires an App Password, NOT your account password');
+        console.error('   → Steps: Enable 2FA on Gmail → myaccount.google.com/apppasswords → create App Password');
+    } else {
+        console.log('✅ SMTP connection verified. Mailer is ready.');
     }
 });
 

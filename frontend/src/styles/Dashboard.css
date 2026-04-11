@@ -214,7 +214,7 @@ body {
 
 .sidebar-menu li.active {
   background: rgba(249,107,56,.15);
-  border-left-color: var(--d-orange);
+  /* border-left-color: var(--d-orange); */
   color: var(--d-white);
   font-weight: 600;
 }

@@ -19,49 +19,37 @@ const HomePage = () => {
   const [showStaffLogin, setShowStaffLogin] = useState(false);
   const [keySequence, setKeySequence] = useState([]);
   
-  // Secret code sequence (you can change this)
-  // This is like a Konami code: press 's', 't', 'a', 'f', 'f' in sequence
+  //Staff secret code keyboard
   const secretCode = ['s', 't', 'a', 'f', 'f'];
-  
-  // Alternative: You can use a specific key combination like Ctrl+Shift+L
   const [keyPressed, setKeyPressed] = useState({});
 
   useEffect(() => {
-    // Method 1: Sequence-based secret code (like Konami)
     const handleKeySequence = (e) => {
-      // Get the key pressed
       const key = e.key.toLowerCase();
       
-      // Update sequence
       const newSequence = [...keySequence, key];
       
-      // Keep only the last N keys where N is the length of secret code
       if (newSequence.length > secretCode.length) {
         newSequence.shift();
       }
       
       setKeySequence(newSequence);
       
-      // Check if the sequence matches the secret code
       if (newSequence.join('') === secretCode.join('')) {
         setShowStaffLogin(true);
-        // Optional: Show a small notification
         console.log('Staff login revealed!');
-        // Clear the sequence after successful match
         setKeySequence([]);
       }
     };
 
-    // Method 2: Key combination (Ctrl+Shift+L)
     const handleKeyCombination = (e) => {
-      // Check for Ctrl+Shift+L (you can change this combination)
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l') {
-        e.preventDefault(); // Prevent default browser behavior
-        setShowStaffLogin(prev => !prev); // Toggle staff login visibility
+        e.preventDefault(); 
+        setShowStaffLogin(prev => !prev); 
       }
     };
 
-    // Add event listeners
+    // event listeners
     window.addEventListener('keydown', handleKeySequence);
     window.addEventListener('keydown', handleKeyCombination);
 
@@ -70,16 +58,12 @@ const HomePage = () => {
       window.removeEventListener('keydown', handleKeySequence);
       window.removeEventListener('keydown', handleKeyCombination);
     };
-  }, [keySequence, secretCode]); // Add dependencies
-
-  // Method 3: Double-click on a specific element (alternative)
+  }, [keySequence, secretCode]); 
   const handleSecretAreaClick = () => {
-    // This could be triggered by clicking on a hidden area
     setShowStaffLogin(true);
   };
 
   const services = [
-    // ... your existing services array
     {
       icon: <FaHome />,
       title: 'Residential Care & Shelter',
@@ -109,15 +93,14 @@ const HomePage = () => {
   return (
     <div className="home-page">
 
-      {/* Hidden indicator for developers (optional) */}
       {!showStaffLogin && (
         <div 
-          style={{ display: 'none' }} // Completely hidden
+          style={{ display: 'none' }} 
           onClick={handleSecretAreaClick}
         />
       )}
 
-      {/* Hero Section */}
+      {/* Her Section */}
       <section className="hero-section text-center text-white">
         <Container>
           <p className="hero-subtitle">
@@ -147,7 +130,6 @@ const HomePage = () => {
               </Button>
             </Link>
 
-            {/* Staff Login Button - Only visible when secret code is entered */}
             {showStaffLogin && (
               <Link to="/login">
                 <Button variant="primary" size="lg">
@@ -156,16 +138,10 @@ const HomePage = () => {
               </Link>
             )}
           </div>
-
-          {/* Optional: Small hint for staff (remove in production) */}
-          {/* <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginTop: '10px' }}>
-            Press Ctrl+Shift+L for staff access
-          </div> */}
         </Container>
       </section>
 
-      {/* Rest of your component remains the same */}
-      {/* INTRO */}
+      
       <section className="intro-section">
         <Container className="text-center">
           <h3>Welcome to</h3>

@@ -303,7 +303,8 @@ body {
 }
 .bp-receipt {
   background: var(--bp-cream); border-radius: 12px; padding: 20px;
-  text-align: left; margin-bottom: 28px; border-left: 4px solid var(--bp-orange);
+  text-align: left; margin-bottom: 28px; 
+  /* border-left: 4px solid var(--bp-orange); */
 }
 .bp-receipt-row {
   display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;

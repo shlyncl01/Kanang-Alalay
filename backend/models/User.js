@@ -11,38 +11,35 @@ const userSchema = new mongoose.Schema({
     phone:     { type: String },
 
     role: {
-        type: String,
-        enum: ['admin', 'staff', 'nurse', 'caregiver'],
+        type:    String,
+        enum:    ['admin', 'staff', 'nurse', 'caregiver'],
         default: 'staff'
     },
 
-    // Status flags
-    isVerified: { type: Boolean, default: false },
-    isActive:   { type: Boolean, default: false },
+    // Account status
+    isVerified:      { type: Boolean, default: false },
+    isActive:        { type: Boolean, default: false },
+    isEmailVerified: { type: Boolean, default: false },
 
     // Login / Activation OTP
     otpCode:    { type: String },
     otpExpires: { type: Date },
 
-    // Forgot-Password OTP
+    // Forgot-Password OTP  ← used by /forgot-password routes
     resetPasswordOtp:        { type: String },
     resetPasswordOtpExpires: { type: Date },
 
-    isEmailVerified: {
-            type: Boolean,
-            default: false
-        },
-        isActive: {
-            type: Boolean,
-            default: true
-        },
-        emailVerificationToken: String,
-        emailVerificationExpires: Date,
-        verificationOtp: String,
-        verificationOtpExpires: Date,
-        resetOtp: String,
-        resetOtpExpires: Date,
-    }, { timestamps: true });
+    // Legacy email-link verification (older flow)
+    emailVerificationToken:   { type: String },
+    emailVerificationExpires: { type: Date },
+
+    // Legacy OTP fields (kept for backward compat)
+    verificationOtp:        { type: String },
+    verificationOtpExpires: { type: Date },
+    resetOtp:               { type: String },
+    resetOtpExpires:        { type: Date },
+
+}, { timestamps: true });
 
 // ── Hash password before saving ──────────────────────────────────────────────
 userSchema.pre('save', async function (next) {

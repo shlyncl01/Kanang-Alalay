@@ -1,11 +1,7 @@
-/* AdminDashboard.css — role-specific overrides, inherits Dashboard.css variables */
-
-/* ── Layout: sidebar + main wrapper ── */
 .dashboard-layout {
     background-color: var(--d-cream);
 }
 
-/* Override dashboard-body to make inner wrapper fill height */
 .main-content-wrapper {
     display: flex;
     flex-direction: column;
@@ -13,9 +9,6 @@
     overflow: hidden;
 }
 
-/* ══════════════════════════════════════
-   TOPBAR
-══════════════════════════════════════ */
 .admin-topbar {
     display: flex;
     align-items: center;
@@ -39,7 +32,7 @@
     flex: 1;
 }
 
-.hamburger-btn {
+/* .hamburger-btn {
     background: none;
     border: none;
     color: var(--d-muted);
@@ -57,9 +50,8 @@
 .hamburger-btn:hover {
     background: var(--d-orange-lt);
     color: var(--d-orange-dk);
-}
+} */
 
-/* Search in topbar */
 .topbar-search-wrapper {
     position: relative;
     display: flex;
@@ -250,9 +242,7 @@
     color: #C0392B !important;
 }
 
-/* ══════════════════════════════════════
-   MAIN CONTENT (scrollable area below topbar)
-══════════════════════════════════════ */
+
 .main-content-wrapper .main-content {
     flex: 1;
     overflow-y: auto;
@@ -260,9 +250,7 @@
     background: var(--d-cream);
 }
 
-/* ══════════════════════════════════════
-   WELCOME BANNER
-══════════════════════════════════════ */
+
 .welcome-banner {
     display: flex;
     align-items: center;
@@ -270,7 +258,7 @@
     margin-bottom: 24px;
     padding: 20px 28px;
     background: linear-gradient(135deg, var(--d-orange-lt), #fff5ef);
-    border-left: 4px solid var(--d-orange);
+    /* border-left: 4px solid var(--d-orange); */
 }
 
 .welcome-banner h2 {
@@ -365,4 +353,401 @@
     .content-row {
         flex-direction: column;
     }
+}
+/* AdminDashboard.css — additions for notifications, alerts, OTP panel, misc fixes */
+
+/* ── Existing base styles (keep all previous AdminDashboard.css content above this) ── */
+
+/* ════════════════════════════════════════════════════════
+   API ERROR BANNER
+════════════════════════════════════════════════════════ */
+.api-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff0f0;
+    border: 1px solid #f5c6cb;
+    border-left: 4px solid #dc3545;
+    color: #721c24;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: .88rem;
+    animation: shake .3s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25%       { transform: translateX(-4px); }
+    75%       { transform: translateX(4px); }
+}
+
+/* ════════════════════════════════════════════════════════
+   SIDEBAR BADGE
+════════════════════════════════════════════════════════ */
+.sidebar-badge {
+    margin-left: auto;
+    background: #dc3545;
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 99px;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* ════════════════════════════════════════════════════════
+   TOPBAR NOTIFICATION BELL
+════════════════════════════════════════════════════════ */
+.topbar-notif-menu {
+    position: relative;
+}
+
+.notif-dot-badge {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    background: #dc3545;
+    color: #fff;
+    font-size: .58rem;
+    font-weight: 700;
+    min-width: 17px;
+    height: 17px;
+    border-radius: 99px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--d-white);
+    line-height: 1;
+    padding: 0 3px;
+}
+
+/* ── Notification Dropdown Panel ── */
+.notif-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    width: 360px;
+    background: var(--d-white);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.2);
+    border: 1px solid var(--d-border);
+    z-index: 600;
+    animation: fadeIn .18s ease;
+    overflow: hidden;
+}
+
+.notif-dropdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 18px 12px;
+    border-bottom: 1.5px solid var(--d-border);
+    font-weight: 700;
+    font-size: .9rem;
+    color: var(--d-ink);
+}
+
+.notif-action-btn {
+    background: none;
+    border: none;
+    font-family: var(--d-font-body);
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--d-orange-dk);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background .15s;
+}
+
+.notif-action-btn:hover { background: var(--d-orange-lt); }
+
+.notif-list {
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.notif-list::-webkit-scrollbar { width: 5px; }
+.notif-list::-webkit-scrollbar-thumb { background: var(--d-border); border-radius: 4px; }
+
+.notif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 13px 18px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--d-border);
+    transition: background .15s;
+    position: relative;
+}
+
+.notif-item:last-child { border-bottom: none; }
+
+.notif-item:hover { background: var(--d-cream); }
+
+.notif-item.unread { background: #fffaf7; }
+.notif-item.read   { opacity: .75; }
+
+.notif-item-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--d-cream);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .9rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.notif-item-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.notif-item-body strong {
+    font-size: .85rem;
+    color: var(--d-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notif-item-body span {
+    font-size: .78rem;
+    color: var(--d-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notif-item-body small {
+    font-size: .7rem;
+    color: var(--d-muted);
+    margin-top: 2px;
+}
+
+.notif-unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.notif-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--d-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.notif-empty p { margin: 0; font-size: .88rem; }
+
+.notif-footer {
+    padding: 13px 18px;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--d-orange-dk);
+    cursor: pointer;
+    border-top: 1.5px solid var(--d-border);
+    transition: background .15s;
+}
+
+.notif-footer:hover { background: var(--d-orange-lt); }
+
+/* ════════════════════════════════════════════════════════
+   ALERTS FULL PAGE
+════════════════════════════════════════════════════════ */
+.notif-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #dc3545;
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 700;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 99px;
+    padding: 0 5px;
+    vertical-align: middle;
+}
+
+.alerts-list-full {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.alert-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s;
+    position: relative;
+    border: 1px solid transparent;
+}
+
+.alert-row:hover { background: var(--d-cream); border-color: var(--d-border); }
+.alert-row.unread { background: #fffaf7; }
+.alert-row.read   { opacity: .7; }
+
+.alert-row-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.alert-row-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.alert-row-body strong { font-size: .9rem; color: var(--d-ink); }
+.alert-row-body span   { font-size: .82rem; color: var(--d-muted); }
+
+.alert-row-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.alert-type-tag {
+    font-size: .68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.alert-time {
+    font-size: .72rem;
+    color: var(--d-muted);
+}
+
+.unread-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--d-orange);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════════════════════
+   OTP PANEL
+════════════════════════════════════════════════════════ */
+.otp-panel {
+    margin-top: 24px;
+    padding: 22px 24px;
+    background: #fffaf7;
+    border: 2px solid var(--d-orange);
+    border-radius: 14px;
+    animation: slideUp .3s ease;
+}
+
+.otp-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--d-ink);
+    margin-bottom: 10px;
+}
+
+/* ════════════════════════════════════════════════════════
+   DANGER BUTTON (reject bookings)
+════════════════════════════════════════════════════════ */
+.btn-danger-sm {
+    padding: 7px 14px;
+    background: #fff0f0;
+    color: #dc3545;
+    border: 1.5px solid #f5c6cb;
+    border-radius: 8px;
+    font-family: var(--d-font-body);
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.btn-danger-sm:hover {
+    background: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+}
+
+/* ════════════════════════════════════════════════════════
+   SEARCH CLEAR BUTTON
+════════════════════════════════════════════════════════ */
+.search-clear-btn {
+    position: absolute;
+    right: 10px;
+    background: var(--d-orange-lt);
+    border: none;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: .75rem;
+    color: var(--d-orange-dk);
+    cursor: pointer;
+    font-weight: 600;
+    transition: background .15s;
+    display: flex;
+    align-items: center;
+}
+
+.search-clear-btn:hover { background: var(--d-orange); color: #fff; }
+
+/* ════════════════════════════════════════════════════════
+   SPIN ANIMATION (loading spinner)
+════════════════════════════════════════════════════════ */
+.spin {
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ════════════════════════════════════════════════════════
+   CLICKABLE STAT CARDS
+════════════════════════════════════════════════════════ */
+.stat-card.clickable {
+    cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+}
+
+.stat-card.clickable:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(249,107,56,.18);
+}
+
+/* ════════════════════════════════════════════════════════
+   RESPONSIVE FIXES
+════════════════════════════════════════════════════════ */
+@media (max-width: 520px) {
+    .notif-dropdown { width: calc(100vw - 32px); right: -80px; }
 }

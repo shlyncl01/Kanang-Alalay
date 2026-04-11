@@ -30,7 +30,7 @@
 /* ── Welcome banner nurse ── */
 .nurse-welcome {
     background: linear-gradient(135deg, #FFF8F3, #FDDECA44) !important;
-    border-left: 4px solid #b85c2d !important;
+    /* border-left: 4px solid #b85c2d !important; */
 }
 
 /* ── Two-col layout for home ── */

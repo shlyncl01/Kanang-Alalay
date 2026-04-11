@@ -3,7 +3,7 @@ const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const User    = require('../models/User');
 const RegistrationCode = require('../models/VerificationCode');
-const { sendEmail, generateOtpTemplate } = require('../models/mailer');
+const { sendEmail, generateOtpTemplate } = require('../utils/mailer');
 const { protect } = require('../middleware/authMiddleware');
 
 // ==================== PROFILE (protected) ====================================
@@ -295,14 +295,21 @@ router.post('/forgot-password', async (req, res) => {
 
         try {
             await sendEmail(email, 'Reset your Kanang-Alalay Password', generateOtpTemplate(otpCode));
+            console.log('✅ Reset OTP email sent to:', email);
         } catch (mailError) {
-            console.error('❌ Email error:', mailError.message);
+            console.error('❌ Email send FAILED:', mailError.message);
+            // OTP is saved in DB — user can still get it from server logs during dev
+            // Return a specific error so the frontend knows email failed
+            return res.status(500).json({
+                success: false,
+                message: 'OTP generated but email could not be sent. Check server EMAIL_USER / EMAIL_PASS environment variables.'
+            });
         }
 
         res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
     } catch (error) {
         console.error('Forgot password error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
     }
 });
 

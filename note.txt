@@ -1,0 +1,211 @@
+KANANG-ALALAY SYSTEM
+## Complete User + Staff + Admin Interaction Guide (Public to Internal Flow) ---
+# SYSTEM OVERVIEW
+The **Kanang-Alalay System** has **3 main user levels**:
+1. **Public Users (Visitors / Donors / Organizations)** 2. **Staff (Nurse / Caregiver)**
+3. **Admin (Management System)**
+The system starts from a **public homepage** and transitions into **secure internal dashboards**. ---
+# **PUBLIC WEBSITE (HOME PAGE)** ## When Opened:
+* Displays:
+* Facility background (image/video) * Welcome message
+* Mission/Vision of Kanang-Alalay
+---
+## Main Sections:
+### Home
+* Overview of facility
+* About services (elderly care, outreach, etc.)
+---
+### Booking
+For scheduling:
+* Outreach programs * Facility visits
+* Medical missions
+---
+### Donation
+For:
+* Food donations
+* Financial support * Supplies
+---
+## BOOKING (Public User)
+➕
+👉 🎁
+👉 📅
+🏠 📌
+🖱 🌐
+🔰
+👉
+ ### Click “Book Now” Opens Booking Form
+#### Fields:
+* Full Name
+* Email
+* Contact Number
+* Organization (optional) * Type of Request:
+* Outreach
+* Visit
+* Medical Mission
+* Preferred Date
+* Time Slot
+* Number of Participants * Notes
+---
+### Submit:
+* Status = **Pending** * Saved in system
+* Admin will review
+---
+## DONATION (Public User) ### Click “Donate”
+Opens Donation Form #### Fields:
+* Donor Name
+* Email
+* Contact Number * Donation Type:
+* Food
+* Money
+* Supplies
+* Description
+* Preferred Delivery Date
+---
+### Submit:
+* Stored in system * Admin notified
+---
+# **HIDDEN STAFF ACCESS (SMART LOGIN TRIGGER)**
+🖱
+🔐
+👉 🖱
+➕
+🖱
+👉 🖱
+
+ ## Special Feature: When user types:
+``` staff ```
+(on keyboard anywhere on homepage)
+---
+### Behavior:
+* A **hidden “Staff Login” button appears** ---
+## Clicking “Staff Login” Opens Login Modal
+### Fields:
+* Username * Password
+--- # ##
+**STAFF SYSTEM (Based on Your Dashboard Image)** After Login:
+Redirects to **Staff Dashboard** ---
+#
+##
+Displays:
+### Header:
+**STAFF DASHBOARD** When Opened:
+* Staff Name
+* Role (Nurse / Caregiver)
+* Shift Schedule
+* Assigned Ward
+* Status (On Duty / Off Duty)
+---
+## SECTIONS:
+---
+### Today’s Schedule
+📅 📊
+🔝
+🖱 🏠
+👉 🖱
+⚙
+󰟻
+👉 🖱
+👉 🖱
+
+ * List of assigned medications * Shows:
+* Patient name
+* Medicine
+* Time
+* Status
+---
+### Behavior:
+* Completed → marked ✔ * Overdue → highlighted ⚠
+---
+### Today’s Status
+* Total meds * On Time
+* Delayed
+* Missed
+* Pending
+---
+### My Assigned Residents
+* List of assigned patients * Shows:
+* Name
+* Age
+* Condition
+* Next medication time
+---
+### Quick Actions Buttons:
+* Add Medication
+* Search Residents
+* Log Vitals
+* Check Scanner (RFID) * Report Incident
+* Sync App
+* View Report
+---
+### Voice Reminder System
+* Shows current reminder playing * Displays:
+* Patient name * Medicine
+🔊
+⚡
+👵
+📊
+⚠
+
+ * Language ---
+### Actions:
+* Test Voice System * Adjust Volume
+---
+## STAFF SYSTEM LOGIC
+* Medication marked → updates compliance * Missed dose → triggers alert
+* RFID mismatch → critical alert
+* All actions → logged in system
+---
+# **ADMIN ACCESS (FROM STAFF LOGIN OR DIRECT URL)**
+## Admin Login:
+* Uses same login page
+* Role detected automatically
+---
+## Behavior: * If role = Admin
+Redirect to **Admin Dashboard** ---
+# **ADMIN SYSTEM (SUMMARY)** ## Features:
+* Dashboard monitoring
+* User Management (with OTP activation) * Booking & Donation approvals
+* Inventory tracking
+* Reports & analytics
+* AI Help Center
+---
+# **COMPLETE SYSTEM FLOW**
+## Public Flow:
+1. User visits homepage 2. Chooses:
+* Booking
+* Donation
+3. Submits request 4. Status = Pending
+🌐 🔄
+🖥
+👉 ⚙
+🖱 🔐
+⚙
+🖱
+
+---
+## Staff Flow:
+1. Types “staff” 2. Login appears 3. Logs in
+4. Manages:
+* Medication * Residents * Reports
+---
+## Admin Flow:
+1. Logs in 2. Reviews:
+* Bookings
+* Donations
+3. Manages system 4. Monitors activity
+---
+# SECURITY FEATURES
+* Hidden staff login trigger
+* Role-based access
+* OTP activation (admin side)
+* Activity logging
+---
+# FINAL RESULT
+The system now supports:
+--- ##
+Public interaction (Booking & Donation) Hidden secure staff access
+Full staff dashboard (medical operations) Complete admin control system
+READY FOR:
+* Capstone documentation * System defense
+* UI/UX explanation
+* Technical presentation

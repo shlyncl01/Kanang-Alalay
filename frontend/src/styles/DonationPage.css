@@ -263,7 +263,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(
 @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
 .dp-success-card h2 { font-family: 'Playfair Display', serif; font-size: 28px; margin-bottom: 8px; }
 .dp-success-card p  { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
-.dp-receipt { background: var(--cream); border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 28px; border-left: 4px solid var(--orange); }
+.dp-receipt { background: var(--cream); border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 28px;
+   /* border-left: 4px solid var(--orange); */ }
 .dp-receipt-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
 .dp-receipt-row:last-child { margin-bottom: 0; }
 .dp-receipt-row strong { color: var(--ink); }

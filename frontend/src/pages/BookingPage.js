@@ -191,7 +191,6 @@ const BookingPage = () => {
     return (
         <div className="bp-shell">
 
-            {/* ── Hero ── */}
             <div className="bp-hero">
                 <button className="bp-back" onClick={() => navigate('/')}>←</button>
                 <div className="bp-hero-inner">

@@ -17,12 +17,12 @@ const API_BASE = (() => {
 
 const PRESETS  = [500, 1000, 2000, 5000, 10000];
 const TIMES    = ['09:00 AM','10:00 AM','11:00 AM','01:00 PM','02:00 PM','03:00 PM','04:00 PM'];
-const IMPACTS  = [
-  { icon: '🍽️', text: 'Daily Meals',    sub: '₱500 feeds 5 elderly for one day' },
-  { icon: '💊', text: 'Medications',     sub: '₱1,000 covers a week of vitamins' },
-  { icon: '🛏️', text: 'Care & Comfort', sub: '₱2,000 provides bedding & hygiene kits' },
-  { icon: '🎉', text: 'Events & Joy',   sub: '₱5,000 sponsors a celebration' },
-];
+// const IMPACTS  = [
+//   { icon: '🍽️', text: 'Daily Meals',    sub: '₱500 feeds 5 elderly for one day' },
+//   { icon: '💊', text: 'Medications',     sub: '₱1,000 covers a week of vitamins' },
+//   { icon: '🛏️', text: 'Care & Comfort', sub: '₱2,000 provides bedding & hygiene kits' },
+//   { icon: '🎉', text: 'Events & Joy',   sub: '₱5,000 sponsors a celebration' },
+// ];
 
 
 
