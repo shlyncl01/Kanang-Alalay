@@ -12,6 +12,7 @@ import {
 } from 'react-icons/fa';
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
+import StaffRosterTab from '../components/admin/StaffRosterTab';
 import '../styles/Dashboard.css';
 import '../styles/AdminDashboard.css';
 import jsPDF from 'jspdf';
@@ -293,7 +294,7 @@ const AdminDashboard = () => {
     }, [fetchApi]);
 
     useEffect(() => {
-        if (activeSection === 'staff') fetchStaffList();
+        if (activeSection === 'staff' || activeSection === 'roster') fetchStaffList();
     }, [activeSection]);
 
     const fetchStaffList = async () => {
@@ -532,7 +533,7 @@ const AdminDashboard = () => {
             <div className="stats-grid">
                 {[
                     { bg: '#b85c2d', icon: <FaUsers />,        val: stats.totalResidents,                              label: 'Total Residents',    section: null },
-                    { bg: '#28a745', icon: <FaUserMd />,        val: stats.staffOnDuty,                                 label: 'Staff on Duty',      section: 'staff' },
+                    { bg: '#28a745', icon: <FaUserMd />,        val: stats.staffOnDuty,                                 label: 'Staff on Duty',      section: 'roster' },
                     { bg: '#ffc107', icon: <FaCalendarCheck />, val: stats.pendingBookings,                             label: 'Pending Bookings',   section: 'booking' },
                     { bg: '#17a2b8', icon: <FaChartBar />,      val: `₱${(stats.totalDonationAmount || 0).toLocaleString()}`, label: 'Total Donations', section: 'donation' },
                 ].map((s, i) => (
@@ -700,50 +701,147 @@ const AdminDashboard = () => {
     };
 
     const renderBookingManagement = () => {
+        const today = new Date();
+        const firstDay  = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+        // Map bookings to date keys for this month
+        const bookingsByDate = filteredBookings.reduce((acc, b) => {
+            if (!b.visitDate) return acc;
+            const d = new Date(b.visitDate);
+            if (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth()) {
+                const key = d.getDate();
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(b);
+            }
+            return acc;
+        }, {});
+
+        const STATUS_STYLE = {
+            approved:  { bg: '#e0faf4', border: '#20c997', text: '#0d6b4f', label: 'Booked' },
+            pending:   { bg: '#fff8e1', border: '#ffc107', text: '#7c5a00', label: 'Pending' },
+            rejected:  { bg: '#fdecea', border: '#e57373', text: '#b71c1c', label: 'Urgent' },
+            completed: { bg: '#e8eaf6', border: '#5c6bc0', text: '#2c3494', label: 'Done' },
+        };
+
+        const monthLabel = today.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
         const paged = filteredBookings.slice((bookingPage - 1) * itemsPerPage, bookingPage * itemsPerPage);
+
         return (
-            <div className="card-white">
-                <div className="card-header">
-                    <h5>Admission &amp; Booking {searchBadge(filteredBookings, bookings)}</h5>
-                    <button className="btn-primary-sm" onClick={() => handleExportPDF('bookings')}>
-                        <FaDownload /> Export PDF
-                    </button>
-                </div>
-                {filteredBookings.length === 0 ? (
-                    <p className="no-data">{searchQuery ? `No bookings match "${searchQuery}"` : 'No bookings found.'}</p>
-                ) : (<>
-                    <table className="custom-table">
-                        <thead><tr><th>Visitor</th><th>Details</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody>
-                            {paged.map(b => (
-                                <tr key={b._id}>
-                                    <td>
-                                        <strong>{b.name}</strong><br />
-                                        <small><FaEnvelope size={10} /> {b.email} &nbsp;|&nbsp; <FaPhone size={10} /> {b.phone}</small>
-                                    </td>
-                                    <td>
-                                        <FaCalendarAlt size={11} style={{ marginRight: 5 }} />
-                                        {new Date(b.visitDate).toLocaleDateString()} at {b.visitTime}<br />
-                                        <small>Purpose: {b.purpose} ({b.numberOfVisitors} pax)</small>
-                                    </td>
-                                    <td><span className={`status ${b.status}`}>{b.status}</span></td>
-                                    <td className="actions">
-                                        {b.status === 'pending' && <>
-                                            <button className="btn-success-sm" onClick={() => updateBookingStatus(b._id, 'approved')}>Approve</button>
-                                            <button className="btn-danger-sm" onClick={() => updateBookingStatus(b._id, 'rejected')}>Reject</button>
-                                        </>}
-                                        {b.status === 'approved' && (
-                                            <button className="btn-primary-sm" onClick={() => updateBookingStatus(b._id, 'completed')}>Complete</button>
-                                        )}
-                                        <span title="View Details" className="view" onClick={() => handleViewDetails('booking', b)}><FaEye /></span>
-                                        <span title="Edit Status"  className="edit" onClick={() => handleEditBooking(b)}><FaEdit /></span>
-                                    </td>
-                                </tr>
+            <div>
+                {/* ── Mini Calendar Card ── */}
+                <div className="card-white" style={{ marginBottom: 18 }}>
+                    <div className="card-header">
+                        <h5><FaCalendarAlt color="var(--d-orange)" style={{ marginRight: 8 }} />
+                            Admission &amp; Booking — {monthLabel}
+                            {searchBadge(filteredBookings, bookings)}
+                        </h5>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {/* Legend */}
+                            {Object.entries(STATUS_STYLE).map(([k, v]) => (
+                                <span key={k} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                    fontSize: '.7rem', fontWeight: 600, color: v.text,
+                                    background: v.bg, border: `1px solid ${v.border}`,
+                                    padding: '2px 8px', borderRadius: 12,
+                                }}>{v.label}</span>
                             ))}
-                        </tbody>
-                    </table>
-                    {renderPagination(filteredBookings.length, bookingPage, setBookingPage)}
-                </>)}
+                            <button className="btn-primary-sm" onClick={() => handleExportPDF('bookings')}>
+                                <FaDownload /> Export PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Day headers */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 3 }}>
+                        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                            <div key={d} style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: 700, color: 'var(--d-muted)', padding: '4px 0', textTransform: 'uppercase' }}>{d}</div>
+                        ))}
+                    </div>
+
+                    {/* Calendar cells */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
+                        {/* Leading blanks */}
+                        {Array.from({ length: firstDay }).map((_, i) => (
+                            <div key={`blank-${i}`} style={{ minHeight: 64, background: '#fafafa', borderRadius: 6, border: '1px solid var(--d-border)', opacity: 0.4 }} />
+                        ))}
+                        {/* Day cells */}
+                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                            const dayBookings = bookingsByDate[day] || [];
+                            const isToday = day === today.getDate();
+                            return (
+                                <div key={day} style={{
+                                    minHeight: 64, padding: '4px 5px', borderRadius: 6,
+                                    border: isToday ? '2px solid var(--d-orange)' : '1px solid var(--d-border)',
+                                    background: 'var(--d-white)',
+                                }}>
+                                    <div style={{ fontSize: '.69rem', fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--d-orange-dk)' : 'var(--d-muted)', textAlign: 'right', marginBottom: 3 }}>{day}</div>
+                                    {dayBookings.slice(0, 2).map(b => {
+                                        const s = STATUS_STYLE[b.status] || STATUS_STYLE.pending;
+                                        return (
+                                            <div key={b._id}
+                                                title={`${b.name} — ${b.purpose}`}
+                                                onClick={() => handleViewDetails('booking', b)}
+                                                style={{
+                                                    background: s.bg, border: `1.5px solid ${s.border}`,
+                                                    color: s.text, borderRadius: 4, padding: '2px 5px',
+                                                    fontSize: '.62rem', fontWeight: 700, marginBottom: 2,
+                                                    cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    overflow: 'hidden', textOverflow: 'ellipsis',
+                                                }}
+                                            >{s.label}</div>
+                                        );
+                                    })}
+                                    {dayBookings.length > 2 && (
+                                        <div style={{ fontSize: '.6rem', color: 'var(--d-muted)', fontWeight: 600 }}>+{dayBookings.length - 2}</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* ── Paginated List (10 per page, unchanged) ── */}
+                <div className="card-white">
+                    <div className="card-header">
+                        <h5>All Bookings {searchBadge(filteredBookings, bookings)}</h5>
+                    </div>
+                    {filteredBookings.length === 0 ? (
+                        <p className="no-data">{searchQuery ? `No bookings match "${searchQuery}"` : 'No bookings found.'}</p>
+                    ) : (<>
+                        <table className="custom-table">
+                            <thead><tr><th>Visitor</th><th>Details</th><th>Status</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                {paged.map(b => (
+                                    <tr key={b._id}>
+                                        <td>
+                                            <strong>{b.name}</strong><br />
+                                            <small><FaEnvelope size={10} /> {b.email} &nbsp;|&nbsp; <FaPhone size={10} /> {b.phone}</small>
+                                        </td>
+                                        <td>
+                                            <FaCalendarAlt size={11} style={{ marginRight: 5 }} />
+                                            {new Date(b.visitDate).toLocaleDateString()} at {b.visitTime}<br />
+                                            <small>Purpose: {b.purpose} ({b.numberOfVisitors} pax)</small>
+                                        </td>
+                                        <td><span className={`status ${b.status}`}>{b.status}</span></td>
+                                        <td className="actions">
+                                            {b.status === 'pending' && <>
+                                                <button className="btn-success-sm" onClick={() => updateBookingStatus(b._id, 'approved')}>Approve</button>
+                                                <button className="btn-danger-sm"  onClick={() => updateBookingStatus(b._id, 'rejected')}>Reject</button>
+                                            </>}
+                                            {b.status === 'approved' && (
+                                                <button className="btn-primary-sm" onClick={() => updateBookingStatus(b._id, 'completed')}>Complete</button>
+                                            )}
+                                            <span title="View Details" className="view" onClick={() => handleViewDetails('booking', b)}><FaEye /></span>
+                                            <span title="Edit Status"  className="edit" onClick={() => handleEditBooking(b)}><FaEdit /></span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {renderPagination(filteredBookings.length, bookingPage, setBookingPage)}
+                    </>)}
+                </div>
             </div>
         );
     };
@@ -962,6 +1060,7 @@ const AdminDashboard = () => {
         switch (activeSection) {
             case 'overview':   return renderOverview();
             case 'staff':      return renderStaffManagement();
+            case 'roster':     return <StaffRosterTab staff={staff} onRefresh={fetchStaffList} />;
             case 'booking':    return renderBookingManagement();
             case 'donation':   return renderDonationManagement();
             case 'alerts':     return renderAlerts();
@@ -990,14 +1089,15 @@ const AdminDashboard = () => {
 
                     <ul className="sidebar-menu">
                         {[
-                            { key: 'overview',   icon: <FaHome />,               label: 'System Overview' },
-                            { key: 'staff',      icon: <FaUsers />,              label: 'User Management' },
-                            { key: 'alerts',     icon: <FaBell />,               label: 'Alerts & Notifications', badge: unreadCount },
-                            { key: 'booking',    icon: <FaCalendarCheck />,      label: 'Admission & Booking', badge: stats.pendingBookings },
-                            { key: 'inventory',  icon: <FaExclamationTriangle />,label: 'Inventory Alerts' },
-                            { key: 'compliance', icon: <FaChartBar />,           label: 'Compliance Chart' },
-                            { key: 'donation',   icon: <FaMoneyBillWave />,      label: 'Donation Ledger' },
-                            { key: 'reports',    icon: <FaFileAlt />,            label: 'Reports & Analytics' },
+                            { key: 'overview',   icon: <FaHome />,                label: 'System Overview' },
+                            { key: 'staff',      icon: <FaUsers />,               label: 'User Management' },
+                            { key: 'roster',     icon: <FaCalendarAlt />,         label: 'Staff Roster' },
+                            { key: 'alerts',     icon: <FaBell />,                label: 'Alerts & Notifications', badge: unreadCount },
+                            { key: 'booking',    icon: <FaCalendarCheck />,       label: 'Admission & Booking', badge: stats.pendingBookings },
+                            { key: 'inventory',  icon: <FaExclamationTriangle />, label: 'Inventory Alerts' },
+                            { key: 'compliance', icon: <FaChartBar />,            label: 'Compliance Chart' },
+                            { key: 'donation',   icon: <FaMoneyBillWave />,       label: 'Donation Ledger' },
+                            { key: 'reports',    icon: <FaFileAlt />,             label: 'Reports & Analytics' },
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => setActiveSection(key)}>
                                 {icon} {label}
@@ -1083,7 +1183,7 @@ const AdminDashboard = () => {
                                                             markRead(n.id);
                                                             if (n.type === 'booking')   setActiveSection('booking');
                                                             if (n.type === 'donation')  setActiveSection('donation');
-                                                            if (n.type === 'staff')     setActiveSection('staff');
+                                                            if (n.type === 'staff')     setActiveSection('roster');
                                                             if (n.type === 'inventory') setActiveSection('inventory');
                                                             setNotifOpen(false);
                                                         }}

@@ -1,3 +1,4 @@
+// backend/models/mailer.js
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
@@ -32,17 +33,17 @@ const sendEmail = async (to, subject, htmlContent) => {
             html: htmlContent
         };
         await transporter.sendMail(mailOptions);
-        console.log('Automated email sent SUCCESSFULLY to:', to);
+        console.log('📧 Email sent successfully to:', to);
         return true;
     } catch (error) {
-        console.error('ERROR sending automated email:', error);
+        console.error('❌ Error sending email:', error);
         throw error;
     }
 };
 
 // OTP Email Template
 const generateOtpTemplate = (otpCode) => {
-     return `
+    return `
     <div style="background-color: #f7f7f7; padding: 40px 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
         <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
             
@@ -122,4 +123,55 @@ const generateDonationTemplate = (donation) => `
     </div>
 </div>`;
 
-module.exports = { sendEmail, generateOtpTemplate, generateBookingTemplate, generateDonationTemplate };
+// Booking Confirmation Email Template (for approved bookings)
+const generateBookingConfirmationTemplate = (booking) => `
+<div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+    <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #28a745; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+        <h2 style="color: #28a745; margin-top: 0;">Booking Confirmed! ✅</h2>
+        <p style="color: #444; font-size: 16px;">Hi ${booking.name},</p>
+        <p style="color: #444; font-size: 16px;">Great news! Your booking has been <strong>approved and confirmed</strong>. We look forward to welcoming you to Kanang-Alalay.</p>
+        
+        <div style="background-color: #fff3ea; padding: 20px; border-radius: 6px; margin: 25px 0;">
+            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString()}</p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${booking.visitTime}</p>
+            <p style="margin: 5px 0;"><strong>Purpose:</strong> ${booking.purpose.toUpperCase()}</p>
+            <p style="margin: 5px 0;"><strong>Visitors:</strong> ${booking.numberOfVisitors} pax</p>
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">Please arrive on time for your scheduled visit. If you need to reschedule or have any questions, please contact us at least 24 hours in advance.</p>
+        <br/>
+        <p style="color: #444; margin: 0;">Best regards,</p>
+        <p style="color: #444; font-weight: bold; margin: 0;">Kanang-Alalay Admin Team</p>
+    </div>
+</div>`;
+
+// Booking Rejection Email Template
+const generateBookingRejectionTemplate = (booking, reason) => `
+<div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+    <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #dc3545; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+        <h2 style="color: #dc3545; margin-top: 0;">Booking Update</h2>
+        <p style="color: #444; font-size: 16px;">Hi ${booking.name},</p>
+        <p style="color: #444; font-size: 16px;">We regret to inform you that your booking request has been <strong>declined</strong>.</p>
+        
+        ${reason ? `<p style="color: #666; font-size: 14px;"><strong>Reason:</strong> ${reason}</p>` : ''}
+        
+        <div style="background-color: #fff3ea; padding: 20px; border-radius: 6px; margin: 25px 0;">
+            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString()}</p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${booking.visitTime}</p>
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">Please feel free to submit another booking request with a different date or time. If you have any questions, don't hesitate to contact us.</p>
+        <br/>
+        <p style="color: #444; margin: 0;">Thank you for your understanding,</p>
+        <p style="color: #444; font-weight: bold; margin: 0;">Kanang-Alalay Admin Team</p>
+    </div>
+</div>`;
+
+module.exports = { 
+    sendEmail, 
+    generateOtpTemplate, 
+    generateBookingTemplate, 
+    generateDonationTemplate,
+    generateBookingConfirmationTemplate,
+    generateBookingRejectionTemplate
+};
