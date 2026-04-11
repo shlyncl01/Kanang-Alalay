@@ -23,7 +23,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin:      process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app',
+        origin: [
+            process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app',
+            'https://lsae-kanangalalay.online',
+        ],
         methods:     ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         credentials: true
     }
@@ -42,6 +45,7 @@ io.on('connection', (socket) => {
 const allowedOrigins = [
     process.env.FRONTEND_URL,
     'https://kanang-alalay.vercel.app',
+    'https://lsae-kanangalalay.online',
     'http://localhost:3000'
 ].filter(Boolean);
 
