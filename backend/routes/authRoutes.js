@@ -3,7 +3,7 @@ const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const User    = require('../models/User');
 const RegistrationCode = require('../models/VerificationCode');
-const { sendEmail, generateOtpTemplate } = require('../utils/mailer');
+const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { protect } = require('../middleware/authMiddleware');
 
 // ==================== PROFILE (protected) ====================================
