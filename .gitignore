@@ -18,3 +18,29 @@ dist/
 
 # OS files
 .DS_Store
+backend/env.txt
+*.env
+.env
+# Environment files
+.env
+.env.*
+*.env
+env.txt
+backend/env.txt
+
+# Secrets
+*secret*
+*key*
+*.pem
+
+# Environment files
+.env
+.env.*
+*.env
+env.txt
+backend/env.txt
+
+# Secrets
+*secret*
+*key*
+*.pem
