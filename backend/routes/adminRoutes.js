@@ -1,32 +1,16 @@
-const express  = require('express');
-const router   = express.Router();
-const User     = require('../models/User');
-const Booking  = require('../models/Booking');
+const express = require('express');
+const router = express.Router();
+const User = require('../models/User');
+const Booking = require('../models/Booking');
 const Donation = require('../models/Donation');
 const Inventory = require('../models/Inventory');
 const RegistrationCode = require('../models/VerificationCode');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
-// ── Apply protect + adminOnly to EVERY route in this file ────────────────────
-// Any request without a valid Admin JWT is rejected before reaching any handler.
 router.use(protect, adminOnly);
 
-const sanitizeUser = (user) => ({
-    id: user._id,
-    staffId: user.staffId,
-    username: user.username,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    phone: user.phone,
-    role: user.role,
-    isActive: user.isActive,
-    isVerified: user.isVerified,
-    createdAt: user.createdAt
-});
+// ==================== STAFF MANAGEMENT ====================
 
-// ── 1. GET all staff/users ────────────────────────────────────────────────────
-// GET /api/admin/staff
 router.get('/staff', async (req, res) => {
     try {
         const staff = await User.find({
@@ -40,14 +24,21 @@ router.get('/staff', async (req, res) => {
     }
 });
 
-// ── 2. Toggle staff active status ─────────────────────────────────────────────
-// PUT /api/admin/staff/:id/status  —  body: { status: 'active' | 'inactive' }
+router.get('/staff/:id', async (req, res) => {
+    try {
+        const staff = await User.findById(req.params.id).select('-password');
+        if (!staff) return res.status(404).json({ success: false, message: 'Staff not found' });
+        res.json({ success: true, staff });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 router.put('/staff/:id/status', async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
-        // Prevent admin from deactivating themselves
         if (user._id.toString() === req.user._id.toString()) {
             return res.status(400).json({ success: false, message: 'You cannot change your own status.' });
         }
@@ -65,8 +56,6 @@ router.put('/staff/:id/status', async (req, res) => {
     }
 });
 
-// ── 3. Change a staff member's role ───────────────────────────────────────────
-// PUT /api/admin/staff/:id/role  —  body: { role: 'nurse' | 'caregiver' | ... }
 router.put('/staff/:id/role', async (req, res) => {
     try {
         const allowedRoles = ['admin', 'staff', 'nurse', 'caregiver'];
@@ -79,7 +68,6 @@ router.put('/staff/:id/role', async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
-        // Prevent admin from accidentally demoting themselves
         if (user._id.toString() === req.user._id.toString() && role !== 'admin') {
             return res.status(400).json({ success: false, message: 'You cannot change your own role.' });
         }
@@ -94,11 +82,8 @@ router.put('/staff/:id/role', async (req, res) => {
     }
 });
 
-// ── 4. Delete a staff member ──────────────────────────────────────────────────
-// DELETE /api/admin/staff/:id
 router.delete('/staff/:id', async (req, res) => {
     try {
-        // Prevent admin from deleting themselves
         if (req.params.id === req.user._id.toString()) {
             return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
         }
@@ -113,8 +98,17 @@ router.delete('/staff/:id', async (req, res) => {
     }
 });
 
-// ── 5. Generate registration codes ────────────────────────────────────────────
-// POST /api/admin/generate-codes  —  body: { count: 1, role: 'nurse' }
+// ==================== REGISTRATION CODES ====================
+
+router.get('/registration-codes', async (req, res) => {
+    try {
+        const codes = await RegistrationCode.find().sort({ createdAt: -1 });
+        res.json({ success: true, codes });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error fetching codes' });
+    }
+});
+
 router.post('/generate-codes', async (req, res) => {
     try {
         const { count = 1, role = 'staff' } = req.body;
@@ -125,8 +119,9 @@ router.post('/generate-codes', async (req, res) => {
             const newCode = new RegistrationCode({
                 code,
                 role,
-                email:     'unassigned@lsae.org',
-                expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 hours
+                email: 'unassigned@lsae.org',
+                expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+                status: 'active'
             });
             await newCode.save();
             codes.push(newCode);
@@ -139,34 +134,95 @@ router.post('/generate-codes', async (req, res) => {
     }
 });
 
-// ── 6. Dashboard statistics ───────────────────────────────────────────────────
-// GET /api/admin/stats
+// ==================== DASHBOARD STATS ====================
+
 router.get('/stats', async (req, res) => {
     try {
-        const [totalDonations, pendingBookings, staffOnDuty, donationAmount] = await Promise.all([
+        const [totalDonations, pendingBookings, staffOnDuty, donationAmount, totalBookings, activeStaff] = await Promise.all([
             Donation.countDocuments(),
             Booking.countDocuments({ status: 'pending' }),
             User.countDocuments({ role: { $ne: 'admin' }, isActive: true }),
             Donation.aggregate([
                 { $match: { paymentStatus: 'paid' } },
                 { $group: { _id: null, total: { $sum: '$amount' } } }
-            ])
+            ]),
+            Booking.countDocuments(),
+            User.countDocuments({ isActive: true, role: { $ne: 'admin' } })
         ]);
 
         res.json({
             success: true,
             data: {
-                totalResidents:      71,
+                totalResidents: 71,
                 staffOnDuty,
                 pendingBookings,
                 totalDonations,
                 totalDonationAmount: donationAmount[0]?.total || 0,
-                lowStockItems:       5
+                lowStockItems: 5,
+                totalBookings,
+                activeStaff
             }
         });
     } catch (error) {
         console.error('Stats error:', error);
         res.status(500).json({ success: false, message: 'Error fetching stats' });
+    }
+});
+
+// ==================== INVENTORY ROUTES ====================
+
+router.get('/inventory', async (req, res) => {
+    try {
+        const { category, status, limit = 100 } = req.query;
+        let query = {};
+        
+        if (category) query.category = category;
+        if (status) query.status = status;
+        
+        const items = await Inventory.find(query)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 });
+        
+        res.json({ success: true, data: items });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error fetching inventory' });
+    }
+});
+
+router.post('/inventory', async (req, res) => {
+    try {
+        const item = new Inventory({
+            ...req.body,
+            itemId: `INV-${Date.now().toString().slice(-6)}`
+        });
+        await item.save();
+        res.status(201).json({ success: true, data: item });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error adding inventory item' });
+    }
+});
+
+router.put('/inventory/:id', async (req, res) => {
+    try {
+        const item = await Inventory.findByIdAndUpdate(
+            req.params.id, 
+            req.body, 
+            { new: true, runValidators: true }
+        );
+        if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+        res.json({ success: true, data: item });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error updating inventory' });
+    }
+});
+
+router.delete('/inventory/:id', async (req, res) => {
+    try {
+        const item = await Inventory.findByIdAndDelete(req.params.id);
+        if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+        res.json({ success: true, message: 'Item deleted' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error deleting inventory' });
     }
 });
 

@@ -2,42 +2,75 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-    staffId:   { type: String, required: true, unique: true },
+    staffId: { type: String, required: true, unique: true },
     firstName: { type: String, required: true },
-    lastName:  { type: String, required: true },
-    username:  { type: String, required: true, unique: true },
-    email:     { type: String, required: true, unique: true },
-    password:  { type: String, required: true },
-    phone:     { type: String },
+    lastName: { type: String, required: true },
+    middleName: { type: String, default: '' },
+    suffix: { type: String, default: '' },
+    username: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    phone: { type: String },
+    ward: { 
+        type: String,
+        enum: ['Ward A', 'Ward B', 'Ward C', 'Kitchen', 'Administration', 'Maintenance'],
+        default: 'Administration'
+    },
+    department: { 
+        type: String,
+        enum: ['Nursing', 'Administration'],
+        default: 'Administration'
+    },
+    shift: {
+        type: String,
+        enum: ['morning', 'afternoon', 'night', 'flexible', 'rotating'],
+        default: 'morning'
+    },
+    employeeId: { type: String, unique: true, sparse: true },
+    hireDate: { type: Date, default: Date.now },
+    address: {
+        street: String,
+        city: String,
+        province: String,
+        zipCode: String
+    },
+    emergencyContact: {
+        name: String,
+        phone: String,
+        relation: String
+    },
+    licenseNumber: String,
+    specialization: String,
+    yearsOfExperience: Number,
 
     role: {
-        type:    String,
-        enum:    ['admin', 'staff', 'nurse', 'caregiver'],
+        type: String,
+        enum: ['admin', 'staff', 'nurse', 'caregiver'],
         default: 'staff'
     },
 
     // Account status
-    isVerified:      { type: Boolean, default: false },
-    isActive:        { type: Boolean, default: false },
+    isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },
 
     // Login / Activation OTP
-    otpCode:    { type: String },
+    otpCode: { type: String },
     otpExpires: { type: Date },
 
     // Forgot-Password OTP  ← used by /forgot-password routes
-    resetPasswordOtp:        { type: String },
+    resetPasswordOtp: { type: String },
     resetPasswordOtpExpires: { type: Date },
 
     // Legacy email-link verification (older flow)
-    emailVerificationToken:   { type: String },
+    emailVerificationToken: { type: String },
     emailVerificationExpires: { type: Date },
 
     // Legacy OTP fields (kept for backward compat)
-    verificationOtp:        { type: String },
+    verificationOtp: { type: String },
     verificationOtpExpires: { type: Date },
-    resetOtp:               { type: String },
-    resetOtpExpires:        { type: Date },
+    resetOtp: { type: String },
+    resetOtpExpires: { type: Date },
 
 }, { timestamps: true });
 
@@ -45,7 +78,7 @@ const userSchema = new mongoose.Schema({
 userSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
     try {
-        const salt    = await bcrypt.genSalt(10);
+        const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
         next();
     } catch (err) {

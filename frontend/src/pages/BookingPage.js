@@ -1,3 +1,5 @@
+// BookingPage.js - Updated with time selection and fixed UI
+
 import React, { useState } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -26,19 +28,53 @@ const TIME_SLOTS = [
 ];
 
 const PURPOSES = [
-    { value: 'tour',     label: 'Facility Tour' },
-    { value: 'volunteer',label: 'Volunteer Inquiry' },
-    { value: 'donation', label: 'Donation Delivery' },
-    { value: 'meeting',  label: 'Administrative Meeting' },
+    { value: 'tour',      label: 'Facility Tour' },
+    { value: 'volunteer', label: 'Volunteer Inquiry' },
+    { value: 'donation',  label: 'Donation Delivery' },
+    { value: 'meeting',   label: 'Administrative Meeting' },
 ];
 
 const GUIDELINES = [
-    { text: 'Monday – Friday, 9:00 AM – 4:00 PM' },
-    { text: 'Please arrive 10 minutes early' },
-    { text: 'Maximum of 10 visitors per group' },
-    { text: 'Valid ID required upon arrival' },
-    { text: 'No photography without permission' },
+    { icon: '🕐', text: 'Monday – Friday, 9:00 AM – 4:00 PM' },
+    { icon: '⏰', text: 'Please arrive 10 minutes early' },
+    { icon: '👥', text: 'Maximum of 10 visitors per group' },
+    { icon: '🪪', text: 'Valid ID required upon arrival' },
+    { icon: '📸', text: 'No photography without permission' },
 ];
+
+// ── Philippine Mobile Number Validation Helpers ──
+const validatePhilippineNumber = (phone) => {
+    // Remove all non-digit characters
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // Check if it's a valid Philippine mobile number
+    // Pattern: 10 digits starting with 9, OR 11 digits starting with 09, OR 12 digits starting with 639
+    if (cleaned.length === 10 && cleaned.startsWith('9')) {
+        return { isValid: true, formatted: `+63${cleaned}`, display: cleaned };
+    }
+    if (cleaned.length === 11 && cleaned.startsWith('09')) {
+        const number = cleaned.substring(1); // Remove leading 0
+        return { isValid: true, formatted: `+63${number}`, display: cleaned };
+    }
+    if (cleaned.length === 12 && cleaned.startsWith('639')) {
+        const number = cleaned.substring(3); // Remove 639 prefix
+        return { isValid: true, formatted: `+63${number}`, display: `0${number}` };
+    }
+    return { isValid: false, formatted: '', display: phone };
+};
+
+const formatPhoneDisplay = (phone) => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length >= 4) {
+        // Format as 0912 345 6789 style
+        if (cleaned.startsWith('09') && cleaned.length >= 4) {
+            if (cleaned.length <= 4) return cleaned;
+            if (cleaned.length <= 7) return `${cleaned.slice(0, 4)} ${cleaned.slice(4)}`;
+            return `${cleaned.slice(0, 4)} ${cleaned.slice(4, 7)} ${cleaned.slice(7, 11)}`;
+        }
+    }
+    return phone;
+};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 const BookingPage = () => {
@@ -63,21 +99,31 @@ const BookingPage = () => {
     const [submitted, setSubmitted] = useState(false);
     const [receipt, setReceipt]   = useState(null);
 
-    const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+    const setFormField = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
     const handleChange = e => {
         const { name, value } = e.target;
         if (name === 'phone') {
-            const v = value.replace(/\D/g, '');
-            if (v.length <= 11) set(name, v);
+            // Only allow digits
+            const digitsOnly = value.replace(/\D/g, '');
+            // Limit to 11 digits (for 09XXXXXXXXX format)
+            if (digitsOnly.length <= 11) {
+                // Format for display
+                let formattedValue = digitsOnly;
+                if (digitsOnly.length >= 4 && digitsOnly.startsWith('09')) {
+                    formattedValue = formatPhoneDisplay(digitsOnly);
+                }
+                setFormField(name, formattedValue);
+                setErrors(p => ({ ...p, phone: '' }));
+            }
             return;
         }
         if (name === 'numberOfVisitors') {
             const n = Math.max(1, Math.min(10, Number(value)));
-            set(name, n);
+            setFormField(name, n);
             return;
         }
-        set(name, value);
+        setFormField(name, value);
         setErrors(p => ({ ...p, [name]: '' }));
     };
 
@@ -91,7 +137,18 @@ const BookingPage = () => {
         if (!form.firstName.trim()) e.firstName = 'Required';
         if (!form.lastName.trim())  e.lastName  = 'Required';
         if (!form.email.trim() || !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Enter a valid email';
-        if (!form.phone || form.phone.length < 10) e.phone = 'Enter a valid phone number';
+        
+        // Philippine mobile number validation
+        if (!form.phone) {
+            e.phone = 'Mobile number is required';
+        } else {
+            const cleaned = form.phone.replace(/\D/g, '');
+            const validation = validatePhilippineNumber(cleaned);
+            if (!validation.isValid) {
+                e.phone = 'Enter a valid Philippine mobile number (e.g., 09123456789 or 9123456789)';
+            }
+        }
+        
         if (!selectedDate) e.visitDate = 'Please select a date';
         setErrors(e);
         return Object.keys(e).length === 0;
@@ -107,10 +164,25 @@ const BookingPage = () => {
             const fullName = [form.firstName, form.middleName, form.lastName]
                 .filter(Boolean).join(' ');
 
+            // Format phone number to +63XXXXXXXXXX format
+            const cleanedPhone = form.phone.replace(/\D/g, '');
+            let formattedPhone = cleanedPhone;
+            if (cleanedPhone.length === 10 && cleanedPhone.startsWith('9')) {
+                formattedPhone = `+63${cleanedPhone}`;
+            } else if (cleanedPhone.length === 11 && cleanedPhone.startsWith('09')) {
+                formattedPhone = `+63${cleanedPhone.substring(1)}`;
+            } else if (cleanedPhone.length === 12 && cleanedPhone.startsWith('639')) {
+                formattedPhone = `+63${cleanedPhone.substring(3)}`;
+            } else {
+                formattedPhone = cleanedPhone;
+            }
+
             const submissionData = {
                 ...form,
                 name: fullName,
+                phone: formattedPhone,
                 visitDate: selectedDate.toISOString(),
+                visitTime: form.visitTime,
             };
 
             await axios.post(`${API_BASE}/api/bookings`, submissionData);
@@ -170,10 +242,11 @@ const BookingPage = () => {
                         className="bp-btn-primary"
                         onClick={() => {
                             setSubmitted(false);
-                            setForm(p => ({
-                                ...p, firstName: '', lastName: '', middleName: '',
+                            setForm({
+                                firstName: '', lastName: '', middleName: '',
                                 email: '', phone: '', notes: '', numberOfVisitors: 1,
-                            }));
+                                visitTime: '09:00', purpose: 'tour',
+                            });
                             setSelectedDate(new Date());
                         }}
                     >
@@ -228,33 +301,51 @@ const BookingPage = () => {
 
                             <form onSubmit={handleSubmit} noValidate>
 
-                                {/* Visitor Information */}
+                                {/* ── Visitor Information ── */}
                                 <div className="bp-section-label">Visitor Information</div>
 
+                                {/* Row 1: First Name + Last Name */}
                                 <div className="bp-row">
-                                    {[
-                                        { name: 'firstName',  label: 'First Name',  req: true  },
-                                        { name: 'middleName', label: 'Middle Name', req: false },
-                                        { name: 'lastName',   label: 'Last Name',   req: true  },
-                                    ].map(({ name, label, req }) => (
-                                        <div className="bp-group" key={name}>
-                                            <label>
-                                                {label}
-                                                {req && <span className="req">*</span>}
-                                            </label>
-                                            <input
-                                                className={`bp-input${errors[name] ? ' err' : ''}`}
-                                                name={name}
-                                                value={form[name]}
-                                                onChange={handleChange}
-                                                placeholder={req ? label : 'Optional'}
-                                                disabled={loading}
-                                            />
-                                            {errors[name] && <div className="bp-err-msg">{errors[name]}</div>}
-                                        </div>
-                                    ))}
+                                    <div className="bp-group">
+                                        <label>First Name<span className="req">*</span></label>
+                                        <input
+                                            className={`bp-input${errors.firstName ? ' err' : ''}`}
+                                            name="firstName"
+                                            value={form.firstName}
+                                            onChange={handleChange}
+                                            placeholder="First Name"
+                                            disabled={loading}
+                                        />
+                                        {errors.firstName && <div className="bp-err-msg">{errors.firstName}</div>}
+                                    </div>
+                                    <div className="bp-group">
+                                        <label>Last Name<span className="req">*</span></label>
+                                        <input
+                                            className={`bp-input${errors.lastName ? ' err' : ''}`}
+                                            name="lastName"
+                                            value={form.lastName}
+                                            onChange={handleChange}
+                                            placeholder="Last Name"
+                                            disabled={loading}
+                                        />
+                                        {errors.lastName && <div className="bp-err-msg">{errors.lastName}</div>}
+                                    </div>
                                 </div>
 
+                                {/* Row 2: Middle Name (full width) */}
+                                <div className="bp-group">
+                                    <label>Middle Name</label>
+                                    <input
+                                        className="bp-input"
+                                        name="middleName"
+                                        value={form.middleName}
+                                        onChange={handleChange}
+                                        placeholder="Middle Name (Optional)"
+                                        disabled={loading}
+                                    />
+                                </div>
+
+                                {/* Row 3: Email + Phone */}
                                 <div className="bp-row">
                                     <div className="bp-group">
                                         <label>Email Address<span className="req">*</span></label>
@@ -271,16 +362,18 @@ const BookingPage = () => {
                                         <input
                                             className={`bp-input${errors.phone ? ' err' : ''}`}
                                             name="phone" value={form.phone}
-                                            onChange={handleChange} placeholder="09XXXXXXXXX"
-                                            maxLength={11} disabled={loading}
+                                            onChange={handleChange} placeholder="09123456789"
+                                            maxLength={15} disabled={loading}
                                         />
                                         {errors.phone && <div className="bp-err-msg">{errors.phone}</div>}
+                                        <div className="bp-hint phone-hint">Enter 10-11 digit Philippine mobile number (e.g., 09123456789 or 9123456789)</div>
                                     </div>
                                 </div>
 
-                                {/* Visit Details */}
+                                {/* ── Visit Details ── */}
                                 <div className="bp-section-label" style={{ marginTop: 8 }}>Visit Details</div>
 
+                                {/* Row 4: Purpose + Number of Visitors */}
                                 <div className="bp-row">
                                     <div className="bp-group">
                                         <label>Purpose of Visit<span className="req">*</span></label>
@@ -295,21 +388,6 @@ const BookingPage = () => {
                                         </select>
                                     </div>
                                     <div className="bp-group">
-                                        <label>Preferred Time<span className="req">*</span></label>
-                                        <select
-                                            className="bp-select" name="visitTime"
-                                            value={form.visitTime} onChange={handleChange}
-                                            disabled={loading}
-                                        >
-                                            {TIME_SLOTS.map(t => (
-                                                <option key={t.value} value={t.value}>{t.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div className="bp-row">
-                                    <div className="bp-group" style={{ maxWidth: 200 }}>
                                         <label>Number of Visitors<span className="req">*</span></label>
                                         <input
                                             className="bp-input" type="number"
@@ -321,9 +399,15 @@ const BookingPage = () => {
                                     </div>
                                 </div>
 
+                                {/* ── Schedule ── */}
+                                <div className="bp-section-label" style={{ marginTop: 8 }}>
+                                    Preferred Schedule<span className="req" style={{ fontSize: 14, marginLeft: 4 }}>*</span>
+                                </div>
+
                                 {/* Calendar */}
-                                <div className="bp-section-label" style={{ marginTop: 8 }}>Select Date<span className="req" style={{ fontSize: 14 }}>*</span></div>
-                                {errors.visitDate && <div className="bp-err-msg" style={{ marginBottom: 8 }}>⚠ {errors.visitDate}</div>}
+                                {errors.visitDate && (
+                                    <div className="bp-err-msg" style={{ marginBottom: 8 }}>⚠ {errors.visitDate}</div>
+                                )}
                                 <div className="bp-cal-wrap">
                                     <Calendar
                                         value={selectedDate}
@@ -340,8 +424,27 @@ const BookingPage = () => {
                                     )}
                                 </div>
 
-                                {/* Notes */}
-                                <div className="bp-group" style={{ marginTop: 24 }}>
+                                {/* Preferred Time — full width below calendar */}
+                                <div className="bp-group" style={{ marginTop: 16 }}>
+                                    <label>Preferred Time<span className="req">*</span></label>
+                                    <div className="bp-time-grid">
+                                        {TIME_SLOTS.map(t => (
+                                            <button
+                                                key={t.value}
+                                                type="button"
+                                                className={`bp-time-btn${form.visitTime === t.value ? ' active' : ''}`}
+                                                onClick={() => { setFormField('visitTime', t.value); }}
+                                                disabled={loading}
+                                            >
+                                                {t.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="bp-hint">Operating hours: 9:00 AM – 4:00 PM</div>
+                                </div>
+
+                                {/* ── Additional Notes ── */}
+                                <div className="bp-group" style={{ marginTop: 8 }}>
                                     <label>Additional Notes (Optional)</label>
                                     <textarea
                                         className="bp-textarea" name="notes"
@@ -371,13 +474,13 @@ const BookingPage = () => {
                             <div className="bp-summary-box">
                                 <h6>Booking Summary</h6>
                                 {[
-                                    ['Visitor',   fullName],
-                                    ['Purpose',   purposeLabel],
-                                    ['Date',      selectedDate
+                                    ['Visitor',  fullName],
+                                    ['Purpose',  purposeLabel],
+                                    ['Date',     selectedDate
                                         ? selectedDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
                                         : '—'],
-                                    ['Time',      timeLabel],
-                                    ['Group',     `${form.numberOfVisitors} visitor${form.numberOfVisitors > 1 ? 's' : ''}`],
+                                    ['Time',     timeLabel],
+                                    ['Group',    `${form.numberOfVisitors} visitor${form.numberOfVisitors > 1 ? 's' : ''}`],
                                 ].map(([l, v]) => (
                                     <div className="bp-summary-row" key={l}>
                                         <span>{l}</span>

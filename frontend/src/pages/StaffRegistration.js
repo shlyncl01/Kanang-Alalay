@@ -538,7 +538,7 @@ const StaffRegistration = () => {
                                 className="print-btn"
                                 onClick={() => window.print()}
                             >
-                                🖨️ Print Credentials
+                                Print Credentials
                             </button>
                             <button 
                                 className="new-btn"

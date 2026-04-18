@@ -1129,7 +1129,74 @@ body {
   gap: 14px;
   font-size: .95rem;
 }
+/* Standardized button styles - btn-brand as primary */
+.btn-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, var(--d-orange), var(--d-orange-dk));
+  color: var(--d-white);
+  border: none;
+  border-radius: 9px;
+  font-family: var(--d-font-body);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .22s;
+  box-shadow: 0 4px 14px rgba(249, 107, 56, .3);
+  white-space: nowrap;
+}
 
+.btn-brand:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 20px rgba(249, 107, 56, .4);
+}
+
+/* Info tooltip */
+.info-tooltip {
+  position: relative;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+}
+
+.info-tooltip:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--d-ink);
+  color: white;
+  font-size: .75rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 1000;
+  font-family: var(--d-font-body);
+  font-weight: normal;
+}
+
+/* Ward/Department dropdown styles */
+.ward-select, .department-select {
+  padding: 11px 14px;
+  border: 1.5px solid var(--d-border);
+  border-radius: 10px;
+  font-family: var(--d-font-body);
+  font-size: .9rem;
+  background-color: var(--d-cream);
+  color: var(--d-ink);
+  transition: border-color .2s, box-shadow .2s;
+  width: 100%;
+  outline: none;
+}
+
+.ward-select:focus, .department-select:focus {
+  border-color: var(--d-orange);
+  background: var(--d-white);
+  box-shadow: 0 0 0 3px rgba(249, 107, 56, .1);
+}
 /* ══════════════════════════════════════
    REPORTS GRID
 ══════════════════════════════════════ */

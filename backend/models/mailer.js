@@ -146,26 +146,30 @@ const generateBookingConfirmationTemplate = (booking) => `
 </div>`;
 
 // Booking Rejection Email Template
-const generateBookingRejectionTemplate = (booking, reason) => `
+const generateBookingRejectionTemplate = (booking, reason = '') => `
 <div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #dc3545; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
         <h2 style="color: #dc3545; margin-top: 0;">Booking Update</h2>
-        <p style="color: #444; font-size: 16px;">Hi ${booking.name},</p>
+        <p style="color: #444; font-size: 16px;">Hi ${booking.name || 'Valued Visitor'},</p>
         <p style="color: #444; font-size: 16px;">We regret to inform you that your booking request has been <strong>declined</strong>.</p>
         
-        ${reason ? `<p style="color: #666; font-size: 14px;"><strong>Reason:</strong> ${reason}</p>` : ''}
+        ${reason ? `<p style="color: #666; font-size: 14px; background: #f8f9fa; padding: 12px; border-radius: 6px;"><strong>Reason provided:</strong> ${reason}</p>` : ''}
         
         <div style="background-color: #fff3ea; padding: 20px; border-radius: 6px; margin: 25px 0;">
-            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString()}</p>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${booking.visitTime}</p>
+            <p style="margin: 5px 0;"><strong>Requested Date:</strong> ${new Date(booking.visitDate).toLocaleDateString()}</p>
+            <p style="margin: 5px 0;"><strong>Requested Time:</strong> ${booking.visitTime}</p>
+            <p style="margin: 5px 0;"><strong>Purpose:</strong> ${(booking.purpose || '').toUpperCase()}</p>
         </div>
         
-        <p style="color: #666; font-size: 14px;">Please feel free to submit another booking request with a different date or time. If you have any questions, don't hesitate to contact us.</p>
-        <br/>
+        <p style="color: #666; font-size: 14px;">Please feel free to submit another booking request with a different date or time. If you have any questions, don't hesitate to contact us at <a href="mailto:${process.env.EMAIL_USER}">${process.env.EMAIL_USER}</a>.</p>
+        
+        <hr style="margin: 30px 0; border-color: #eee;" />
+        
         <p style="color: #444; margin: 0;">Thank you for your understanding,</p>
         <p style="color: #444; font-weight: bold; margin: 0;">Kanang-Alalay Admin Team</p>
     </div>
 </div>`;
+
 
 module.exports = { 
     sendEmail, 

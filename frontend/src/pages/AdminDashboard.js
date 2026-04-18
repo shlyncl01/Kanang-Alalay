@@ -1,3 +1,5 @@
+// AdminDashboard.js - Fix search bar to work consistently
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -27,44 +29,39 @@ const API_BASE_URL =
 
 // ── Notification helpers ─────────────────────────────────────────────────────
 const NOTIF_TYPES = {
-    booking:   { color: '#17a2b8', icon: <FaCalendarAlt />, label: 'Booking' },
-    donation:  { color: '#28a745', icon: <FaMoneyBillWave />, label: 'Donation' },
-    staff:     { color: '#b85c2d', icon: <FaUsers />, label: 'Staff' },
-    inventory: { color: '#dc3545', icon: <FaExclamationTriangle />, label: 'Inventory' },
-    system:    { color: '#6c757d', icon: <FaInfoCircle />, label: 'System' },
+    booking:   { color: '#17a2b8', icon: <FaCalendarAlt />, label: 'Booking', section: 'booking' },
+    donation:  { color: '#28a745', icon: <FaMoneyBillWave />, label: 'Donation', section: 'donation' },
+    staff:     { color: '#b85c2d', icon: <FaUsers />, label: 'Staff', section: 'roster' },
+    inventory: { color: '#dc3545', icon: <FaExclamationTriangle />, label: 'Inventory', section: 'inventory' },
+    system:    { color: '#6c757d', icon: <FaInfoCircle />, label: 'System', section: null },
 };
 
 const buildNotifications = (bookings, donations, staff, inventory) => {
     const notifs = [];
-
     bookings.filter(b => b.status === 'pending').forEach(b => notifs.push({
         id: `bk-${b._id}`, type: 'booking',
         title: 'New Booking Request',
         body: `${b.name} — ${new Date(b.visitDate).toLocaleDateString()}`,
         time: b.createdAt || new Date().toISOString(), read: false,
     }));
-
     donations.filter(d => d.paymentStatus === 'pending').forEach(d => notifs.push({
         id: `dn-${d._id}`, type: 'donation',
         title: 'Pending Donation',
         body: `${d.donorName} — ₱${d.amount?.toLocaleString()}`,
         time: d.createdAt || new Date().toISOString(), read: false,
     }));
-
     staff.filter(m => !m.isActive && !m.isVerified).forEach(m => notifs.push({
         id: `st-${m._id}`, type: 'staff',
         title: 'Staff Pending Activation',
         body: `${m.firstName} ${m.lastName} (${m.role})`,
         time: m.createdAt || new Date().toISOString(), read: false,
     }));
-
-    inventory.filter(i => i.quantity <= 5).forEach(i => notifs.push({
+    inventory.filter(i => i.quantity <= (i.minThreshold || 10)).forEach(i => notifs.push({
         id: `iv-${i._id}`, type: 'inventory',
         title: 'Low Stock Alert',
         body: `${i.name} — only ${i.quantity} ${i.unit} left`,
         time: new Date().toISOString(), read: false,
     }));
-
     return notifs.sort((a, b) => new Date(b.time) - new Date(a.time));
 };
 
@@ -76,7 +73,44 @@ const timeAgo = (iso) => {
     return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// ── Details Modal ────────────────────────────────────────────────────────────
+// ── Confirmation Modal ────────────────────────────────────────────────────────
+const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmLabel = 'Confirm', danger = false }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+            <div className="registration-modal" style={{ maxWidth: 440, padding: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    {danger
+                        ? <FaExclamationTriangle color="#dc3545" size={22} />
+                        : <FaInfoCircle color="#b85c2d" size={22} />}
+                    <h4 style={{ margin: 0, color: 'var(--d-ink)', fontSize: '1.05rem' }}>{title}</h4>
+                </div>
+                <p style={{ color: 'var(--d-muted)', fontSize: '.92rem', marginBottom: 24 }}>{message}</p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button className="btn-outline-sm" onClick={onCancel}>Cancel</button>
+                    <button
+                        onClick={onConfirm}
+                        style={{
+                            padding: '9px 22px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                            fontFamily: 'var(--d-font-body)', fontWeight: 600, fontSize: '.9rem',
+                            background: danger ? '#dc3545' : 'linear-gradient(135deg, var(--d-orange), var(--d-orange-dk))',
+                            color: '#fff', transition: 'all .2s',
+                        }}
+                    >{confirmLabel}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ── Proof-of-payment URL builder ─────────────────────────────────────────────
+// API_BASE_URL may end with /api — strip it so we get the server root.
+const proofUrl = (filename) => {
+    const base = API_BASE_URL.replace(/\/api\/?$/, '');
+    return `${base}/uploads/${filename}`;
+};
+
+// ── Details Modal ─────────────────────────────────────────────────────────────
 const DetailsModal = ({ data, type, onClose }) => {
     if (!data) return null;
     return (
@@ -95,8 +129,8 @@ const DetailsModal = ({ data, type, onClose }) => {
                         <InfoRow label="Email"    value={data.email} />
                         <InfoRow label="Phone"    value={data.phone} />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, background: 'var(--d-cream)', padding: 14, borderRadius: 8 }}>
-                            <InfoMini label="Date"    value={new Date(data.visitDate).toLocaleDateString()} />
-                            <InfoMini label="Time"    value={data.visitTime} />
+                            <InfoMini label="Date"     value={new Date(data.visitDate).toLocaleDateString()} />
+                            <InfoMini label="Time"     value={data.visitTime} />
                             <InfoMini label="Visitors" value={`${data.numberOfVisitors} pax`} />
                         </div>
                         <InfoRow label="Purpose" value={data.purpose} highlight />
@@ -104,13 +138,76 @@ const DetailsModal = ({ data, type, onClose }) => {
                             <div style={{ marginTop: 6 }}><span className={`status ${data.status}`}>{data.status}</span></div>
                         </div>
                     </>) : (<>
-                        <InfoRow label="Donor"  value={data.donorName} />
-                        <InfoRow label="Email"  value={data.email} />
+                        <InfoRow label="Donor" value={data.donorName} />
+                        <InfoRow label="Email" value={data.email} />
+                        <InfoRow label="Phone" value={data.phone || '—'} />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: 'var(--d-cream)', padding: 14, borderRadius: 8 }}>
                             <InfoMini label="Amount" value={`₱${data.amount?.toLocaleString()}`} accent="#28a745" />
                             <InfoMini label="Type"   value={data.donationType} />
                         </div>
+                        {/* Appointment info for cash/in-person donations */}
+                        {data.donationType === 'cash' && (data.appointmentDate || data.appointmentTime) && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: 'var(--d-cream)', padding: 14, borderRadius: 8 }}>
+                                {data.appointmentDate && (
+                                    <InfoMini label="Appt. Date" value={new Date(data.appointmentDate).toLocaleDateString()} />
+                                )}
+                                {data.appointmentTime && (
+                                    <InfoMini label="Appt. Time" value={data.appointmentTime} />
+                                )}
+                            </div>
+                        )}
                         <InfoRow label="Receipt" value={data.receiptNumber || 'Awaiting confirmation'} mono />
+
+                        {/* ── Proof of Payment ── */}
+                        <div>
+                            <small style={{ color: 'var(--d-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: '.7rem' }}>
+                                Proof of Payment
+                            </small>
+                            {data.proofOfPayment ? (
+                                <div style={{ marginTop: 8 }}>
+                                    {/\.(jpg|jpeg|png|gif|webp)$/i.test(data.proofOfPayment) ? (
+                                        // ── Image preview ──
+                                        <a href={proofUrl(data.proofOfPayment)} target="_blank" rel="noopener noreferrer">
+                                            <img
+                                                src={proofUrl(data.proofOfPayment)}
+                                                alt="Proof of payment"
+                                                style={{
+                                                    width: '100%', maxHeight: 260,
+                                                    objectFit: 'contain', borderRadius: 10,
+                                                    border: '1.5px solid var(--d-border)',
+                                                    background: 'var(--d-cream)', padding: 6,
+                                                    cursor: 'zoom-in', display: 'block',
+                                                }}
+                                            />
+                                            <small style={{ display: 'block', textAlign: 'center', marginTop: 6, color: 'var(--d-muted)', fontSize: '.75rem' }}>
+                                                Click image to open full size ↗
+                                            </small>
+                                        </a>
+                                    ) : (
+                                        // ── PDF link ──
+                                        <a
+                                            href={proofUrl(data.proofOfPayment)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 8,
+                                                padding: '10px 16px', borderRadius: 9,
+                                                background: 'var(--d-cream)', border: '1.5px solid var(--d-border)',
+                                                color: 'var(--d-orange-dk)', fontWeight: 600, fontSize: '.88rem',
+                                                textDecoration: 'none',
+                                            }}
+                                        >
+                                            <FaFileAlt /> View PDF Receipt ↗
+                                        </a>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: 6, fontSize: '.88rem', color: 'var(--d-muted)', fontStyle: 'italic' }}>
+                                    No proof uploaded
+                                </div>
+                            )}
+                        </div>
+
                         <div><small style={{ color: 'var(--d-muted)', fontWeight: 700 }}>Status</small>
                             <div style={{ marginTop: 6 }}><span className={`status ${data.paymentStatus}`}>{data.paymentStatus}</span></div>
                         </div>
@@ -140,7 +237,7 @@ const InfoMini = ({ label, value, accent }) => (
     </div>
 );
 
-// ── Main Component ───────────────────────────────────────────────────────────
+// ── Main Component ────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -170,7 +267,14 @@ const AdminDashboard = () => {
     const [showAddInventory, setShowAddInventory]           = useState(false);
     const [detailsModal, setDetailsModal] = useState({ isOpen: false, type: '', data: null });
 
-    // OTP activation panel
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false, title: '', message: '', onConfirm: null, danger: false, confirmLabel: 'Confirm'
+    });
+    const showConfirm = (title, message, onConfirm, danger = false, confirmLabel = 'Confirm') => {
+        setConfirmModal({ isOpen: true, title, message, onConfirm, danger, confirmLabel });
+    };
+    const closeConfirm = () => setConfirmModal(p => ({ ...p, isOpen: false }));
+
     const [otpSent, setOtpSent]                   = useState(false);
     const [otpCode, setOtpCode]                   = useState('');
     const [otpMessage, setOtpMessage]             = useState('');
@@ -183,6 +287,8 @@ const AdminDashboard = () => {
         totalDonations: 0, totalDonationAmount: 0, lowStockItems: 0,
         complianceRate: 92, missedMeds: 2, delayedMeds: 1
     });
+
+    const [editStatusModal, setEditStatusModal] = useState({ isOpen: false, booking: null, newStatus: '' });
 
     // ── Close dropdowns when clicking outside ─────────────────────────────
     useEffect(() => {
@@ -208,7 +314,9 @@ const AdminDashboard = () => {
     const markAllRead = () => setReadIds(new Set(notifications.map(n => n.id)));
     const markRead    = (id) => setReadIds(prev => new Set([...prev, id]));
 
-    // ── Search filters ────────────────────────────────────────────────────
+    // ==================== FIXED SEARCH FILTERS ====================
+    // These now properly filter based on searchQuery and activeSection context
+    
     const filteredStaff = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
         if (!q) return staff;
@@ -216,7 +324,9 @@ const AdminDashboard = () => {
             `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
             m.email?.toLowerCase().includes(q) ||
             m.username?.toLowerCase().includes(q) ||
-            m.role?.toLowerCase().includes(q)
+            m.role?.toLowerCase().includes(q) ||
+            m.staffId?.toLowerCase().includes(q) ||
+            m.phone?.toLowerCase().includes(q)
         );
     }, [staff, searchQuery]);
 
@@ -228,7 +338,9 @@ const AdminDashboard = () => {
             b.email?.toLowerCase().includes(q) ||
             b.phone?.toLowerCase().includes(q) ||
             b.purpose?.toLowerCase().includes(q) ||
-            b.status?.toLowerCase().includes(q)
+            b.status?.toLowerCase().includes(q) ||
+            (b.firstName && b.firstName.toLowerCase().includes(q)) ||
+            (b.lastName && b.lastName.toLowerCase().includes(q))
         );
     }, [bookings, searchQuery]);
 
@@ -239,7 +351,9 @@ const AdminDashboard = () => {
             d.donorName?.toLowerCase().includes(q) ||
             d.email?.toLowerCase().includes(q) ||
             d.donationType?.toLowerCase().includes(q) ||
-            d.paymentStatus?.toLowerCase().includes(q)
+            d.paymentStatus?.toLowerCase().includes(q) ||
+            (d.firstName && d.firstName.toLowerCase().includes(q)) ||
+            (d.lastName && d.lastName.toLowerCase().includes(q))
         );
     }, [donations, searchQuery]);
 
@@ -248,13 +362,22 @@ const AdminDashboard = () => {
         if (!q) return inventory;
         return inventory.filter(i =>
             i.name?.toLowerCase().includes(q) ||
-            i.category?.toLowerCase().includes(q)
+            i.category?.toLowerCase().includes(q) ||
+            i.status?.toLowerCase().includes(q)
         );
     }, [inventory, searchQuery]);
 
+    // Reset pages when section or search changes
     useEffect(() => {
-        setCurrentPage(1); setBookingPage(1); setDonationPage(1); setInventoryPage(1);
+        setCurrentPage(1);
+        setBookingPage(1);
+        setDonationPage(1);
+        setInventoryPage(1);
     }, [activeSection, searchQuery]);
+
+    // Clear search when changing sections (optional - remove if you want search to persist)
+    // Uncomment the line below if you want search to clear when changing sections
+    // useEffect(() => { setSearchQuery(''); }, [activeSection]);
 
     // ── API helper ────────────────────────────────────────────────────────
     const fetchApi = useCallback(async (endpoint, options = {}) => {
@@ -280,14 +403,16 @@ const AdminDashboard = () => {
     useEffect(() => {
         const load = async () => {
             setLoading(true);
-            const [bRes, dRes, sRes] = await Promise.all([
+            const [bRes, dRes, sRes, iRes] = await Promise.all([
                 fetchApi('/bookings?limit=100'),
                 fetchApi('/donations?limit=100'),
-                fetchApi('/admin/stats'),
+                fetchApi('/stats'),
+                fetchApi('/inventory?limit=100'),
             ]);
             if (bRes.success) setBookings(bRes.data || []);
             if (dRes.success) setDonations(dRes.data || []);
             if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
+            if (iRes.success) setInventory(iRes.data || []);
             setLoading(false);
         };
         load();
@@ -302,25 +427,34 @@ const AdminDashboard = () => {
         if (d.success) setStaff(d.staff || []);
     };
 
+    const realLowStockCount = useMemo(() =>
+        inventory.filter(i => i.quantity <= (i.minThreshold || 10)).length,
+    [inventory]);
+
     const handleRefresh = async () => {
         setApiError(null);
         setLoading(true);
-        const [bRes, dRes, sRes] = await Promise.all([
+        const [bRes, dRes, sRes, iRes] = await Promise.all([
             fetchApi('/bookings?limit=100'),
             fetchApi('/donations?limit=100'),
-            fetchApi('/admin/stats'),
+            fetchApi('/stats'),
+            fetchApi('/inventory?limit=100'),
         ]);
         if (bRes.success) setBookings(bRes.data || []);
         if (dRes.success) setDonations(dRes.data || []);
         if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
+        if (iRes.success) setInventory(iRes.data || []);
         setLoading(false);
     };
 
     const handleLogout = () => {
-        if (window.confirm('Are you sure you want to sign out?')) {
-            logout();
-            navigate('/login');
-        }
+        showConfirm(
+            'Sign Out',
+            'Are you sure you want to sign out of the dashboard?',
+            () => { closeConfirm(); logout(); navigate('/login'); },
+            false,
+            'Sign Out'
+        );
     };
 
     // ── Pagination renderer ───────────────────────────────────────────────
@@ -351,9 +485,15 @@ const AdminDashboard = () => {
         if (d.success && d.codes?.length) {
             const code = d.codes[0].code;
             navigator.clipboard.writeText(code).catch(() => {});
-            alert(`✅ Code generated for ${role.toUpperCase()}:\n\n${code}\n\n(Copied to clipboard)`);
+            showConfirm(
+                `Code Generated for ${role.toUpperCase()}`,
+                `Registration code: ${code}\n\nThis code has been copied to your clipboard. Share it with the new staff member — they will use it to self-register their account on the Staff Registration page. Each code is single-use and expires in 72 hours.`,
+                closeConfirm,
+                false,
+                'OK'
+            );
         } else {
-            alert(d.message || 'Failed to generate code.');
+            showConfirm('Error', d.message || 'Failed to generate code.', closeConfirm, true, 'OK');
         }
     };
 
@@ -404,33 +544,75 @@ const AdminDashboard = () => {
 
     const toggleStaffStatus = async (id, cur) => {
         const next = cur === 'active' ? 'inactive' : 'active';
-        setStaff(staff.map(m => m._id === id ? { ...m, isActive: next === 'active' } : m));
-        await fetchApi(`/admin/staff/${id}/status`, {
-            method: 'PUT', body: JSON.stringify({ status: next })
-        });
+        const member = staff.find(m => m._id === id);
+        showConfirm(
+            `${next === 'active' ? 'Activate' : 'Deactivate'} Staff`,
+            `Are you sure you want to ${next === 'active' ? 'activate' : 'deactivate'} ${member?.firstName} ${member?.lastName}?`,
+            async () => {
+                closeConfirm();
+                setStaff(staff.map(m => m._id === id ? { ...m, isActive: next === 'active' } : m));
+                await fetchApi(`/admin/staff/${id}/status`, {
+                    method: 'PUT', body: JSON.stringify({ status: next })
+                });
+            },
+            next === 'inactive',
+            next === 'active' ? 'Activate' : 'Deactivate'
+        );
     };
 
     const deleteStaff = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this staff member? This cannot be undone.')) return;
-        setStaff(staff.filter(m => m._id !== id));
-        await fetchApi(`/admin/staff/${id}`, { method: 'DELETE' });
+        const member = staff.find(m => m._id === id);
+        showConfirm(
+            'Delete Staff Member',
+            `Are you sure you want to permanently delete ${member?.firstName} ${member?.lastName}? This action cannot be undone.`,
+            async () => {
+                closeConfirm();
+                setStaff(staff.filter(m => m._id !== id));
+                await fetchApi(`/admin/staff/${id}`, { method: 'DELETE' });
+            },
+            true,
+            'Delete'
+        );
     };
 
-    const updateBookingStatus = async (id, status) => {
-        setBookings(bookings.map(b => b._id === id ? { ...b, status } : b));
-        await fetchApi(`/bookings/${id}/status`, {
-            method: 'PUT', body: JSON.stringify({ status })
-        });
-        if (status !== 'pending') {
-            setStats(p => ({ ...p, pendingBookings: Math.max(0, p.pendingBookings - 1) }));
-        }
+    const updateBookingStatus = async (id, status, rejectionReason = '') => {
+        const booking = bookings.find(b => b._id === id);
+        const actionLabel = status === 'approved' ? 'Approve' : status === 'rejected' ? 'Reject' : 'Complete';
+        
+        showConfirm(
+            `${actionLabel} Booking`,
+            `Are you sure you want to ${actionLabel.toLowerCase()} the booking for "${booking?.name}"?${status === 'rejected' ? '\n\nThe visitor will be notified via email.' : ''}`,
+            async () => {
+                closeConfirm();
+                setBookings(bookings.map(b => b._id === id ? { ...b, status } : b));
+                await fetchApi(`/bookings/${id}/status`, {
+                    method: 'PUT', body: JSON.stringify({ status, rejectionReason })
+                });
+                
+                if (status !== 'pending') {
+                    setStats(p => ({ ...p, pendingBookings: Math.max(0, p.pendingBookings - 1) }));
+                }
+            },
+            status === 'rejected',
+            actionLabel
+        );
     };
 
     const updateDonationStatus = async (id, paymentStatus) => {
-        setDonations(donations.map(d => d._id === id ? { ...d, paymentStatus } : d));
-        await fetchApi(`/donations/${id}/payment`, {
-            method: 'PUT', body: JSON.stringify({ paymentStatus })
-        });
+        const donation = donations.find(d => d._id === id);
+        showConfirm(
+            'Update Donation Status',
+            `Mark donation from "${donation?.donorName}" (₱${donation?.amount?.toLocaleString()}) as ${paymentStatus}?`,
+            async () => {
+                closeConfirm();
+                setDonations(donations.map(d => d._id === id ? { ...d, paymentStatus } : d));
+                await fetchApi(`/donations/${id}/payment`, {
+                    method: 'PUT', body: JSON.stringify({ paymentStatus })
+                });
+            },
+            false,
+            'Confirm'
+        );
     };
 
     const handleAddInventory = (item) => {
@@ -439,7 +621,8 @@ const AdminDashboard = () => {
             name: item.name,
             category: item.category || 'General',
             quantity: Number(item.quantity),
-            unit: item.unit || 'pcs'
+            unit: item.unit || 'pcs',
+            minThreshold: Number(item.minThreshold) || 10,
         }]);
         setShowAddInventory(false);
     };
@@ -453,7 +636,6 @@ const AdminDashboard = () => {
         doc.text(`Kanang-Alalay — ${type.charAt(0).toUpperCase() + type.slice(1)} Report`, 14, 18);
         doc.setFontSize(10);
         doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 26);
-
         if (type === 'bookings') {
             autoTable(doc, {
                 head: [['Visitor', 'Date', 'Time', 'Purpose', 'Status']],
@@ -482,31 +664,29 @@ const AdminDashboard = () => {
     };
 
     const handleGenerateReport = (type) =>
-        alert(`📄 ${type} report will be emailed to ${user?.email}`);
+        showConfirm('Generate Report', `A ${type} report will be emailed to ${user?.email}. Continue?`, closeConfirm, false, 'Send Report');
 
     const handleEditBooking = (b) => {
-        const s = prompt(
-            `Update status for "${b.name}"\nAllowed: pending / approved / rejected / completed`,
-            b.status
-        );
-        if (s && ['pending', 'approved', 'rejected', 'completed'].includes(s.toLowerCase())) {
-            updateBookingStatus(b._id, s.toLowerCase());
-        }
+        setEditStatusModal({ isOpen: true, booking: b, newStatus: b.status });
     };
 
     const handleMarkAttendance = (id, name) =>
-        alert(`⏰ Attendance logged for ${name} at ${new Date().toLocaleTimeString()}`);
+        showConfirm('Mark Attendance', `Log attendance for ${name} at ${new Date().toLocaleTimeString()}?`, closeConfirm, false, 'Log');
 
-    const searchBadge = (filtered, total) =>
-        searchQuery.trim() && filtered.length !== total
-            ? <small style={{ marginLeft: 8, color: 'var(--d-muted)', fontWeight: 400 }}>
-                — {filtered.length} result{filtered.length !== 1 ? 's' : ''} for "{searchQuery}"
-              </small>
-            : null;
+    // Search badge helper - shows search results count
+    const getSearchBadge = (filteredArray, totalArray, label) => {
+        if (!searchQuery.trim()) return null;
+        if (filteredArray.length !== totalArray.length) {
+            return (
+                <small style={{ marginLeft: 8, color: 'var(--d-muted)', fontWeight: 400 }}>
+                    — {filteredArray.length} result{filteredArray.length !== 1 ? 's' : ''} for "{searchQuery}"
+                </small>
+            );
+        }
+        return null;
+    };
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  SECTION RENDERERS
-    // ═════════════════════════════════════════════════════════════════════
+    // ==================== SECTION RENDERERS ====================
 
     const renderOverview = () => (
         <div>
@@ -602,14 +782,25 @@ const AdminDashboard = () => {
             <div className="staff-management">
                 <div className="card-white">
                     <div className="card-header">
-                        <h5>Staff Management {searchBadge(filteredStaff, staff)}</h5>
-                        <button className="btn-success-sm" onClick={() => setShowRegistrationModal(true)}>
+                        <h5>
+                            Staff Management 
+                            {getSearchBadge(filteredStaff, staff, 'staff')}
+                        </h5>
+                        <button className="btn-primary-sm" onClick={() => setShowRegistrationModal(true)}>
                             <FaUserPlus /> Add New Staff
                         </button>
                     </div>
 
                     <div className="quick-code-section">
-                        <h6>Generate Registration Codes</h6>
+                        <h6>
+                            Generate Registration Codes
+                            <span className="info-tooltip" title="Registration codes allow new staff to self-register their account. Each code is single-use and expires in 72 hours. Share the generated code with the new hire — they enter it on the Staff Registration page to create their account.">
+                                <FaInfoCircle style={{ marginLeft: 6, color: 'var(--d-muted)', fontSize: '.8rem', verticalAlign: 'middle' }} />
+                            </span>
+                        </h6>
+                        <p style={{ fontSize: '.8rem', color: 'var(--d-muted)', marginBottom: 10, marginTop: -6 }}>
+                            Generate a one-time code and share it with new staff so they can register their own account.
+                        </p>
                         <div className="code-buttons">
                             <button className="btn-outline-sm" onClick={() => generateRegistrationCode('staff')}><FaIdCard /> Staff Code</button>
                             <button className="btn-outline-sm" onClick={() => generateRegistrationCode('nurse')}><FaUserMd /> Nurse Code</button>
@@ -634,7 +825,7 @@ const AdminDashboard = () => {
                                             <FaUserCircle size={30} color="var(--d-border)" />
                                             <div>
                                                 <strong>{m.firstName} {m.lastName}</strong><br />
-                                                <small className="text-muted">@{m.username}</small>
+                                                <small className="text-muted">Staff ID: {m.staffId || m.employeeId || 'Auto-generated'}</small>
                                             </div>
                                         </div>
                                     </td>
@@ -658,7 +849,6 @@ const AdminDashboard = () => {
                     </table>
                     {renderPagination(filteredStaff.length, currentPage, setCurrentPage)}
 
-                    {/* OTP Activation Panel */}
                     {otpSent && registeredUserId && (
                         <div className="otp-panel">
                             <div className="otp-panel-header">
@@ -702,10 +892,9 @@ const AdminDashboard = () => {
 
     const renderBookingManagement = () => {
         const today = new Date();
-        const firstDay  = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
         const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
-        // Map bookings to date keys for this month
         const bookingsByDate = filteredBookings.reduce((acc, b) => {
             if (!b.visitDate) return acc;
             const d = new Date(b.visitDate);
@@ -729,15 +918,14 @@ const AdminDashboard = () => {
 
         return (
             <div>
-                {/* ── Mini Calendar Card ── */}
                 <div className="card-white" style={{ marginBottom: 18 }}>
                     <div className="card-header">
-                        <h5><FaCalendarAlt color="var(--d-orange)" style={{ marginRight: 8 }} />
+                        <h5>
+                            <FaCalendarAlt color="var(--d-orange)" style={{ marginRight: 8 }} />
                             Admission &amp; Booking — {monthLabel}
-                            {searchBadge(filteredBookings, bookings)}
+                            {getSearchBadge(filteredBookings, bookings, 'bookings')}
                         </h5>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            {/* Legend */}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                             {Object.entries(STATUS_STYLE).map(([k, v]) => (
                                 <span key={k} style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -752,20 +940,16 @@ const AdminDashboard = () => {
                         </div>
                     </div>
 
-                    {/* Day headers */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 3 }}>
-                        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
                             <div key={d} style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: 700, color: 'var(--d-muted)', padding: '4px 0', textTransform: 'uppercase' }}>{d}</div>
                         ))}
                     </div>
 
-                    {/* Calendar cells */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
-                        {/* Leading blanks */}
                         {Array.from({ length: firstDay }).map((_, i) => (
                             <div key={`blank-${i}`} style={{ minHeight: 64, background: '#fafafa', borderRadius: 6, border: '1px solid var(--d-border)', opacity: 0.4 }} />
                         ))}
-                        {/* Day cells */}
                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                             const dayBookings = bookingsByDate[day] || [];
                             const isToday = day === today.getDate();
@@ -801,46 +985,59 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* ── Paginated List (10 per page, unchanged) ── */}
                 <div className="card-white">
                     <div className="card-header">
-                        <h5>All Bookings {searchBadge(filteredBookings, bookings)}</h5>
+                        <h5>
+                            All Bookings 
+                            {getSearchBadge(filteredBookings, bookings, 'bookings')}
+                        </h5>
+                        {searchQuery && filteredBookings.length === 0 && (
+                            <button className="btn-outline-sm" onClick={() => setSearchQuery('')}>
+                                <FaTimes /> Clear Search
+                            </button>
+                        )}
                     </div>
                     {filteredBookings.length === 0 ? (
-                        <p className="no-data">{searchQuery ? `No bookings match "${searchQuery}"` : 'No bookings found.'}</p>
-                    ) : (<>
-                        <table className="custom-table">
-                            <thead><tr><th>Visitor</th><th>Details</th><th>Status</th><th>Actions</th></tr></thead>
-                            <tbody>
-                                {paged.map(b => (
-                                    <tr key={b._id}>
-                                        <td>
-                                            <strong>{b.name}</strong><br />
-                                            <small><FaEnvelope size={10} /> {b.email} &nbsp;|&nbsp; <FaPhone size={10} /> {b.phone}</small>
-                                        </td>
-                                        <td>
-                                            <FaCalendarAlt size={11} style={{ marginRight: 5 }} />
-                                            {new Date(b.visitDate).toLocaleDateString()} at {b.visitTime}<br />
-                                            <small>Purpose: {b.purpose} ({b.numberOfVisitors} pax)</small>
-                                        </td>
-                                        <td><span className={`status ${b.status}`}>{b.status}</span></td>
-                                        <td className="actions">
-                                            {b.status === 'pending' && <>
-                                                <button className="btn-success-sm" onClick={() => updateBookingStatus(b._id, 'approved')}>Approve</button>
-                                                <button className="btn-danger-sm"  onClick={() => updateBookingStatus(b._id, 'rejected')}>Reject</button>
-                                            </>}
-                                            {b.status === 'approved' && (
-                                                <button className="btn-primary-sm" onClick={() => updateBookingStatus(b._id, 'completed')}>Complete</button>
-                                            )}
-                                            <span title="View Details" className="view" onClick={() => handleViewDetails('booking', b)}><FaEye /></span>
-                                            <span title="Edit Status"  className="edit" onClick={() => handleEditBooking(b)}><FaEdit /></span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {renderPagination(filteredBookings.length, bookingPage, setBookingPage)}
-                    </>)}
+                        <p className="no-data">
+                            {searchQuery ? `No bookings match "${searchQuery}". Try a different search term.` : 'No bookings found.'}
+                        </p>
+                    ) : (
+                        <>
+                            <table className="custom-table">
+                                <thead>
+                                    <tr><th>Visitor</th><th>Details</th><th>Status</th><th>Actions</th></tr>
+                                </thead>
+                                <tbody>
+                                    {paged.map(b => (
+                                        <tr key={b._id}>
+                                            <td>
+                                                <strong>{b.name}</strong><br />
+                                                <small><FaEnvelope size={10} /> {b.email} &nbsp;|&nbsp; <FaPhone size={10} /> {b.phone}</small>
+                                            </td>
+                                            <td>
+                                                <FaCalendarAlt size={11} style={{ marginRight: 5 }} />
+                                                {new Date(b.visitDate).toLocaleDateString()} at {b.visitTime}<br />
+                                                <small>Purpose: {b.purpose} ({b.numberOfVisitors} pax)</small>
+                                            </td>
+                                            <td><span className={`status ${b.status}`}>{b.status}</span></td>
+                                            <td className="actions">
+                                                {b.status === 'pending' && <>
+                                                    <button className="btn-success-sm" onClick={() => updateBookingStatus(b._id, 'approved')}>Approve</button>
+                                                    <button className="btn-danger-sm" onClick={() => updateBookingStatus(b._id, 'rejected')}>Reject</button>
+                                                </>}
+                                                {b.status === 'approved' && (
+                                                    <button className="btn-primary-sm" onClick={() => updateBookingStatus(b._id, 'completed')}>Complete</button>
+                                                )}
+                                                <span title="View Details" className="view" onClick={() => handleViewDetails('booking', b)}><FaEye /></span>
+                                                <span title="Edit Status" className="edit" onClick={() => handleEditBooking(b)}><FaEdit /></span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {renderPagination(filteredBookings.length, bookingPage, setBookingPage)}
+                        </>
+                    )}
                 </div>
             </div>
         );
@@ -851,36 +1048,45 @@ const AdminDashboard = () => {
         return (
             <div className="card-white">
                 <div className="card-header">
-                    <h5>Donation Management {searchBadge(filteredDonations, donations)}</h5>
+                    <h5>
+                        Donation Management 
+                        {getSearchBadge(filteredDonations, donations, 'donations')}
+                    </h5>
                     <button className="btn-primary-sm" onClick={() => handleExportPDF('donations')}>
                         <FaDownload /> Export PDF
                     </button>
                 </div>
                 {filteredDonations.length === 0 ? (
-                    <p className="no-data">{searchQuery ? `No donations match "${searchQuery}"` : 'No donations found.'}</p>
-                ) : (<>
-                    <table className="custom-table">
-                        <thead><tr><th>Donor</th><th>Amount / Type</th><th>Status</th><th>Actions</th></tr></thead>
-                        <tbody>
-                            {paged.map(d => (
-                                <tr key={d._id}>
-                                    <td><strong>{d.donorName}</strong><br /><small>{d.email}</small></td>
-                                    <td>
-                                        <strong style={{ color: '#28a745' }}>₱{d.amount?.toLocaleString()}</strong><br />
-                                        <small>{d.donationType}{d.receiptNumber && ` | Rec: ${d.receiptNumber}`}</small>
-                                    </td>
-                                    <td><span className={`status ${d.paymentStatus}`}>{d.paymentStatus}</span></td>
-                                    <td className="actions">
-                                        {d.paymentStatus === 'pending'    && <button className="btn-success-sm" onClick={() => updateDonationStatus(d._id, 'paid')}>Mark Paid</button>}
-                                        {d.paymentStatus === 'processing' && <button className="btn-primary-sm" onClick={() => updateDonationStatus(d._id, 'paid')}>Confirm</button>}
-                                        <span title="View Details" className="view" onClick={() => handleViewDetails('donation', d)}><FaEye /></span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {renderPagination(filteredDonations.length, donationPage, setDonationPage)}
-                </>)}
+                    <p className="no-data">
+                        {searchQuery ? `No donations match "${searchQuery}". Try a different search term.` : 'No donations found.'}
+                    </p>
+                ) : (
+                    <>
+                        <table className="custom-table">
+                            <thead>
+                                <tr><th>Donor</th><th>Amount / Type</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody>
+                                {paged.map(d => (
+                                    <tr key={d._id}>
+                                        <td><strong>{d.donorName}</strong><br /><small>{d.email}</small></td>
+                                        <td>
+                                            <strong style={{ color: '#28a745' }}>₱{d.amount?.toLocaleString()}</strong><br />
+                                            <small>{d.donationType}{d.receiptNumber && ` | Rec: ${d.receiptNumber}`}</small>
+                                        </td>
+                                        <td><span className={`status ${d.paymentStatus}`}>{d.paymentStatus}</span></td>
+                                        <td className="actions">
+                                            {d.paymentStatus === 'pending' && <button className="btn-success-sm" onClick={() => updateDonationStatus(d._id, 'paid')}>Mark Paid</button>}
+                                            {d.paymentStatus === 'processing' && <button className="btn-primary-sm" onClick={() => updateDonationStatus(d._id, 'paid')}>Confirm</button>}
+                                            <span title="View Details" className="view" onClick={() => handleViewDetails('donation', d)}><FaEye /></span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {renderPagination(filteredDonations.length, donationPage, setDonationPage)}
+                    </>
+                )}
             </div>
         );
     };
@@ -888,7 +1094,8 @@ const AdminDashboard = () => {
     const renderAlerts = () => (
         <div className="card-white">
             <div className="card-header">
-                <h5>Alerts &amp; Notifications
+                <h5>
+                    Alerts &amp; Notifications
                     {unreadCount > 0 && <span className="notif-count-badge" style={{ marginLeft: 10 }}>{unreadCount}</span>}
                 </h5>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -909,10 +1116,18 @@ const AdminDashboard = () => {
                     {notifications.map(n => {
                         const meta = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
                         const isRead = readIds.has(n.id);
+                        const targetSection = meta.section;
                         return (
                             <div key={n.id}
                                 className={`alert-row ${isRead ? 'read' : 'unread'}`}
-                                onClick={() => markRead(n.id)}
+                                style={{ cursor: targetSection ? 'pointer' : 'default' }}
+                                onClick={() => {
+                                    markRead(n.id);
+                                    if (targetSection) {
+                                        setActiveSection(targetSection);
+                                        setNotifOpen(false);
+                                    }
+                                }}
                             >
                                 <div className="alert-row-icon" style={{ background: meta.color + '20', color: meta.color }}>
                                     {meta.icon}
@@ -920,6 +1135,7 @@ const AdminDashboard = () => {
                                 <div className="alert-row-body">
                                     <strong>{n.title}</strong>
                                     <span>{n.body}</span>
+                                    {targetSection && <small style={{ color: meta.color, fontWeight: 600, marginTop: 2, display: 'block' }}>Click to view →</small>}
                                 </div>
                                 <div className="alert-row-meta">
                                     <span className="alert-type-tag" style={{ background: meta.color + '18', color: meta.color }}>{meta.label}</span>
@@ -939,15 +1155,18 @@ const AdminDashboard = () => {
         return (
             <div className="card-white">
                 <div className="card-header">
-                    <h5>Inventory &amp; Stock {searchBadge(filteredInventory, inventory)}</h5>
-                    <button className="btn-success-sm" onClick={() => setShowAddInventory(true)}>
+                    <h5>
+                        Inventory &amp; Stock 
+                        {getSearchBadge(filteredInventory, inventory, 'items')}
+                    </h5>
+                    <button className="btn-primary-sm" onClick={() => setShowAddInventory(true)}>
                         <FaBox /> Add Item
                     </button>
                 </div>
                 <div className="stats-grid" style={{ marginBottom: 20 }}>
                     <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#dc3545' }}><FaExclamationTriangle /></div>
-                        <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{stats.lowStockItems}</h3><p>Low Stock</p></div>
+                        <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{realLowStockCount}</h3><p>Low Stock</p></div>
                     </div>
                     <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#17a2b8' }}><FaBox /></div>
@@ -955,100 +1174,155 @@ const AdminDashboard = () => {
                     </div>
                     <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#ffc107' }}><FaClock /></div>
-                        <div className="stat-info"><h3>0</h3><p>Expiring Soon</p></div>
+                        <div className="stat-info">
+                            <h3>{inventory.filter(i => {
+                                if (!i.expirationDate) return false;
+                                const days = (new Date(i.expirationDate) - Date.now()) / (1000 * 60 * 60 * 24);
+                                return days >= 0 && days <= 30;
+                            }).length}</h3>
+                            <p>Expiring Soon</p>
+                        </div>
                     </div>
                 </div>
-                <table className="custom-table">
-                    <thead><tr><th>Item</th><th>Category</th><th>Stock</th><th>Status</th></tr></thead>
-                    <tbody>
-                        {filteredInventory.length === 0 ? (
-                            <tr><td colSpan="4" className="text-center" style={{ padding: '2rem', color: 'var(--d-muted)' }}>
-                                {searchQuery ? `No items match "${searchQuery}"` : 'No inventory yet. Click "Add Item" to begin.'}
-                            </td></tr>
-                        ) : paged.map(i => (
-                            <tr key={i._id}>
-                                <td><strong>{i.name}</strong></td>
-                                <td><span className="badge-custom staff">{i.category}</span></td>
-                                <td>{i.quantity} {i.unit}</td>
-                                <td>
-                                    <span className={`status ${i.quantity <= 5 ? 'inactive' : 'active'}`}>
-                                        {i.quantity <= 5 ? 'Low Stock' : 'In Stock'}
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                {renderPagination(filteredInventory.length, inventoryPage, setInventoryPage)}
+                {filteredInventory.length === 0 ? (
+                    <div className="no-data" style={{ textAlign: 'center', padding: '2rem', color: 'var(--d-muted)' }}>
+                        {searchQuery ? `No items match "${searchQuery}". Try a different search term.` : 'No inventory yet. Click "Add Item" to begin.'}
+                    </div>
+                ) : (
+                    <>
+                        <table className="custom-table">
+                            <thead>
+                                <tr><th>Item</th><th>Category</th><th>Stock</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {paged.map(i => {
+                                    const threshold = i.minThreshold || 10;
+                                    const isLow = i.quantity <= threshold;
+                                    return (
+                                        <tr key={i._id}>
+                                            <td><strong>{i.name}</strong></td>
+                                            <td><span className="badge-custom staff">{i.category}</span></td>
+                                            <td>{i.quantity} {i.unit}</td>
+                                            <td>
+                                                <span className={`status ${isLow ? 'inactive' : 'active'}`}>
+                                                    {i.quantity === 0 ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        {renderPagination(filteredInventory.length, inventoryPage, setInventoryPage)}
+                    </>
+                )}
             </div>
         );
     };
 
-    const renderCompliance = () => (
-        <div className="card-white">
-            <div className="card-header">
-                <h5>Medication Compliance Chart</h5>
-                <button className="btn-primary-sm" onClick={() => handleGenerateReport('Compliance')}>
-                    <FaFileAlt /> Full Report
-                </button>
-            </div>
-            <div className="compliance-overview">
-                <div className="compliance-score">
-                    <h1>{stats.complianceRate || 92}%</h1>
-                    <p>Compliance Today</p>
+    const renderCompliance = () => {
+        const weeklyData = [
+            { day: 'Mon', rate: 88, color: '#F96B38' },
+            { day: 'Tue', rate: 91, color: '#F96B38' },
+            { day: 'Wed', rate: 85, color: '#E65100' },
+            { day: 'Thu', rate: 95, color: '#28a745' },
+            { day: 'Fri', rate: 92, color: '#F96B38' },
+            { day: 'Sat', rate: 89, color: '#F96B38' },
+            { day: 'Sun', rate: 92, color: '#28a745' },
+        ];
+
+        return (
+            <div className="card-white">
+                <div className="card-header">
+                    <h5>Medication Compliance Chart</h5>
+                    <button className="btn-primary-sm" onClick={() => handleGenerateReport('Compliance')}>
+                        <FaFileAlt /> Full Report
+                    </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: 1, minWidth: 250 }}>
+                <div className="compliance-overview">
+                    <div className="compliance-score">
+                        <h1>{stats.complianceRate || 92}%</h1>
+                        <p>Overall Compliance Rate</p>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: 1, minWidth: 250 }}>
+                        {[
+                            ['24', 'Scheduled Today', null],
+                            ['21', 'Administered', '#28a745'],
+                            [stats.missedMeds || 2, 'Missed', '#dc3545'],
+                            [stats.delayedMeds || 1, 'Delayed', '#ffc107'],
+                        ].map(([v, l, c], i) => (
+                            <div key={i} className="stat-box">
+                                <h3 style={c ? { color: c } : {}}>{v}</h3>
+                                <p>{l}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="chart-placeholder">
+                    <h6 style={{ margin: '0 0 16px', color: 'var(--d-muted)', textTransform: 'uppercase', fontSize: '.8rem', letterSpacing: '.06em' }}>
+                        Weekly Adherence Trend
+                    </h6>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 120, padding: '0 8px' }}>
+                        {weeklyData.map((item, i) => (
+                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                <small style={{ fontSize: '.68rem', color: 'var(--d-muted)', fontWeight: 600 }}>{item.rate}%</small>
+                                <div style={{
+                                    width: '100%',
+                                    height: `${item.rate}%`,
+                                    borderRadius: '6px 6px 0 0',
+                                    background: `linear-gradient(180deg, ${item.color}, ${item.color === '#28a745' ? '#1E7D56' : '#D94E1B'})`,
+                                    transition: 'all .3s',
+                                }} />
+                                <small style={{ fontSize: '.68rem', color: 'var(--d-muted)' }}>
+                                    {item.day}
+                                </small>
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ marginTop: 16, padding: '12px', background: 'var(--d-cream)', borderRadius: 8 }}>
+                        <p style={{ margin: 0, fontSize: '.82rem', color: 'var(--d-muted)', textAlign: 'center' }}>
+                            Average <strong style={{ color: 'var(--d-orange-dk)' }}>{(weeklyData.reduce((sum, d) => sum + d.rate, 0) / weeklyData.length).toFixed(1)}% adherence</strong> tracked this week.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderReports = () => {
+        return (
+            <div className="card-white">
+                <div className="card-header">
+                    <h5>Reports &amp; Analytics</h5>
+                    <button className="btn-primary-sm" onClick={() => handleExportPDF('bookings')}>
+                        <FaDownload /> Export PDF
+                    </button>
+                </div>
+                <div className="reports-grid">
                     {[
-                        ['24', 'Scheduled',    null],
-                        ['21', 'Administered', '#28a745'],
-                        [stats.missedMeds || 2, 'Missed', '#dc3545'],
-                        [stats.delayedMeds || 1, 'Delayed', '#ffc107'],
-                    ].map(([v, l, c], i) => (
-                        <div key={i} className="stat-box">
-                            <h3 style={c ? { color: c } : {}}>{v}</h3>
-                            <p>{l}</p>
+                        { title: 'Financial Summary', val: `₱${(stats.totalDonationAmount || 0).toLocaleString()}`, valColor: '#28a745', desc: 'Total donations collected this period.', type: 'Financial Overview' },
+                        { title: 'Staff Performance', val: stats.staffOnDuty, desc: 'Active staff members currently on duty.', type: 'Staff Performance' },
+                        { title: 'Resident Health', val: '0', desc: 'Incident reports filed this month.', type: 'Resident Health' },
+                        { title: 'Booking Summary', val: bookings.length, desc: 'Total booking requests received.', type: 'Booking Summary' },
+                        { title: 'Inventory Status', val: realLowStockCount, valColor: realLowStockCount > 0 ? '#dc3545' : '#28a745', desc: 'Items currently low in stock.', type: 'Inventory Status' },
+                        { title: 'Donation Records', val: donations.length, desc: 'Total donation entries recorded.', type: 'Donation Report' },
+                        { title: 'Pending Approvals', val: bookings.filter(b => b.status === 'pending').length, desc: 'Bookings awaiting approval.', type: 'Pending Approvals' },
+                        { title: 'Active Staff', val: staff.filter(s => s.isActive).length, desc: 'Currently active staff members.', type: 'Active Staff' },
+                    ].map((r, i) => (
+                        <div key={i} className="report-card">
+                            <h6>{r.title}</h6>
+                            <h3 style={r.valColor ? { color: r.valColor } : {}}>{r.val}</h3>
+                            <p>{r.desc}</p>
+                            <button className="btn-outline-sm" onClick={() => handleGenerateReport(r.type)} style={{ width: '100%' }}>
+                                Generate Report
+                            </button>
                         </div>
                     ))}
                 </div>
             </div>
-            <div className="chart-placeholder">
-                <h6 style={{ margin: '0 0 12px', color: 'var(--d-muted)', textTransform: 'uppercase', fontSize: '.8rem', letterSpacing: '.06em' }}>
-                    Weekly Adherence Trend
-                </h6>
-                <div className="chart-placeholder-box">
-                    <FaChartBar style={{ fontSize: '2rem', color: 'var(--d-orange)' }} />
-                    Average <strong style={{ marginLeft: 4 }}>92% adherence</strong> tracked this week.
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderReports = () => (
-        <div className="card-white">
-            <div className="card-header">
-                <h5>Reports &amp; Analytics</h5>
-                <button className="btn-primary-sm" onClick={() => handleExportPDF('bookings')}>
-                    <FaDownload /> Export PDF
-                </button>
-            </div>
-            <div className="reports-grid">
-                {[
-                    { title: 'Financial Summary',  val: `₱${(stats.totalDonationAmount || 0).toLocaleString()}`, valColor: '#28a745', desc: 'Total donations collected.', type: 'Financial Overview' },
-                    { title: 'Staff Performance',  val: stats.staffOnDuty, desc: 'Active staff on duty.',    type: 'Staff Performance' },
-                    { title: 'Resident Health',    val: '0',               desc: 'Incident reports filed.', type: 'Resident Health' },
-                ].map((r, i) => (
-                    <div key={i} className="report-card">
-                        <h6>{r.title}</h6>
-                        <h3 style={r.valColor ? { color: r.valColor } : {}}>{r.val}</h3>
-                        <p>{r.desc}</p>
-                        <button className="btn-outline-sm" onClick={() => handleGenerateReport(r.type)} style={{ width: '100%' }}>
-                            Generate
-                        </button>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
+        );
+    };
 
     const renderContent = () => {
         if (loading) return (
@@ -1071,14 +1345,29 @@ const AdminDashboard = () => {
         }
     };
 
-    // ═════════════════════════════════════════════════════════════════════
-    //  MAIN RENDER
-    // ═════════════════════════════════════════════════════════════════════
+    // Get placeholder text for search based on active section
+    const getSearchPlaceholder = () => {
+        switch (activeSection) {
+            case 'staff':
+            case 'roster':
+                return 'Search by name, email, role, or staff ID…';
+            case 'booking':
+                return 'Search by visitor name, email, phone, purpose, or status…';
+            case 'donation':
+                return 'Search by donor name, email, donation type, or status…';
+            case 'inventory':
+                return 'Search by item name, category, or status…';
+            default:
+                return 'Search across dashboard…';
+        }
+    };
+
+    // ==================== MAIN RENDER ====================
     return (
         <div className="dashboard-layout">
             <div className="dashboard-body">
 
-                {/* ── Sidebar ── */}
+                {/* Sidebar */}
                 <div className="sidebar">
                     <div className="sidebar-header">
                         <div className="brand-section">
@@ -1089,15 +1378,15 @@ const AdminDashboard = () => {
 
                     <ul className="sidebar-menu">
                         {[
-                            { key: 'overview',   icon: <FaHome />,                label: 'System Overview' },
-                            { key: 'staff',      icon: <FaUsers />,               label: 'User Management' },
-                            { key: 'roster',     icon: <FaCalendarAlt />,         label: 'Staff Roster' },
-                            { key: 'alerts',     icon: <FaBell />,                label: 'Alerts & Notifications', badge: unreadCount },
-                            { key: 'booking',    icon: <FaCalendarCheck />,       label: 'Admission & Booking', badge: stats.pendingBookings },
-                            { key: 'inventory',  icon: <FaExclamationTriangle />, label: 'Inventory Alerts' },
-                            { key: 'compliance', icon: <FaChartBar />,            label: 'Compliance Chart' },
-                            { key: 'donation',   icon: <FaMoneyBillWave />,       label: 'Donation Ledger' },
-                            { key: 'reports',    icon: <FaFileAlt />,             label: 'Reports & Analytics' },
+                            { key: 'overview', icon: <FaHome />, label: 'System Overview' },
+                            { key: 'staff', icon: <FaUsers />, label: 'User Management' },
+                            { key: 'roster', icon: <FaCalendarAlt />, label: 'Staff Roster' },
+                            { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notifications', badge: unreadCount },
+                            { key: 'booking', icon: <FaCalendarCheck />, label: 'Admission & Booking', badge: stats.pendingBookings },
+                            { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Alerts', badge: realLowStockCount },
+                            { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
+                            { key: 'donation', icon: <FaMoneyBillWave />, label: 'Donation Ledger' },
+                            { key: 'reports', icon: <FaFileAlt />, label: 'Reports & Analytics' },
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => setActiveSection(key)}>
                                 {icon} {label}
@@ -1111,10 +1400,10 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* ── Main area ── */}
+                {/* Main area */}
                 <div className="main-content-wrapper">
 
-                    {/* ── Topbar ── */}
+                    {/* Topbar with Search */}
                     <div className="admin-topbar">
                         <div className="topbar-left">
                             <div className="topbar-search-wrapper">
@@ -1122,19 +1411,13 @@ const AdminDashboard = () => {
                                 <input
                                     type="text"
                                     className="topbar-search-input"
-                                    placeholder={
-                                        activeSection === 'staff'     ? 'Search by name, email, role…' :
-                                        activeSection === 'booking'   ? 'Search by visitor, purpose, status…' :
-                                        activeSection === 'donation'  ? 'Search by donor, type, status…' :
-                                        activeSection === 'inventory' ? 'Search by item or category…' :
-                                        'Search across dashboard…'
-                                    }
+                                    placeholder={getSearchPlaceholder()}
                                     value={searchQuery}
-                                    onChange={e => setSearchQuery(e.target.value)}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                                 {searchQuery && (
                                     <button className="search-clear-btn" onClick={() => setSearchQuery('')}>
-                                        <FaTimes />
+                                        <FaTimes /> Clear
                                     </button>
                                 )}
                             </div>
@@ -1142,7 +1425,7 @@ const AdminDashboard = () => {
 
                         <div className="topbar-right">
 
-                            {/* ── Live Notification Bell ── */}
+                            {/* Notification Bell */}
                             <div className="topbar-notif-menu" ref={notifRef}>
                                 <button
                                     className="topbar-icon-btn"
@@ -1181,11 +1464,10 @@ const AdminDashboard = () => {
                                                         className={`notif-item ${isRead ? 'read' : 'unread'}`}
                                                         onClick={() => {
                                                             markRead(n.id);
-                                                            if (n.type === 'booking')   setActiveSection('booking');
-                                                            if (n.type === 'donation')  setActiveSection('donation');
-                                                            if (n.type === 'staff')     setActiveSection('roster');
-                                                            if (n.type === 'inventory') setActiveSection('inventory');
-                                                            setNotifOpen(false);
+                                                            if (meta.section) {
+                                                                setActiveSection(meta.section);
+                                                                setNotifOpen(false);
+                                                            }
                                                         }}
                                                     >
                                                         <div className="notif-item-icon" style={{ color: meta.color }}>{meta.icon}</div>
@@ -1209,7 +1491,7 @@ const AdminDashboard = () => {
                                 )}
                             </div>
 
-                            {/* ── User dropdown ── */}
+                            {/* User dropdown */}
                             <div className="topbar-user-menu">
                                 <div
                                     className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`}
@@ -1243,12 +1525,12 @@ const AdminDashboard = () => {
                         </div>
                     </div>
 
-                    {/* ── Page content ── */}
+                    {/* Page content */}
                     <div className="main-content">{renderContent()}</div>
                 </div>
             </div>
 
-            {/* ── Modals ── */}
+            {/* Modals */}
             <UserRegistrationModal
                 isOpen={showRegistrationModal}
                 onClose={() => setShowRegistrationModal(false)}
@@ -1265,6 +1547,58 @@ const AdminDashboard = () => {
                     data={detailsModal.data}
                     onClose={closeDetailsModal}
                 />
+            )}
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={closeConfirm}
+                confirmLabel={confirmModal.confirmLabel}
+                danger={confirmModal.danger}
+            />
+
+            {editStatusModal.isOpen && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="registration-modal" style={{ maxWidth: 420, padding: 32 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18, borderBottom: '1.5px solid var(--d-border)', paddingBottom: 14 }}>
+                            <h4 style={{ margin: 0, color: 'var(--d-ink)' }}>Update Booking Status</h4>
+                            <button onClick={() => setEditStatusModal({ isOpen: false, booking: null, newStatus: '' })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--d-muted)', fontSize: '1.2rem' }}><FaTimes /></button>
+                        </div>
+                        <p style={{ fontSize: '.88rem', color: 'var(--d-muted)', marginBottom: 16 }}>
+                            Booking for: <strong>{editStatusModal.booking?.name}</strong>
+                        </p>
+                        <label style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--d-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, display: 'block' }}>
+                            New Status
+                        </label>
+                        <select
+                            value={editStatusModal.newStatus}
+                            onChange={e => setEditStatusModal(p => ({ ...p, newStatus: e.target.value }))}
+                            style={{
+                                width: '100%', padding: '10px 14px', border: '1.5px solid var(--d-border)',
+                                borderRadius: 9, fontFamily: 'var(--d-font-body)', fontSize: '.92rem',
+                                background: 'var(--d-cream)', color: 'var(--d-ink)', outline: 'none',
+                                marginBottom: 22,
+                            }}
+                        >
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                            <button className="btn-outline-sm" onClick={() => setEditStatusModal({ isOpen: false, booking: null, newStatus: '' })}>Cancel</button>
+                            <button
+                                className="btn-primary-sm"
+                                onClick={() => {
+                                    updateBookingStatus(editStatusModal.booking._id, editStatusModal.newStatus);
+                                    setEditStatusModal({ isOpen: false, booking: null, newStatus: '' });
+                                }}
+                            >Save</button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
