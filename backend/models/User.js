@@ -11,15 +11,17 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     phone: { type: String },
-    ward: { 
+    // Floors for nurses/caregivers: '1st Floor' – '4th Floor'
+    ward: {
         type: String,
-        enum: ['Ward A', 'Ward B', 'Ward C', 'Kitchen', 'Administration', 'Maintenance'],
-        default: 'Administration'
+        trim: true,
+        default: '',
     },
-    department: { 
+    // Auto-set by role: 'Nursing', 'Caregiving', 'Administration', or area name for staff
+    department: {
         type: String,
-        enum: ['Nursing', 'Administration'],
-        default: 'Administration'
+        trim: true,
+        default: '',
     },
     shift: {
         type: String,
@@ -45,8 +47,8 @@ const userSchema = new mongoose.Schema({
 
     role: {
         type: String,
-        enum: ['admin', 'staff', 'nurse', 'caregiver'],
-        default: 'staff'
+        enum: ['admin', 'nurse', 'caregiver'],
+        default: 'nurse'
     },
 
     // Account status

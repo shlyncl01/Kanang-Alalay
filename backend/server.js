@@ -10,7 +10,7 @@ const { Server } = require('socket.io');
 // ── Models ────────────────────────────────────────────────────────────────────
 const Donation  = require('./models/Donation');
 const Booking   = require('./models/Booking');
-const Inventory = require('./models/Inventory'); // FIX: added for /api/inventory route
+const Inventory = require('./models/Inventory');
 
 // ── Route Files ───────────────────────────────────────────────────────────────
 const authRoutes     = require('./routes/authRoutes');
@@ -19,6 +19,7 @@ const alertRoutes    = require('./routes/alertRoutes');
 const bookingRoutes  = require('./routes/bookingRoutes');
 const donationRoutes = require('./routes/donationRoutes');
 const paymentRoutes  = require('./routes/PaymentRoutes');
+const nurseRoutes    = require('./routes/nurseRoutes');
 
 const app = express();
 
@@ -29,6 +30,7 @@ const io = new Server(server, {
         origin: [
             process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app',
             'https://lsae-kanangalalay.online',
+            'http://localhost:3000'
         ],
         methods:     ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         credentials: true
@@ -38,10 +40,8 @@ const io = new Server(server, {
 app.set('io', io);
 
 io.on('connection', (socket) => {
-    console.log(`⚡ Client connected to Socket.io: ${socket.id}`);
-    socket.on('disconnect', () => {
-        console.log(`❌ Client disconnected: ${socket.id}`);
-    });
+    console.log(`⚡ Socket.io connected: ${socket.id}`);
+    socket.on('disconnect', () => console.log(`❌ Socket.io disconnected: ${socket.id}`));
 });
 
 // ==================== MIDDLEWARE =============================================
@@ -57,7 +57,6 @@ const isLocalDevOrigin = (origin = '') =>
 
 app.use(cors({
     origin: (origin, callback) => {
-        // allow non-browser tools / same-origin
         if (!origin) return callback(null, true);
         if (isLocalDevOrigin(origin)) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -71,16 +70,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ==================== STATIC FILE SERVING (uploads) ==========================
+// ==================== STATIC FILE SERVING ====================================
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log('📁 Created uploads directory:', uploadsDir);
 }
 app.use('/uploads', express.static(uploadsDir));
 
 // ==================== MONGODB CONNECTION =====================================
-console.log('🔗 Attempting to connect to MongoDB Atlas...');
 mongoose.connect(process.env.MONGODB_URI, {
     serverSelectionTimeoutMS: 10000,
     socketTimeoutMS:          45000,
@@ -97,6 +94,7 @@ app.get('/', (req, res) => {
     res.json({
         message:   'Kanang-Alalay Backend API is running!',
         status:    'active',
+        version:   '2.0',
         endpoints: {
             health:    '/api/health',
             auth:      '/api/auth',
@@ -105,7 +103,8 @@ app.get('/', (req, res) => {
             payments:  '/api/payments',
             alerts:    '/api/alerts',
             admin:     '/api/admin',
-            stats:     '/api/stats'
+            stats:     '/api/stats',
+            inventory: '/api/inventory'
         }
     });
 });
@@ -113,7 +112,8 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({
         status:   'healthy',
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        uptime:   process.uptime()
     });
 });
 
@@ -124,19 +124,26 @@ app.use('/api/alerts',    alertRoutes);
 app.use('/api/bookings',  bookingRoutes);
 app.use('/api/donations', donationRoutes);
 app.use('/api/payments',  paymentRoutes);
+app.use('/api/nurse',     nurseRoutes);
 
-// ==================== STATS ==================================================
+// ==================== STATS (FIXED: lowStockItems from real DB) ==============
 app.get('/api/stats', async (req, res) => {
     try {
-        const [totalDonations, pendingBookings, donationAgg] = await Promise.all([
+        const [totalDonations, pendingBookings, donationAgg, inventoryItems] = await Promise.all([
             Donation.countDocuments(),
             Booking.countDocuments({ status: 'pending' }),
-            // FIX: compute real total donation amount
             Donation.aggregate([
                 { $match: { paymentStatus: 'paid' } },
                 { $group: { _id: null, total: { $sum: '$amount' } } }
-            ])
+            ]),
+            Inventory.find({}, { quantity: 1, minThreshold: 1 })
         ]);
+
+        // FIXED: was hardcoded 5, now computed from real inventory data
+        const lowStockItems = inventoryItems.filter(
+            i => i.quantity <= (i.minThreshold ?? 10)
+        ).length;
+
         const totalDonationAmount = donationAgg[0]?.total || 0;
         res.json({
             success: true,
@@ -144,8 +151,8 @@ app.get('/api/stats', async (req, res) => {
                 totalResidents: 71,
                 pendingBookings,
                 totalDonations,
-                totalDonationAmount, // FIX: was missing — dashboard shows ₱0 without this
-                lowStockItems: 5
+                totalDonationAmount,
+                lowStockItems
             }
         });
     } catch (error) {
@@ -153,15 +160,13 @@ app.get('/api/stats', async (req, res) => {
     }
 });
 
-// ==================== INVENTORY ROUTES ====================
-// Make sure inventory routes are properly mounted
+// ==================== INVENTORY ROUTES (public fallback) =====================
 app.get('/api/inventory', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 100;
         const items = await Inventory.find().limit(limit).sort({ createdAt: -1 });
         res.json({ success: true, data: items });
     } catch (error) {
-        console.error('Inventory fetch error:', error);
         res.status(500).json({ success: false, message: 'Error fetching inventory' });
     }
 });
@@ -175,7 +180,6 @@ app.post('/api/inventory', async (req, res) => {
         await item.save();
         res.status(201).json({ success: true, data: item });
     } catch (error) {
-        console.error('Inventory create error:', error);
         res.status(500).json({ success: false, message: 'Error adding inventory item' });
     }
 });
@@ -199,23 +203,22 @@ app.delete('/api/inventory/:id', async (req, res) => {
     }
 });
 
-// ==================== EMAIL SEND ROUTE (for booking rejection) ====================
+// ==================== EMAIL SEND ROUTE =======================================
 app.post('/api/email/send-booking-status', async (req, res) => {
     try {
         const { to, status, bookingDetails, reason } = req.body;
         const { sendEmail, generateBookingConfirmationTemplate, generateBookingRejectionTemplate } = require('./models/mailer');
-        
+
         if (status === 'approved') {
-            await sendEmail(to, 'Booking Confirmed - Kanang Alalay', 
+            await sendEmail(to, 'Booking Confirmed - Kanang Alalay',
                 generateBookingConfirmationTemplate({ ...bookingDetails, email: to }));
         } else if (status === 'rejected') {
-            await sendEmail(to, 'Booking Update - Kanang Alalay', 
+            await sendEmail(to, 'Booking Update - Kanang Alalay',
                 generateBookingRejectionTemplate({ ...bookingDetails, email: to }, reason));
         }
-        
+
         res.json({ success: true, message: 'Email sent' });
     } catch (error) {
-        console.error('Email send error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });

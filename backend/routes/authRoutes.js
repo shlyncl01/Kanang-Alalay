@@ -56,6 +56,16 @@ router.post('/login', async (req, res) => {
             });
         }
 
+
+        // Block removed roles from logging in
+        const VALID_ROLES = ['admin', 'nurse', 'caregiver'];
+        if (!VALID_ROLES.includes(user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Your account role is no longer supported. Please contact the administrator.'
+            });
+        }
+
         const token = jwt.sign(
             { userId: user._id, role: user.role, username: user.username, email: user.email },
             process.env.JWT_SECRET || 'fallback_secret',
@@ -151,7 +161,7 @@ router.post('/register-staff', async (req, res) => {
             firstName,
             lastName,
             phone,
-            role:       codeDoc.role || role || 'staff',
+            role:       ['admin','nurse','caregiver'].includes(codeDoc.role) ? codeDoc.role : 'nurse',
             isVerified: false,
             isActive:   false
         });
@@ -467,6 +477,68 @@ router.post('/resend-verification', async (req, res) => {
     } catch (error) {
         console.error('Resend verification error:', error);
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+
+// ==================== VALIDATE TOKEN =========================================
+// GET /api/auth/validate-token
+// Used by frontend on page load to verify the stored JWT is still valid
+router.get('/validate-token', protect, async (req, res) => {
+    const VALID_ROLES = ['admin', 'nurse', 'caregiver'];
+    if (!VALID_ROLES.includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: 'Role no longer valid.' });
+    }
+    res.json({
+        success: true,
+        user: {
+            id:        req.user._id,
+            staffId:   req.user.staffId,
+            username:  req.user.username,
+            email:     req.user.email,
+            firstName: req.user.firstName,
+            lastName:  req.user.lastName,
+            role:      req.user.role,
+            ward:      req.user.ward,
+            shift:     req.user.shift,
+            isActive:  req.user.isActive,
+        }
+    });
+});
+
+
+// ==================== CHANGE PASSWORD (authenticated) ========================
+router.put('/change-password', protect, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword)
+            return res.status(400).json({ success:false, message:'Both current and new password are required.' });
+        if (newPassword.length < 8)
+            return res.status(400).json({ success:false, message:'New password must be at least 8 characters.' });
+
+        const user = await User.findById(req.user._id);
+        const match = await user.comparePassword(currentPassword);
+        if (!match)
+            return res.status(400).json({ success:false, message:'Current password is incorrect.' });
+        if (currentPassword === newPassword)
+            return res.status(400).json({ success:false, message:'New password must be different from the current one.' });
+
+        user.password = newPassword; // pre-save hook hashes it
+        await user.save();
+        res.json({ success:true, message:'Password updated successfully.' });
+    } catch (err) {
+        res.status(500).json({ success:false, message:'Server error: ' + err.message });
+    }
+});
+
+// ==================== UPDATE PHONE (authenticated) ===========================
+router.put('/update-phone', protect, async (req, res) => {
+    try {
+        const { phone } = req.body;
+        await User.findByIdAndUpdate(req.user._id, { phone: phone || '' });
+        res.json({ success:true, message:'Contact number updated.' });
+    } catch (err) {
+        res.status(500).json({ success:false, message:'Server error: ' + err.message });
     }
 });
 

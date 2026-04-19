@@ -6,15 +6,129 @@ const Donation = require('../models/Donation');
 const Inventory = require('../models/Inventory');
 const RegistrationCode = require('../models/VerificationCode');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
+const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 
 router.use(protect, adminOnly);
+
+// ── Auto-generate staff ID with role prefix + 4-digit counter ────────────────
+async function generateStaffId(role) {
+    const prefixMap = {
+        admin:     'ADMIN',
+        nurse:     'NURSE',
+        caregiver: 'CG',
+    };
+    const prefix = prefixMap[role] || 'NURSE';
+
+    // Find highest existing ID for this prefix
+    const latest = await User.findOne(
+        { staffId: new RegExp(`^${prefix}-\\d+$`) },
+        { staffId: 1 },
+        { sort: { staffId: -1 } }
+    );
+
+    let next = 1;
+    if (latest && latest.staffId) {
+        const parts = latest.staffId.split('-');
+        const num = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(num)) next = num + 1;
+    }
+
+    return `${prefix}-${String(next).padStart(4, '0')}`;
+}
+
+// ==================== ADMIN CREATE USER (no registration code needed) ====================
+
+router.post('/create-user', async (req, res) => {
+    try {
+        const {
+            firstName, lastName, middleName = '', username, email,
+            password, phone = '', role = 'nurse', ward = '', department = '',
+            activateImmediately = true
+        } = req.body;
+
+        // Validate required fields
+        if (!firstName || !lastName || !email || !password) {
+            return res.status(400).json({ success: false, message: 'First name, last name, email, and password are required.' });
+        }
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({ success: false, message: 'Invalid email address.' });
+        }
+        if (password.length < 8) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
+        }
+
+        // Prevent duplicate email/username
+        const derived = username?.trim() || email.split('@')[0];
+        const existing = await User.findOne({ $or: [{ email }, { username: derived }] });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: existing.email === email
+                    ? 'A user with this email already exists.'
+                    : 'This username is already taken.'
+            });
+        }
+
+        // Auto-generate staff ID
+        const staffId = await generateStaffId(role);
+
+        const user = new User({
+            staffId,
+            firstName:  firstName.trim(),
+            lastName:   lastName.trim(),
+            middleName: middleName.trim(),
+            username:   derived,
+            email:      email.trim().toLowerCase(),
+            password,
+            phone:      phone.trim(),
+            role,
+            ward:       ward || undefined,
+            department: department || undefined,
+            isVerified: activateImmediately,
+            isActive:   activateImmediately,
+        });
+
+        await user.save();
+
+        // Send welcome/OTP email if not immediately activated
+        let userId = user._id;
+        if (!activateImmediately) {
+            const otpCode   = Math.floor(100000 + Math.random() * 900000).toString();
+            user.otpCode    = otpCode;
+            user.otpExpires = new Date(Date.now() + 15 * 60 * 1000);
+            await user.save();
+
+            try {
+                await sendEmail(email, 'Activate your Kanang-Alalay Account', generateOtpTemplate(otpCode));
+            } catch (mailErr) {
+                console.error('❌ Email error:', mailErr.message);
+            }
+        }
+
+        res.status(201).json({
+            success:   true,
+            message:   `User ${firstName} ${lastName} created with ID ${staffId}.${activateImmediately ? ' Account is active.' : ' OTP sent for activation.'}`,
+            userId:    user._id,
+            staffId:   user.staffId,
+            email:     user.email,
+            firstName: user.firstName,
+            role:      user.role,
+        });
+    } catch (error) {
+        console.error('Create user error:', error);
+        if (error.code === 11000) {
+            return res.status(400).json({ success: false, message: 'Email or username already exists.' });
+        }
+        res.status(500).json({ success: false, message: 'Server error creating user: ' + error.message });
+    }
+});
 
 // ==================== STAFF MANAGEMENT ====================
 
 router.get('/staff', async (req, res) => {
     try {
         const staff = await User.find({
-            role: { $in: ['admin', 'staff', 'nurse', 'caregiver'] }
+            role: { $in: ['admin', 'nurse', 'caregiver'] }
         }).select('-password').sort({ createdAt: -1 });
 
         res.json({ success: true, count: staff.length, staff });
@@ -51,14 +165,13 @@ router.put('/staff/:id/status', async (req, res) => {
             message: `Staff status updated to ${user.isActive ? 'active' : 'inactive'}.`
         });
     } catch (error) {
-        console.error('Toggle status error:', error);
         res.status(500).json({ success: false, message: 'Server error updating status' });
     }
 });
 
 router.put('/staff/:id/role', async (req, res) => {
     try {
-        const allowedRoles = ['admin', 'staff', 'nurse', 'caregiver'];
+        const allowedRoles = ['admin', 'nurse', 'caregiver'];
         const { role } = req.body;
 
         if (!allowedRoles.includes(role)) {
@@ -77,7 +190,6 @@ router.put('/staff/:id/role', async (req, res) => {
 
         res.json({ success: true, message: `Role updated to '${role}' for ${user.firstName} ${user.lastName}.` });
     } catch (error) {
-        console.error('Change role error:', error);
         res.status(500).json({ success: false, message: 'Server error changing role' });
     }
 });
@@ -93,7 +205,6 @@ router.delete('/staff/:id', async (req, res) => {
 
         res.json({ success: true, message: 'Staff member deleted successfully.' });
     } catch (error) {
-        console.error('Delete staff error:', error);
         res.status(500).json({ success: false, message: 'Server error deleting staff' });
     }
 });
@@ -119,9 +230,9 @@ router.post('/generate-codes', async (req, res) => {
             const newCode = new RegistrationCode({
                 code,
                 role,
-                email: 'unassigned@lsae.org',
+                email:     'unassigned@lsae.org',
                 expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
-                status: 'active'
+                status:    'active'
             });
             await newCode.save();
             codes.push(newCode);
@@ -129,16 +240,19 @@ router.post('/generate-codes', async (req, res) => {
 
         res.json({ success: true, message: `Generated ${count} code(s).`, codes });
     } catch (error) {
-        console.error('Generate codes error:', error);
         res.status(500).json({ success: false, message: 'Error generating codes' });
     }
 });
 
-// ==================== DASHBOARD STATS ====================
+// ==================== DASHBOARD STATS (FIXED: lowStockItems from real DB) ====================
 
 router.get('/stats', async (req, res) => {
     try {
-        const [totalDonations, pendingBookings, staffOnDuty, donationAmount, totalBookings, activeStaff] = await Promise.all([
+        const [
+            totalDonations, pendingBookings, staffOnDuty,
+            donationAmount, totalBookings, activeStaff,
+            inventoryItems
+        ] = await Promise.all([
             Donation.countDocuments(),
             Booking.countDocuments({ status: 'pending' }),
             User.countDocuments({ role: { $ne: 'admin' }, isActive: true }),
@@ -147,8 +261,15 @@ router.get('/stats', async (req, res) => {
                 { $group: { _id: null, total: { $sum: '$amount' } } }
             ]),
             Booking.countDocuments(),
-            User.countDocuments({ isActive: true, role: { $ne: 'admin' } })
+            User.countDocuments({ isActive: true, role: { $ne: 'admin' } }),
+            // FIX: fetch inventory to compute real low-stock count
+            Inventory.find({}, { quantity: 1, minThreshold: 1 })
         ]);
+
+        // FIXED: compute lowStockItems from real data (was hardcoded 5)
+        const lowStockItems = inventoryItems.filter(
+            i => i.quantity <= (i.minThreshold ?? 10)
+        ).length;
 
         res.json({
             success: true,
@@ -158,7 +279,7 @@ router.get('/stats', async (req, res) => {
                 pendingBookings,
                 totalDonations,
                 totalDonationAmount: donationAmount[0]?.total || 0,
-                lowStockItems: 5,
+                lowStockItems,           // ← now real
                 totalBookings,
                 activeStaff
             }
@@ -175,14 +296,13 @@ router.get('/inventory', async (req, res) => {
     try {
         const { category, status, limit = 100 } = req.query;
         let query = {};
-        
         if (category) query.category = category;
-        if (status) query.status = status;
-        
+        if (status)   query.status   = status;
+
         const items = await Inventory.find(query)
             .limit(parseInt(limit))
             .sort({ createdAt: -1 });
-        
+
         res.json({ success: true, data: items });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error fetching inventory' });
@@ -205,8 +325,8 @@ router.post('/inventory', async (req, res) => {
 router.put('/inventory/:id', async (req, res) => {
     try {
         const item = await Inventory.findByIdAndUpdate(
-            req.params.id, 
-            req.body, 
+            req.params.id,
+            req.body,
             { new: true, runValidators: true }
         );
         if (!item) return res.status(404).json({ success: false, message: 'Item not found' });

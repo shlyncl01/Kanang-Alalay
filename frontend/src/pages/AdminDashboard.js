@@ -14,12 +14,13 @@ import {
 } from 'react-icons/fa';
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
+import InventoryTab from '../components/admin/InventoryTab';
 import StaffRosterTab from '../components/admin/StaffRosterTab';
+import ReportsTab from '../components/admin/ReportsTab';
 import '../styles/Dashboard.css';
 import '../styles/AdminDashboard.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { v4 as uuidv4 } from 'uuid';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -31,7 +32,7 @@ const API_BASE_URL =
 const NOTIF_TYPES = {
     booking:   { color: '#17a2b8', icon: <FaCalendarAlt />, label: 'Booking', section: 'booking' },
     donation:  { color: '#28a745', icon: <FaMoneyBillWave />, label: 'Donation', section: 'donation' },
-    staff:     { color: '#b85c2d', icon: <FaUsers />, label: 'Staff', section: 'roster' },
+    personnel: { color: '#b85c2d', icon: <FaUsers />, label: 'Personnel', section: 'roster' },
     inventory: { color: '#dc3545', icon: <FaExclamationTriangle />, label: 'Inventory', section: 'inventory' },
     system:    { color: '#6c757d', icon: <FaInfoCircle />, label: 'System', section: null },
 };
@@ -51,8 +52,8 @@ const buildNotifications = (bookings, donations, staff, inventory) => {
         time: d.createdAt || new Date().toISOString(), read: false,
     }));
     staff.filter(m => !m.isActive && !m.isVerified).forEach(m => notifs.push({
-        id: `st-${m._id}`, type: 'staff',
-        title: 'Staff Pending Activation',
+        id: `st-${m._id}`, type: 'personnel',
+        title: 'Personnel Pending Activation',
         body: `${m.firstName} ${m.lastName} (${m.role})`,
         time: m.createdAt || new Date().toISOString(), read: false,
     }));
@@ -420,7 +421,13 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         if (activeSection === 'staff' || activeSection === 'roster') fetchStaffList();
+        // Also load staff on initial load so reports have data
     }, [activeSection]);
+
+    useEffect(() => {
+        // Pre-load staff on mount for reports/overview
+        fetchStaffList();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fetchStaffList = async () => {
         const d = await fetchApi('/admin/staff');
@@ -478,7 +485,7 @@ const AdminDashboard = () => {
     };
 
     // ── Staff actions ─────────────────────────────────────────────────────
-    const generateRegistrationCode = async (role = 'staff') => {
+    const generateRegistrationCode = async (role = 'nurse') => {
         const d = await fetchApi('/admin/generate-codes', {
             method: 'POST', body: JSON.stringify({ count: 1, role })
         });
@@ -506,7 +513,7 @@ const AdminDashboard = () => {
         if (d.success) {
             setOtpSent(true);
             setRegisteredEmail(email);
-            setRegisteredName(firstName || 'Staff');
+            setRegisteredName(firstName || 'Personnel');
             setOtpCode('');
             setOtpMessage(`OTP sent to ${email}.`);
         } else {
@@ -540,6 +547,22 @@ const AdminDashboard = () => {
             await sendOtp(email, userId, first);
         }
         fetchStaffList();
+    };
+
+    const changeRole = async (id, newRole) => {
+        const VALID_ROLES = ['admin', 'nurse', 'caregiver'];
+        if (!VALID_ROLES.includes(newRole)) return;
+        const prev = staff.find(m => m._id === id);
+        // Optimistic update
+        setStaff(staff.map(m => m._id === id ? { ...m, role: newRole } : m));
+        const d = await fetchApi(`/admin/staff/${id}/role`, {
+            method: 'PUT', body: JSON.stringify({ role: newRole })
+        });
+        if (!d.success) {
+            // Revert on failure
+            setStaff(staff.map(m => m._id === id ? { ...m, role: prev?.role } : m));
+            showConfirm('Error', d.message || 'Failed to change role.', closeConfirm, true, 'OK');
+        }
     };
 
     const toggleStaffStatus = async (id, cur) => {
@@ -615,15 +638,41 @@ const AdminDashboard = () => {
         );
     };
 
-    const handleAddInventory = (item) => {
-        setInventory(prev => [...prev, {
-            _id: uuidv4(),
-            name: item.name,
-            category: item.category || 'General',
-            quantity: Number(item.quantity),
-            unit: item.unit || 'pcs',
-            minThreshold: Number(item.minThreshold) || 10,
-        }]);
+    const handleAddInventory = async (item) => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/inventory`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token && { Authorization: `Bearer ${token}` }),
+                },
+                body: JSON.stringify({
+                    name:          item.name,
+                    category:      item.category || 'General',
+                    quantity:      Number(item.quantity),
+                    unit:          item.unit || 'pcs',
+                    minThreshold:  Number(item.minThreshold) || 10,
+                    expirationDate: item.expirationDate || undefined,
+                    notes:         item.notes || '',
+                }),
+            });
+            const data = await res.json();
+            if (data.success && data.data) {
+                setInventory(prev => [data.data, ...prev]);
+            }
+        } catch (err) {
+            console.error('Add inventory error:', err);
+            // Optimistic fallback
+            setInventory(prev => [...prev, {
+                _id: Date.now().toString(),
+                name: item.name,
+                category: item.category || 'General',
+                quantity: Number(item.quantity),
+                unit: item.unit || 'pcs',
+                minThreshold: Number(item.minThreshold) || 10,
+            }]);
+        }
         setShowAddInventory(false);
     };
 
@@ -783,30 +832,12 @@ const AdminDashboard = () => {
                 <div className="card-white">
                     <div className="card-header">
                         <h5>
-                            Staff Management 
+                            Personnel Management 
                             {getSearchBadge(filteredStaff, staff, 'staff')}
                         </h5>
                         <button className="btn-primary-sm" onClick={() => setShowRegistrationModal(true)}>
-                            <FaUserPlus /> Add New Staff
+                            <FaUserPlus /> Add New Personnel
                         </button>
-                    </div>
-
-                    <div className="quick-code-section">
-                        <h6>
-                            Generate Registration Codes
-                            <span className="info-tooltip" title="Registration codes allow new staff to self-register their account. Each code is single-use and expires in 72 hours. Share the generated code with the new hire — they enter it on the Staff Registration page to create their account.">
-                                <FaInfoCircle style={{ marginLeft: 6, color: 'var(--d-muted)', fontSize: '.8rem', verticalAlign: 'middle' }} />
-                            </span>
-                        </h6>
-                        <p style={{ fontSize: '.8rem', color: 'var(--d-muted)', marginBottom: 10, marginTop: -6 }}>
-                            Generate a one-time code and share it with new staff so they can register their own account.
-                        </p>
-                        <div className="code-buttons">
-                            <button className="btn-outline-sm" onClick={() => generateRegistrationCode('staff')}><FaIdCard /> Staff Code</button>
-                            <button className="btn-outline-sm" onClick={() => generateRegistrationCode('nurse')}><FaUserMd /> Nurse Code</button>
-                            <button className="btn-outline-sm" onClick={() => generateRegistrationCode('caregiver')}><FaUserTag /> Caregiver Code</button>
-                            <button className="btn-outline-sm" onClick={() => generateRegistrationCode('admin')}><FaUserTag /> Admin Code</button>
-                        </div>
                     </div>
 
                     <table className="custom-table">
@@ -816,7 +847,7 @@ const AdminDashboard = () => {
                         <tbody>
                             {paged.length === 0 ? (
                                 <tr><td colSpan="5" className="text-center" style={{ padding: '2rem', color: 'var(--d-muted)' }}>
-                                    {searchQuery ? `No staff match "${searchQuery}"` : 'No staff found.'}
+                                    {searchQuery ? `No staff match "${searchQuery}"` : 'No personnel found.'}
                                 </td></tr>
                             ) : paged.map(m => (
                                 <tr key={m._id}>
@@ -825,7 +856,7 @@ const AdminDashboard = () => {
                                             <FaUserCircle size={30} color="var(--d-border)" />
                                             <div>
                                                 <strong>{m.firstName} {m.lastName}</strong><br />
-                                                <small className="text-muted">Staff ID: {m.staffId || m.employeeId || 'Auto-generated'}</small>
+                                                <small className="text-muted">ID: {m.staffId || m.employeeId || 'Auto-generated'}</small>
                                             </div>
                                         </div>
                                     </td>
@@ -833,7 +864,17 @@ const AdminDashboard = () => {
                                         <div><FaEnvelope size={11} style={{ marginRight: 5, color: 'var(--d-muted)' }} />{m.email}</div>
                                         {m.phone && <small className="text-muted"><FaPhone size={10} style={{ marginRight: 4 }} />{m.phone}</small>}
                                     </td>
-                                    <td><span className={`badge-custom ${m.role}`}>{m.role}</span></td>
+                                    <td>
+                                        <select
+                                            value={m.role}
+                                            onChange={e => changeRole(m._id, e.target.value)}
+                                            style={{ padding:'5px 10px', border:'1.5px solid var(--d-border)', borderRadius:8, fontFamily:'var(--d-font-body)', fontSize:'.82rem', background:'var(--d-cream)', color:'var(--d-ink)', cursor:'pointer', outline:'none' }}
+                                        >
+                                            <option value="nurse">Nurse</option>
+                                            <option value="caregiver">Caregiver</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </td>
                                     <td><span className={`status ${m.isActive ? 'active' : 'inactive'}`}>{m.isActive ? 'Active' : 'Inactive'}</span></td>
                                     <td className="actions">
                                         <span title="Mark Attendance" className="edit" onClick={() => handleMarkAttendance(m._id, `${m.firstName} ${m.lastName}`)}><FaClock /></span>
@@ -1150,75 +1191,14 @@ const AdminDashboard = () => {
         </div>
     );
 
-    const renderInventory = () => {
-        const paged = filteredInventory.slice((inventoryPage - 1) * itemsPerPage, inventoryPage * itemsPerPage);
-        return (
-            <div className="card-white">
-                <div className="card-header">
-                    <h5>
-                        Inventory &amp; Stock 
-                        {getSearchBadge(filteredInventory, inventory, 'items')}
-                    </h5>
-                    <button className="btn-primary-sm" onClick={() => setShowAddInventory(true)}>
-                        <FaBox /> Add Item
-                    </button>
-                </div>
-                <div className="stats-grid" style={{ marginBottom: 20 }}>
-                    <div className="stat-card" style={{ padding: 14 }}>
-                        <div className="stat-icon" style={{ background: '#dc3545' }}><FaExclamationTriangle /></div>
-                        <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{realLowStockCount}</h3><p>Low Stock</p></div>
-                    </div>
-                    <div className="stat-card" style={{ padding: 14 }}>
-                        <div className="stat-icon" style={{ background: '#17a2b8' }}><FaBox /></div>
-                        <div className="stat-info"><h3>{inventory.length}</h3><p>Total Items</p></div>
-                    </div>
-                    <div className="stat-card" style={{ padding: 14 }}>
-                        <div className="stat-icon" style={{ background: '#ffc107' }}><FaClock /></div>
-                        <div className="stat-info">
-                            <h3>{inventory.filter(i => {
-                                if (!i.expirationDate) return false;
-                                const days = (new Date(i.expirationDate) - Date.now()) / (1000 * 60 * 60 * 24);
-                                return days >= 0 && days <= 30;
-                            }).length}</h3>
-                            <p>Expiring Soon</p>
-                        </div>
-                    </div>
-                </div>
-                {filteredInventory.length === 0 ? (
-                    <div className="no-data" style={{ textAlign: 'center', padding: '2rem', color: 'var(--d-muted)' }}>
-                        {searchQuery ? `No items match "${searchQuery}". Try a different search term.` : 'No inventory yet. Click "Add Item" to begin.'}
-                    </div>
-                ) : (
-                    <>
-                        <table className="custom-table">
-                            <thead>
-                                <tr><th>Item</th><th>Category</th><th>Stock</th><th>Status</th></tr>
-                            </thead>
-                            <tbody>
-                                {paged.map(i => {
-                                    const threshold = i.minThreshold || 10;
-                                    const isLow = i.quantity <= threshold;
-                                    return (
-                                        <tr key={i._id}>
-                                            <td><strong>{i.name}</strong></td>
-                                            <td><span className="badge-custom staff">{i.category}</span></td>
-                                            <td>{i.quantity} {i.unit}</td>
-                                            <td>
-                                                <span className={`status ${isLow ? 'inactive' : 'active'}`}>
-                                                    {i.quantity === 0 ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                        {renderPagination(filteredInventory.length, inventoryPage, setInventoryPage)}
-                    </>
-                )}
-            </div>
-        );
-    };
+    const renderInventory = () => (
+        <InventoryTab
+            inventory={filteredInventory}
+            setInventory={setInventory}
+            stats={stats}
+            setShowAddInventory={setShowAddInventory}
+        />
+    );
 
     const renderCompliance = () => {
         const weeklyData = [
@@ -1290,39 +1270,15 @@ const AdminDashboard = () => {
         );
     };
 
-    const renderReports = () => {
-        return (
-            <div className="card-white">
-                <div className="card-header">
-                    <h5>Reports &amp; Analytics</h5>
-                    <button className="btn-primary-sm" onClick={() => handleExportPDF('bookings')}>
-                        <FaDownload /> Export PDF
-                    </button>
-                </div>
-                <div className="reports-grid">
-                    {[
-                        { title: 'Financial Summary', val: `₱${(stats.totalDonationAmount || 0).toLocaleString()}`, valColor: '#28a745', desc: 'Total donations collected this period.', type: 'Financial Overview' },
-                        { title: 'Staff Performance', val: stats.staffOnDuty, desc: 'Active staff members currently on duty.', type: 'Staff Performance' },
-                        { title: 'Resident Health', val: '0', desc: 'Incident reports filed this month.', type: 'Resident Health' },
-                        { title: 'Booking Summary', val: bookings.length, desc: 'Total booking requests received.', type: 'Booking Summary' },
-                        { title: 'Inventory Status', val: realLowStockCount, valColor: realLowStockCount > 0 ? '#dc3545' : '#28a745', desc: 'Items currently low in stock.', type: 'Inventory Status' },
-                        { title: 'Donation Records', val: donations.length, desc: 'Total donation entries recorded.', type: 'Donation Report' },
-                        { title: 'Pending Approvals', val: bookings.filter(b => b.status === 'pending').length, desc: 'Bookings awaiting approval.', type: 'Pending Approvals' },
-                        { title: 'Active Staff', val: staff.filter(s => s.isActive).length, desc: 'Currently active staff members.', type: 'Active Staff' },
-                    ].map((r, i) => (
-                        <div key={i} className="report-card">
-                            <h6>{r.title}</h6>
-                            <h3 style={r.valColor ? { color: r.valColor } : {}}>{r.val}</h3>
-                            <p>{r.desc}</p>
-                            <button className="btn-outline-sm" onClick={() => handleGenerateReport(r.type)} style={{ width: '100%' }}>
-                                Generate Report
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    };
+    const renderReports = () => (
+        <ReportsTab
+            stats={stats}
+            bookings={bookings}
+            donations={donations}
+            staff={staff}
+            inventory={inventory}
+        />
+    );
 
     const renderContent = () => {
         if (loading) return (

@@ -310,16 +310,7 @@
     background: var(--d-orange-lt);
 }
 
-/* ══════════════════════════════════════
-   btn-success-sm admin override
-══════════════════════════════════════ */
-.btn-success-sm {
-    background: #1E7D56;
-}
-
-.btn-success-sm:hover {
-    background: #155e41;
-}
+/* btn-success-sm — defined in Dashboard.css */
 
 /* ══════════════════════════════════════
    RESPONSIVE

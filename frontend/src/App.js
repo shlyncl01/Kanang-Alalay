@@ -14,7 +14,6 @@ import ResetPassword from './pages/ResetPassword';
 // Dashboards
 import AdminDashboard from './pages/AdminDashboard';
 import NurseDashboard from './pages/NurseDashboard';
-import StaffDashboard from './pages/StaffDashboard';
 
 // User Pages
 import ViewProfile from './pages/ViewProfile';
@@ -58,43 +57,10 @@ function App() {
             }
           />
 
-          {/* Staff */}
-          <Route
-            path="/staff"
-            element={
-              <ProtectedRoute allowedRoles={['staff']}>
-                <StaffDashboard />
-              </ProtectedRoute>
-            }
-          />
-
           {/* Shared Protected Pages */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver', 'staff']}>
-                <ViewProfile />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver', 'staff']}>
-                <AccountSettings />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/help"
-            element={
-              <ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver', 'staff']}>
-                <HelpCenter />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/profile"  element={<ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver']}><ViewProfile /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver']}><AccountSettings /></ProtectedRoute>} />
+          <Route path="/help"     element={<ProtectedRoute allowedRoles={['admin', 'nurse', 'caregiver']}><HelpCenter /></ProtectedRoute>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
