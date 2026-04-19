@@ -18,6 +18,7 @@ import InventoryTab from '../components/admin/InventoryTab';
 import StaffRosterTab from '../components/admin/StaffRosterTab';
 import ReportsTab from '../components/admin/ReportsTab';
 import '../styles/Dashboard.css';
+import { useSocket } from '../hooks/useSocket';
 import '../styles/AdminDashboard.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -290,6 +291,31 @@ const AdminDashboard = () => {
     });
 
     const [editStatusModal, setEditStatusModal] = useState({ isOpen: false, booking: null, newStatus: '' });
+    const [stockRequests, setStockRequests] = useState([]);
+
+    // ── Real-time socket listeners ─────────────────────────────────────────
+    const { on, off } = useSocket();
+
+    useEffect(() => {
+        const handleNewBooking = (booking) => {
+            setBookings(prev => [booking, ...prev]);
+            setStats(p => ({ ...p, pendingBookings: p.pendingBookings + 1 }));
+        };
+        const handleStockRequest = (req) => {
+            setStockRequests(prev => [req, ...prev]);
+        };
+        const handleInventoryUpdate = () => { fetchApi('/admin/inventory?limit=500').then(d => { if(d.success) setInventory(d.data||[]); }); };
+
+        on('new_booking',    handleNewBooking);
+        on('stock_request',  handleStockRequest);
+        on('inventory_update', handleInventoryUpdate);
+
+        return () => {
+            off('new_booking',    handleNewBooking);
+            off('stock_request',  handleStockRequest);
+            off('inventory_update', handleInventoryUpdate);
+        };
+    }, [on, off]);
 
     // ── Close dropdowns when clicking outside ─────────────────────────────
     useEffect(() => {
@@ -549,21 +575,8 @@ const AdminDashboard = () => {
         fetchStaffList();
     };
 
-    const changeRole = async (id, newRole) => {
-        const VALID_ROLES = ['admin', 'nurse', 'caregiver'];
-        if (!VALID_ROLES.includes(newRole)) return;
-        const prev = staff.find(m => m._id === id);
-        // Optimistic update
-        setStaff(staff.map(m => m._id === id ? { ...m, role: newRole } : m));
-        const d = await fetchApi(`/admin/staff/${id}/role`, {
-            method: 'PUT', body: JSON.stringify({ role: newRole })
-        });
-        if (!d.success) {
-            // Revert on failure
-            setStaff(staff.map(m => m._id === id ? { ...m, role: prev?.role } : m));
-            showConfirm('Error', d.message || 'Failed to change role.', closeConfirm, true, 'OK');
-        }
-    };
+    // NOTE: changeRole function is removed - role is now permanent/read-only
+    // Staff roles are set during registration and cannot be changed by admin
 
     const toggleStaffStatus = async (id, cur) => {
         const next = cur === 'active' ? 'inactive' : 'active';
@@ -720,7 +733,20 @@ const AdminDashboard = () => {
     };
 
     const handleMarkAttendance = (id, name) =>
-        showConfirm('Mark Attendance', `Log attendance for ${name} at ${new Date().toLocaleTimeString()}?`, closeConfirm, false, 'Log');
+        showConfirm(
+            'Mark Attendance',
+            `Log attendance for ${name} at ${new Date().toLocaleTimeString()}?`,
+            async () => {
+                closeConfirm();
+                // Log attendance via API
+                await fetchApi(`/admin/staff/${id}/attendance`, {
+                    method: 'POST',
+                    body: JSON.stringify({ loggedAt: new Date().toISOString() })
+                });
+            },
+            false,
+            'Log Attendance'
+        );
 
     // Search badge helper - shows search results count
     const getSearchBadge = (filteredArray, totalArray, label) => {
@@ -733,6 +759,20 @@ const AdminDashboard = () => {
             );
         }
         return null;
+    };
+
+    // Helper to get role badge color
+    const getRoleBadgeStyle = (role) => {
+        switch (role) {
+            case 'admin':
+                return { background: '#dc3545', color: 'white' };
+            case 'nurse':
+                return { background: '#28a745', color: 'white' };
+            case 'caregiver':
+                return { background: '#17a2b8', color: 'white' };
+            default:
+                return { background: '#6c757d', color: 'white' };
+        }
     };
 
     // ==================== SECTION RENDERERS ====================
@@ -847,7 +887,7 @@ const AdminDashboard = () => {
                         <tbody>
                             {paged.length === 0 ? (
                                 <tr><td colSpan="5" className="text-center" style={{ padding: '2rem', color: 'var(--d-muted)' }}>
-                                    {searchQuery ? `No staff match "${searchQuery}"` : 'No personnel found.'}
+                                    {searchQuery ? `No personnel match "${searchQuery}"` : 'No personnel found.'}
                                 </td></tr>
                             ) : paged.map(m => (
                                 <tr key={m._id}>
@@ -865,15 +905,21 @@ const AdminDashboard = () => {
                                         {m.phone && <small className="text-muted"><FaPhone size={10} style={{ marginRight: 4 }} />{m.phone}</small>}
                                     </td>
                                     <td>
-                                        <select
-                                            value={m.role}
-                                            onChange={e => changeRole(m._id, e.target.value)}
-                                            style={{ padding:'5px 10px', border:'1.5px solid var(--d-border)', borderRadius:8, fontFamily:'var(--d-font-body)', fontSize:'.82rem', background:'var(--d-cream)', color:'var(--d-ink)', cursor:'pointer', outline:'none' }}
+                                        {/* Role is now permanent/read-only - no dropdown */}
+                                        <span 
+                                            className="role-badge"
+                                            style={{
+                                                display: 'inline-block',
+                                                padding: '6px 14px',
+                                                borderRadius: 20,
+                                                fontSize: '.8rem',
+                                                fontWeight: 600,
+                                                textTransform: 'capitalize',
+                                                ...getRoleBadgeStyle(m.role)
+                                            }}
                                         >
-                                            <option value="nurse">Nurse</option>
-                                            <option value="caregiver">Caregiver</option>
-                                            <option value="admin">Admin</option>
-                                        </select>
+                                            {m.role}
+                                        </span>
                                     </td>
                                     <td><span className={`status ${m.isActive ? 'active' : 'inactive'}`}>{m.isActive ? 'Active' : 'Inactive'}</span></td>
                                     <td className="actions">
@@ -1548,6 +1594,11 @@ const AdminDashboard = () => {
                             <button
                                 className="btn-primary-sm"
                                 onClick={() => {
+                                    if (!editStatusModal.newStatus) return;
+                                    if (editStatusModal.newStatus === editStatusModal.booking?.status) {
+                                        setEditStatusModal({ isOpen: false, booking: null, newStatus: '' });
+                                        return;
+                                    }
                                     updateBookingStatus(editStatusModal.booking._id, editStatusModal.newStatus);
                                     setEditStatusModal({ isOpen: false, booking: null, newStatus: '' });
                                 }}

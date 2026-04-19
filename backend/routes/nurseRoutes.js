@@ -4,7 +4,9 @@ const Resident  = require('../models/Resident');
 const Medication = require('../models/Medication');
 const MedicationLog = require('../models/MedicationLog');
 const Inventory = require('../models/Inventory');
-const { protect } = require('../middleware/authMiddleware');
+const VitalsLog    = require('../models/VitalsLog');
+const StockRequest = require('../models/StockRequest');
+const { protect }  = require('../middleware/authMiddleware');
 
 router.use(protect);
 
@@ -153,16 +155,57 @@ router.put('/residents/:id', async (req, res) => {
 router.post('/residents/:id/vitals', async (req, res) => {
     try {
         const { bloodPressure, heartRate, temperature, oxygenSat, weight, notes } = req.body;
+
+        // Ensure resident exists
+        const resident = await Resident.findById(req.params.id);
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
+
+        const vitals = new VitalsLog({
+            residentId:    req.params.id,
+            loggedBy:      req.user._id,
+            bloodPressure: bloodPressure || '',
+            heartRate:     heartRate     ? +heartRate     : null,
+            temperature:   temperature   ? +temperature   : null,
+            oxygenSat:     oxygenSat     ? +oxygenSat     : null,
+            weight:        weight        ? +weight        : null,
+            notes:         notes         || '',
+        });
+        await vitals.save();
+
+        // Update resident alertLevel if any vitals are critical
+        let alertLevel = resident.alertLevel || 'stable';
+        if ((+temperature > 38.5) || (+heartRate > 100) || (+oxygenSat < 94)) {
+            alertLevel = 'alert';
+        }
+        if ((+temperature > 39.5) || (+heartRate > 130) || (+oxygenSat < 88)) {
+            alertLevel = 'critical';
+        }
+        if (alertLevel !== resident.alertLevel) {
+            await Resident.findByIdAndUpdate(req.params.id, { alertLevel });
+        }
+
+        // Emit real-time update
+        const io = req.app.get('io');
+        if (io) io.emit('vitals_logged', { residentId: req.params.id, alertLevel });
+
         res.json({
             success: true,
-            message: 'Vital signs logged successfully.',
-            data: {
-                residentId: req.params.id,
-                loggedBy: req.user._id,
-                loggedAt: new Date(),
-                bloodPressure, heartRate, temperature, oxygenSat, weight, notes
-            },
+            message: `Vital signs logged for ${resident.firstName} ${resident.lastName}.`,
+            data: vitals,
         });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/nurse/residents/:id/vitals  — recent vitals history
+router.get('/residents/:id/vitals', async (req, res) => {
+    try {
+        const vitals = await VitalsLog.find({ residentId: req.params.id })
+            .populate('loggedBy', 'firstName lastName role')
+            .sort({ createdAt: -1 })
+            .limit(20);
+        res.json({ success: true, data: vitals });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -406,9 +449,26 @@ router.post('/inventory/request', async (req, res) => {
         const { itemId, itemName, quantity, reason } = req.body;
         if (!itemName || !quantity)
             return res.status(400).json({ success: false, message: 'itemName and quantity are required.' });
+
+        const request = new StockRequest({
+            itemId:      itemId || '',
+            itemName:    itemName.trim(),
+            quantity:    +quantity,
+            reason:      reason || '',
+            requestedBy: req.user._id,
+        });
+        await request.save();
+
+        // Real-time notify admin
         const io = req.app.get('io');
-        if (io) io.emit('stock_request', { itemId, itemName, quantity, reason, requestedBy: req.user._id, requestedAt: new Date() });
-        res.json({ success: true, message: `Stock request for ${quantity} units of "${itemName}" submitted successfully.` });
+        if (io) io.emit('stock_request', {
+            _id: request._id,
+            itemName, quantity, reason,
+            requestedBy: `${req.user.firstName} ${req.user.lastName}`,
+            requestedAt: new Date()
+        });
+
+        res.json({ success: true, message: `Stock request for ${quantity} units of "${itemName}" submitted. Admin has been notified.`, data: request });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

@@ -15,16 +15,22 @@ router.get('/profile', protect, async (req, res) => {
         res.json({
             success: true,
             user: {
-                id:        req.user._id,
-                staffId:   req.user.staffId,
-                username:  req.user.username,
-                email:     req.user.email,
-                firstName: req.user.firstName,
-                lastName:  req.user.lastName,
-                phone:     req.user.phone,
-                role:      req.user.role,
-                isActive:  req.user.isActive,
-                createdAt: req.user.createdAt
+                id:         req.user._id,
+                staffId:    req.user.staffId,
+                username:   req.user.username,
+                email:      req.user.email,
+                firstName:  req.user.firstName,
+                lastName:   req.user.lastName,
+                middleName: req.user.middleName,
+                phone:      req.user.phone,
+                role:       req.user.role,
+                ward:       req.user.ward,
+                department: req.user.department,
+                shift:      req.user.shift,
+                isActive:   req.user.isActive,
+                isVerified: req.user.isVerified,
+                createdAt:  req.user.createdAt,
+                hireDate:   req.user.hireDate,
             }
         });
     } catch (error) {
@@ -77,13 +83,18 @@ router.post('/login', async (req, res) => {
             message: 'Login successful',
             token,
             user: {
-                id:        user._id,
-                staffId:   user.staffId,
-                username:  user.username,
-                email:     user.email,
-                role:      user.role,
-                firstName: user.firstName,
-                lastName:  user.lastName
+                id:         user._id,
+                staffId:    user.staffId,
+                username:   user.username,
+                email:      user.email,
+                role:       user.role,
+                firstName:  user.firstName,
+                lastName:   user.lastName,
+                middleName: user.middleName,
+                phone:      user.phone,
+                ward:       user.ward,
+                department: user.department,
+                shift:      user.shift,
             }
         });
     } catch (error) {
@@ -492,16 +503,20 @@ router.get('/validate-token', protect, async (req, res) => {
     res.json({
         success: true,
         user: {
-            id:        req.user._id,
-            staffId:   req.user.staffId,
-            username:  req.user.username,
-            email:     req.user.email,
-            firstName: req.user.firstName,
-            lastName:  req.user.lastName,
-            role:      req.user.role,
-            ward:      req.user.ward,
-            shift:     req.user.shift,
-            isActive:  req.user.isActive,
+            id:         req.user._id,
+            staffId:    req.user.staffId,
+            username:   req.user.username,
+            email:      req.user.email,
+            firstName:  req.user.firstName,
+            lastName:   req.user.lastName,
+            middleName: req.user.middleName,
+            phone:      req.user.phone,
+            role:       req.user.role,
+            ward:       req.user.ward,
+            department: req.user.department,
+            shift:      req.user.shift,
+            isActive:   req.user.isActive,
+            createdAt:  req.user.createdAt,
         }
     });
 });

@@ -19,7 +19,9 @@ const alertRoutes    = require('./routes/alertRoutes');
 const bookingRoutes  = require('./routes/bookingRoutes');
 const donationRoutes = require('./routes/donationRoutes');
 const paymentRoutes  = require('./routes/PaymentRoutes');
-const nurseRoutes    = require('./routes/nurseRoutes');
+const nurseRoutes       = require('./routes/nurseRoutes');
+const residentRoutes    = require('./routes/residentRoutes');
+const medicationRoutes  = require('./routes/medicationRoutes');
 
 const app = express();
 
@@ -125,6 +127,8 @@ app.use('/api/bookings',  bookingRoutes);
 app.use('/api/donations', donationRoutes);
 app.use('/api/payments',  paymentRoutes);
 app.use('/api/nurse',     nurseRoutes);
+app.use('/api/residents', residentRoutes);
+app.use('/api/medications', medicationRoutes);
 
 // ==================== STATS (FIXED: lowStockItems from real DB) ==============
 app.get('/api/stats', async (req, res) => {

@@ -5,6 +5,8 @@ const Booking = require('../models/Booking');
 const Donation = require('../models/Donation');
 const Inventory = require('../models/Inventory');
 const RegistrationCode = require('../models/VerificationCode');
+const StockRequest = require('../models/StockRequest');
+const VitalsLog    = require('../models/VitalsLog');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 
@@ -343,6 +345,59 @@ router.delete('/inventory/:id', async (req, res) => {
         res.json({ success: true, message: 'Item deleted' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error deleting inventory' });
+    }
+});
+
+
+// ==================== ATTENDANCE ====================
+router.post('/staff/:id/attendance', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('-password');
+        if (!user) return res.status(404).json({ success: false, message: 'Staff not found.' });
+        // Log attendance as an activity
+        const ActivityLog = require('../models/ActivityLog');
+        await ActivityLog.create({
+            action:  'ATTENDANCE',
+            details: `Attendance logged for ${user.firstName} ${user.lastName} at ${new Date().toLocaleTimeString()}`,
+            user:    req.user._id,
+            targetId: user._id,
+        });
+        res.json({ success: true, message: `Attendance logged for ${user.firstName} ${user.lastName}.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==================== STOCK REQUESTS ====================
+router.get('/stock-requests', async (req, res) => {
+    try {
+        const requests = await StockRequest.find()
+            .populate('requestedBy', 'firstName lastName role ward')
+            .populate('resolvedBy',  'firstName lastName')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: requests, count: requests.length });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+router.put('/stock-requests/:id', async (req, res) => {
+    try {
+        const { status, adminNote } = req.body;
+        const req_ = await StockRequest.findByIdAndUpdate(
+            req.params.id,
+            { status, adminNote: adminNote || '', resolvedBy: req.user._id, resolvedAt: new Date() },
+            { new: true }
+        ).populate('requestedBy', 'firstName lastName');
+        if (!req_) return res.status(404).json({ success: false, message: 'Request not found.' });
+
+        // Notify nurse via socket
+        const io = req.app.get('io');
+        if (io) io.emit('stock_request_updated', { requestId: req_._id, status, itemName: req_.itemName });
+
+        res.json({ success: true, data: req_, message: `Stock request ${status}.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
