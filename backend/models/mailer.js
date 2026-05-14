@@ -209,7 +209,6 @@ const generateBookingRejectionTemplate = (booking, reason = '') => `
     </div>
 </div>`;
 
-
 module.exports = { 
     sendEmail, 
     generateOtpTemplate, 
