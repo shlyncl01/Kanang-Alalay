@@ -69,48 +69,56 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(async () => {
     console.log('MongoDB Atlas connected successfully!');
     try {
-        // Seed default users
-        const defaultUsers = [
-            {
-                staffId: 'LSAE-ADMIN-0001',
-                username: 'admin',
-                email: 'admin@kanangalalay.org',
-                password: await bcrypt.hash('admin123', 10),
-                firstName: 'Master',
-                lastName: 'Admin',
-                role: 'admin',
-                isActive: true,
-                isVerified: true,
-                shift: 'morning',
-                department: 'Head Office'
-            },
-            {
-                staffId: 'LSAE-HC-0001',
-                username: 'headcaregiver',
-                email: 'headcaregiver@kanangalalay.org',
-                password: await bcrypt.hash('headcaregiver123', 10),
-                firstName: 'Head',
-                lastName: 'Caregiver',
-                role: 'head_caregiver',
-                isActive: true,
-                isVerified: true,
-                shift: 'morning',
-                department: 'Care Management'
-            },
-            {
-                staffId: 'LSAE-CG-0001',
-                username: 'caregiver',
-                email: 'caregiver@kanangalalay.org',
-                password: await bcrypt.hash('caregiver123', 10),
-                firstName: 'Default',
-                lastName: 'Caregiver',
-                role: 'caregiver',
-                isActive: true,
-                isVerified: true,
-                shift: 'morning',
-                department: 'Ward A'
-            }
-        ];
+    const defaultUsers = [
+        {
+            staffId: 'LSAE-ADMIN-0001',
+            username: 'admin',
+            email: 'admin@kanangalalay.org',
+            password: await bcrypt.hash('admin123', 10),
+            firstName: 'Sandra',
+            lastName: 'Da Silva',
+            role: 'admin',
+            isActive: true,
+            isVerified: true,
+            isFirstLogin: false,       
+            needsProfileUpdate: false,   
+            status: 'active',            
+            shift: 'morning',
+            department: 'Head Office'
+        },
+        {
+            staffId: 'LSAE-HC-0001',
+            username: 'headcaregiver',
+            email: 'headcaregiver@kanangalalay.org',
+            password: await bcrypt.hash('headcaregiver123', 10),
+            firstName: 'Head',
+            lastName: 'Caregiver',
+            role: 'head_caregiver',
+            isActive: true,
+            isVerified: true,
+            isFirstLogin: false,        
+            needsProfileUpdate: false,   
+            status: 'active',            
+            shift: 'morning',
+            department: 'Care Management'
+        },
+        {
+            staffId: 'LSAE-CG-0001',
+            username: 'caregiver',
+            email: 'caregiver@kanangalalay.org',
+            password: await bcrypt.hash('caregiver123', 10),
+            firstName: 'Default',
+            lastName: 'Caregiver',
+            role: 'caregiver',
+            isActive: true,
+            isVerified: true,
+            isFirstLogin: false,        // ← ADD THIS
+            needsProfileUpdate: false,   // ← ADD THIS
+            status: 'active',            // ← ADD THIS
+            shift: 'morning',
+            department: 'Ward A'
+        }
+    ];
 
         for (const userData of defaultUsers) {
             const existing = await User.findOne({ $or: [{ username: userData.username }, { email: userData.email }] });
@@ -121,10 +129,13 @@ mongoose.connect(process.env.MONGODB_URI, {
                 existing.role = existing.role || userData.role;
                 existing.isActive = true;
                 existing.isVerified = true;
+                existing.isFirstLogin = false;      // ← ADD THIS
+                existing.needsProfileUpdate = false; // ← ADD THIS
+                existing.status = 'active';          // ← ADD THIS
                 existing.shift = existing.shift || userData.shift;
                 existing.department = existing.department || userData.department;
                 if (userData.password) {
-                    existing.password = userData.password; // Already hashed
+                    existing.password = userData.password;
                 }
                 await existing.save();
                 continue;
