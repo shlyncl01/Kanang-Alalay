@@ -69,56 +69,56 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(async () => {
     console.log('MongoDB Atlas connected successfully!');
     try {
-    const defaultUsers = [
-        {
-            staffId: 'LSAE-ADMIN-0001',
-            username: 'admin',
-            email: 'admin@kanangalalay.org',
-            password: await bcrypt.hash('admin123', 10),
-            firstName: 'Sandra',
-            lastName: 'Da Silva',
-            role: 'admin',
-            isActive: true,
-            isVerified: true,
-            isFirstLogin: false,       
-            needsProfileUpdate: false,   
-            status: 'active',            
-            shift: 'morning',
-            department: 'Head Office'
-        },
-        {
-            staffId: 'LSAE-HC-0001',
-            username: 'headcaregiver',
-            email: 'headcaregiver@kanangalalay.org',
-            password: await bcrypt.hash('headcaregiver123', 10),
-            firstName: 'Head',
-            lastName: 'Caregiver',
-            role: 'head_caregiver',
-            isActive: true,
-            isVerified: true,
-            isFirstLogin: false,        
-            needsProfileUpdate: false,   
-            status: 'active',            
-            shift: 'morning',
-            department: 'Care Management'
-        },
-        {
-            staffId: 'LSAE-CG-0001',
-            username: 'caregiver',
-            email: 'caregiver@kanangalalay.org',
-            password: await bcrypt.hash('caregiver123', 10),
-            firstName: 'Default',
-            lastName: 'Caregiver',
-            role: 'caregiver',
-            isActive: true,
-            isVerified: true,
-            isFirstLogin: false,        // ← ADD THIS
-            needsProfileUpdate: false,   // ← ADD THIS
-            status: 'active',            // ← ADD THIS
-            shift: 'morning',
-            department: 'Ward A'
-        }
-    ];
+        const defaultUsers = [
+            {
+                staffId: 'LSAE-ADMIN-0001',
+                username: 'admin',
+                email: 'admin@kanangalalay.org',
+                password: await bcrypt.hash('admin123', 10),
+                firstName: 'Sandra',
+                lastName: 'Da Silva',
+                role: 'admin',
+                isActive: true,
+                isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
+                shift: 'morning',
+                department: 'Head Office'
+            },
+            {
+                staffId: 'LSAE-HC-0001',
+                username: 'headcaregiver',
+                email: 'headcaregiver@kanangalalay.org',
+                password: await bcrypt.hash('headcaregiver123', 10),
+                firstName: 'Head',
+                lastName: 'Caregiver',
+                role: 'head_caregiver',
+                isActive: true,
+                isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
+                shift: 'morning',
+                department: 'Care Management'
+            },
+            {
+                staffId: 'LSAE-CG-0001',
+                username: 'caregiver',
+                email: 'caregiver@kanangalalay.org',
+                password: await bcrypt.hash('caregiver123', 10),
+                firstName: 'Default',
+                lastName: 'Caregiver',
+                role: 'caregiver',
+                isActive: true,
+                isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
+                shift: 'morning',
+                department: 'Ward A'
+            }
+        ];
 
         for (const userData of defaultUsers) {
             const existing = await User.findOne({ $or: [{ username: userData.username }, { email: userData.email }] });
@@ -129,9 +129,9 @@ mongoose.connect(process.env.MONGODB_URI, {
                 existing.role = existing.role || userData.role;
                 existing.isActive = true;
                 existing.isVerified = true;
-                existing.isFirstLogin = false;      // ← ADD THIS
-                existing.needsProfileUpdate = false; // ← ADD THIS
-                existing.status = 'active';          // ← ADD THIS
+                existing.isFirstLogin = false;
+                existing.needsProfileUpdate = false;
+                existing.status = 'active';
                 existing.shift = existing.shift || userData.shift;
                 existing.department = existing.department || userData.department;
                 if (userData.password) {
@@ -217,7 +217,9 @@ app.get('/', (req, res) => {
             inventory: '/api/inventory',
             headCaregiver: '/api/head-caregiver',
             residents: '/api/residents',
-            medications: '/api/medications'
+            medications: '/api/medications',
+            debug: '/api/debug-admin',
+            fix: '/api/fix-admin'
         }
     });
 });
@@ -229,6 +231,123 @@ app.get('/api/health', (req, res) => {
         uptime: process.uptime()
     });
 });
+
+// ============================================
+// DEBUG AND FIX ENDPOINTS FOR ADMIN LOGIN
+// ============================================
+
+// DEBUG: Check admin account status
+app.get('/api/debug-admin', async (req, res) => {
+    try {
+        const admin = await User.findOne({ username: 'admin' }).select('+password');
+        
+        if (!admin) {
+            return res.json({ 
+                success: false, 
+                message: 'Admin user not found in database',
+                suggestion: 'The seed function may not have run. Restart your server or check MongoDB connection.'
+            });
+        }
+        
+        // Test password match
+        const testPassword = 'admin123';
+        const passwordMatch = await admin.comparePassword(testPassword);
+        
+        res.json({
+            success: true,
+            admin: {
+                username: admin.username,
+                email: admin.email,
+                role: admin.role,
+                isFirstLogin: admin.isFirstLogin,
+                needsProfileUpdate: admin.needsProfileUpdate,
+                status: admin.status,
+                isActive: admin.isActive,
+                isVerified: admin.isVerified,
+                hasPassword: !!admin.password,
+                passwordHashPreview: admin.password ? admin.password.substring(0, 20) + '...' : null
+            },
+            passwordTest: {
+                testPassword: 'admin123',
+                matches: passwordMatch
+            },
+            advice: passwordMatch ? 
+                '✅ Password matches! Try logging in. If still failing, check your authRoutes.js login logic.' :
+                '❌ Password does NOT match! The hash in database is different. Run /api/fix-admin to reset.'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// FIX: Force reset admin password and flags
+app.post('/api/fix-admin', async (req, res) => {
+    try {
+        // Find or create admin
+        let admin = await User.findOne({ username: 'admin' });
+        
+        const newHashedPassword = await bcrypt.hash('admin123', 10);
+        
+        if (admin) {
+            // Update existing
+            admin.password = newHashedPassword;
+            admin.isFirstLogin = false;
+            admin.needsProfileUpdate = false;
+            admin.status = 'active';
+            admin.isActive = true;
+            admin.isVerified = true;
+            await admin.save();
+            
+            res.json({
+                success: true,
+                message: '✅ Admin account updated successfully!',
+                action: 'updated',
+                username: admin.username,
+                credentials: {
+                    username: 'admin',
+                    password: 'admin123'
+                }
+            });
+        } else {
+            // Create new
+            admin = new User({
+                staffId: 'LSAE-ADMIN-0001',
+                username: 'admin',
+                email: 'admin@kanangalalay.org',
+                password: newHashedPassword,
+                firstName: 'Sandra',
+                lastName: 'Da Silva',
+                role: 'admin',
+                isActive: true,
+                isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
+                shift: 'morning',
+                department: 'Head Office'
+            });
+            await admin.save();
+            
+            res.json({
+                success: true,
+                message: '✅ Admin account created successfully!',
+                action: 'created',
+                username: admin.username,
+                credentials: {
+                    username: 'admin',
+                    password: 'admin123'
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Fix admin error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============================================
+// END OF DEBUG ENDPOINTS
+// ============================================
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
