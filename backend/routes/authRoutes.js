@@ -143,6 +143,7 @@ router.post('/login', async (req, res) => {
 
         res.json({
             success: true,
+            token,
             message: 'Login successful',
             user: {
                 id: user._id,
@@ -221,6 +222,7 @@ router.post('/verify-first-login', async (req, res) => {
 
         res.json({
             success: true,
+            token,
             needsProfileUpdate: user.needsProfileUpdate,
             user: {
                 id: user._id,
