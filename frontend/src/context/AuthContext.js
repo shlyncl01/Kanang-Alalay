@@ -29,7 +29,8 @@ export const AuthProvider = ({ children }) => {
             if (token) {
                 try {
                     const response = await axios.get(`${API_BASE_URL}/auth/validate-token`, {
-                        headers: { Authorization: `Bearer ${token}` }
+                        headers: { Authorization: `Bearer ${token}` },
+                        withCredentials: true
                     });
                     if (response.data.success) {
                         setUser(response.data.user);
@@ -54,7 +55,7 @@ export const AuthProvider = ({ children }) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
+            const response = await axios.post(`${API_BASE_URL}/auth/login`, { username, password }, { withCredentials: true });
             const data = response.data;
 
             if (data.requiresOTP) {
@@ -135,7 +136,8 @@ export const AuthProvider = ({ children }) => {
         setLoading(true);
         try {
             const response = await axios.put(`${API_BASE_URL}/auth/update-profile`, userData, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
             });
             if (response.data.success) {
                 setUser(response.data.user);

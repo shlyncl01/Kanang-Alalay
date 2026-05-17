@@ -8,56 +8,69 @@ const inventorySchema = new mongoose.Schema(
       unique: true,
       trim: true
     },
-
     qrCode: {
       type: String,
       required: true,
       unique: true,
       trim: true
     },
-
     name: {
       type: String,
       required: true,
       trim: true,
     },
-
+    // Added specific medicine details
+    brand: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+    dosage: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+    batchNumber: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+    dateOfManufacture: {
+      type: Date,
+    },
+    dateOfPurchase: {
+      type: Date,
+    },
+    expirationDate: {
+      type: Date,
+      required: function() { return this.category === 'medication'; }
+    },
     category: {
       type: String,
       enum: ['medication', 'medical_supplies', 'food', 'hygiene', 'General'],
       default: 'General',
       trim: true,
     },
-
     quantity: {
       type: Number,
       required: true,
       default: 0,
       min: 0,
     },
-
     unit: {
       type: String,
       required: true,
       default: 'pcs',
       trim: true,
     },
-
     minThreshold: {
       type: Number,
       default: 10,
     },
-
-    expirationDate: {
-      type: Date,
-      required: false, // optional unless needed
-    },
-
     notes: {
       type: String,
       trim: true,
     },
-
     status: {
       type: String,
       enum: ['available', 'low_stock', 'out_of_stock', 'expired'],
@@ -67,7 +80,7 @@ const inventorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// OPTIONAL: Auto-update status before saving
+// Auto-update status hooks remain unchanged
 inventorySchema.pre('save', function () {
   if (!this.itemId) {
     this.itemId = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
