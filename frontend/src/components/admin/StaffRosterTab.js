@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
     FaUserCircle, FaUserMd, FaSync, FaClock,
     FaPhone, FaEnvelope, FaPrint, FaTimes,
-    FaSun, FaCloudSun, FaMoon, FaChevronLeft, FaChevronRight,
+    FaSun, FaCloudSun, FaMoon, FaChevronLeft, FaChevronRight
 } from 'react-icons/fa';
 
 const getAccountStatus = (m) => {
@@ -13,29 +13,21 @@ const getAccountStatus = (m) => {
 };
 
 const SHIFTS = [
-    { key: 'morning',   label: 'Morning',   time: '6:00 AM – 2:00 PM',  icon: <FaSun />,       bg: '#fff8e1', border: '#ffc107', text: '#7c5a00' },
-    { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun />,  bg: '#e8f5e9', border: '#28a745', text: '#155e27' },
-    { key: 'night',     label: 'Night',     time: '10:00 PM – 6:00 AM', icon: <FaMoon />,      bg: '#e8eaf6', border: '#5c6bc0', text: '#2c3494' },
+    { key: 'morning',   label: 'Morning',   time: '6:00 AM – 2:00 PM',  icon: <FaSun />,       bg: '#FFF8F3', border: '#E8D6CC', text: '#7A5C4E' },
+    { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun />,  bg: '#FFF8F3', border: '#E8D6CC', text: '#7A5C4E' },
+    { key: 'night',     label: 'Night',     time: '10:00 PM – 6:00 AM', icon: <FaMoon />,      bg: '#FFF8F3', border: '#E8D6CC', text: '#7A5C4E' },
 ];
 const getShift = (index) => SHIFTS[index % 3];
 
-const ROLE_COLORS = {
-    admin:     { bg: '#fdecea', color: '#b71c1c' },
-    nurse:     { bg: '#e3f2fd', color: '#0d47a1' },
-    caregiver: { bg: '#f3e5f5', color: '#6a1b9a' },
-    staff:     { bg: '#e0f2f1', color: '#00695c' },
-};
-const roleStyle = (role) => ROLE_COLORS[role?.toLowerCase()] || { bg: '#f5f5f5', color: '#555' };
-
 const PAGE_SIZE = 10;
 
-/* ── Shift Modal ── */
+/* ── Simple Shift Modal ── */
 const ShiftModal = ({ shift, members, onClose }) => {
     if (!shift) return null;
     return (
         <div
             style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+                position: 'fixed', inset: 0, background: 'rgba(26,10,0,.45)',
                 zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: 20, backdropFilter: 'blur(4px)'
             }}
@@ -45,87 +37,62 @@ const ShiftModal = ({ shift, members, onClose }) => {
                 style={{
                     background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560,
                     maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-                    boxShadow: '0 24px 64px rgba(0,0,0,.22)',
-                    border: `2px solid ${shift.border}`,
+                    boxShadow: '0 24px 64px rgba(0,0,0,.15)',
+                    border: '1px solid #E8D6CC',
                     overflow: 'hidden',
                 }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
                 <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '18px 22px', background: shift.bg,
-                    borderBottom: `1.5px solid ${shift.border}`,
+                    display: 'flex', alignItems: 'center', justifycontent: 'space-between',
+                    padding: '18px 22px', background: '#FFF8F3',
+                    borderBottom: '1px solid #E8D6CC',
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: '1.3rem', color: shift.text }}>{shift.icon}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                        <span style={{ fontSize: '1.2rem', color: '#1A0A00' }}>{shift.icon}</span>
                         <div>
-                            <div style={{ fontWeight: 700, fontSize: '1rem', color: shift.text }}>{shift.label} Shift</div>
-                            <div style={{ fontSize: '.75rem', color: shift.text, opacity: .75 }}>{shift.time}</div>
+                            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1A0A00' }}>{shift.label} Shift</div>
+                            <div style={{ fontSize: '.75rem', color: '#7A5C4E' }}>{shift.time}</div>
                         </div>
                         <span style={{
-                            marginLeft: 8, padding: '2px 10px', borderRadius: 99,
-                            background: shift.border, color: '#fff',
-                            fontSize: '.72rem', fontWeight: 700,
+                            marginLeft: 'auto', marginRight: 12, padding: '4px 12px', borderRadius: 20,
+                            background: '#FFF3E0', color: '#D97706',
+                            fontSize: '.75rem', fontWeight: 700,
                         }}>{members.length} staff</span>
                     </div>
                     <button onClick={onClose} style={{
                         background: 'none', border: 'none', cursor: 'pointer',
-                        color: shift.text, fontSize: '1rem', padding: 6, borderRadius: 8,
+                        color: '#7A5C4E', fontSize: '1.1rem', padding: 4, display: 'flex'
                     }}><FaTimes /></button>
                 </div>
 
-                {/* List */}
-                <div style={{ overflowY: 'auto', padding: '14px 22px', flex: 1 }}>
+                {/* List inside Modal */}
+                <div style={{ overflowY: 'auto', padding: '14px 22px', flex: 1, background: '#FFF8F3' }}>
                     {members.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--d-muted)' }}>
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#7A5C4E', fontStyle: 'italic' }}>
                             No staff assigned to this shift.
                         </div>
                     ) : (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.84rem' }}>
                             <thead>
-                                <tr style={{ borderBottom: `2px solid ${shift.border}` }}>
-                                    <th style={{ padding: '8px 10px', textAlign: 'left', color: shift.text, fontWeight: 700 }}>Name</th>
-                                    <th style={{ padding: '8px 10px', textAlign: 'left', color: shift.text, fontWeight: 700 }}>Role</th>
-                                    <th style={{ padding: '8px 10px', textAlign: 'left', color: shift.text, fontWeight: 700 }}>Contact</th>
+                                <tr style={{ borderBottom: '1px solid #E8D6CC' }}>
+                                    <th style={{ padding: '8px 10px', textAlign: 'left', color: '#A38070', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>Name</th>
+                                    <th style={{ padding: '8px 10px', textAlign: 'left', color: '#A38070', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>Role</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {members.map((m, i) => {
-                                    const rs = roleStyle(m.role);
-                                    return (
-                                        <tr key={m._id} style={{ borderBottom: '1px solid #f0e8e0', background: i % 2 === 0 ? '#fff' : shift.bg }}>
-                                            <td style={{ padding: '10px 10px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                    <FaUserCircle size={22} color={shift.border} />
-                                                    <div>
-                                                        <div style={{ fontWeight: 600, color: 'var(--d-ink)' }}>{m.firstName} {m.lastName}</div>
-                                                        <div style={{ fontSize: '.7rem', color: 'var(--d-muted)' }}>@{m.username || '—'}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '10px 10px' }}>
-                                                <span style={{
-                                                    padding: '2px 10px', borderRadius: 99,
-                                                    background: rs.bg, color: rs.color,
-                                                    fontSize: '.71rem', fontWeight: 700, textTransform: 'capitalize',
-                                                }}>{m.role || 'staff'}</span>
-                                            </td>
-                                            <td style={{ padding: '10px 10px' }}>
-                                                {m.phone && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.73rem', color: 'var(--d-muted)', marginBottom: 2 }}>
-                                                        <FaPhone style={{ fontSize: '.62rem' }} /> {m.phone}
-                                                    </div>
-                                                )}
-                                                {m.email && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.73rem', color: 'var(--d-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                                                        <FaEnvelope style={{ fontSize: '.62rem', flexShrink: 0 }} /> {m.email}
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                {members.map((m) => (
+                                    <tr key={m._id} style={{ borderBottom: '1px solid #E8D6CC' }}>
+                                        <td style={{ padding: '12px 10px' }}>
+                                            <div style={{ fontWeight: 600, color: '#1A0A00' }}>{m.firstName} {m.lastName}</div>
+                                            <div style={{ fontSize: '.72rem', color: '#7A5C4E' }}>@{m.username || '—'}</div>
+                                        </td>
+                                        <td style={{ padding: '12px 10px' }}>
+                                            <span style={{ fontSize: '0.84rem', color: '#1A0A00', textTransform: 'capitalize' }}>{m.role || 'staff'}</span>
+                                        </td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     )}
@@ -160,7 +127,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
         [activeStaff]
     );
 
-    // Pagination
+    // Pagination Calculation
     const totalPages = Math.max(1, Math.ceil(activeStaff.length / PAGE_SIZE));
     const paged = activeStaff.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -171,29 +138,27 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
             <head>
                 <title>Staff Roster Report</title>
                 <style>
-                    body { font-family: 'DM Sans', sans-serif; padding: 24px; color: #1A0A00; }
-                    h2 { color: #b85c2d; margin-bottom: 4px; }
+                    body { font-family: 'DM Sans', sans-serif; padding: 24px; color: #1A0A00; background: #FFF8F3; }
+                    h2 { color: #1A0A00; margin-bottom: 4px; font-weight: 700; }
                     p.sub { color: #7A5C4E; font-size: .85rem; margin-bottom: 20px; }
                     table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-                    th { background: #b85c2d; color: #fff; padding: 10px 12px; text-align: left; }
-                    td { padding: 9px 12px; border-bottom: 1px solid #E8D6CC; }
-                    tr:nth-child(even) td { background: #FFF8F3; }
+                    th { background: #FFF8F3; color: #A38070; padding: 10px 12px; text-align: left; text-transform: uppercase; border-bottom: 1px solid #E8D6CC; }
+                    td { padding: 12px 12px; border-bottom: 1px solid #E8D6CC; color: #1A0A00; }
                 </style>
             </head>
             <body>
                 <h2>Kanang-Alalay — Staff Roster</h2>
                 <p class="sub">Date: ${today} | Active staff: ${activeStaff.length}</p>
                 <table>
-                    <thead><tr><th>#</th><th>Name</th><th>Role</th><th>Email</th><th>Phone</th><th>Shift</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Email</th><th>Phone</th></tr></thead>
                     <tbody>
-                        ${activeStaff.map((m, i) => `
+                        ${activeStaff.map((m) => `
                             <tr>
-                                <td>${i + 1}</td>
                                 <td><strong>${m.firstName} ${m.lastName}</strong><br><small>@${m.username || '—'}</small></td>
-                                <td>${m.role || 'staff'}</td>
+                                <td style="text-transform: capitalize;">${m.role || 'staff'}</td>
+                                <td>${m.shift.label} Shift</td>
                                 <td>${m.email || '—'}</td>
                                 <td>${m.phone || '—'}</td>
-                                <td>${m.shift.label} (${m.shift.time})</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -209,22 +174,22 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
 
     return (
         <div>
-            {/* Shift summary cards */}
+            {/* Minimalist Shift Cards Layout */}
             <div className="stats-grid" style={{ marginBottom: 20 }}>
                 {shiftCounts.map(s => (
                     <div
                         key={s.key}
                         className="stat-card clickable"
-                        style={{ borderLeft: `4px solid ${s.border}`, cursor: 'pointer', userSelect: 'none' }}
+                        style={{ borderLeft: `none`, background: '#FFF8F3', border: '1px solid #E8D6CC', cursor: 'pointer', userSelect: 'none' }}
                         onClick={() => setActiveShiftModal(s)}
                         title={`View ${s.label} Shift staff`}
                     >
-                        <div className="stat-icon" style={{ background: s.border }}>{s.icon}</div>
+                        <div className="stat-icon" style={{ background: '#FFFFFF', border: '1px solid #E8D6CC', color: '#1A0A00' }}>{s.icon}</div>
                         <div className="stat-info">
-                            <h3 style={{ color: s.text }}>{s.count}</h3>
-                            <p style={{ fontSize: '.75rem' }}>{s.label} Shift</p>
+                            <h3 style={{ color: '#1A0A00', fontWeight: 700 }}>{s.count}</h3>
+                            <p style={{ fontSize: '.75rem', color: '#7A5C4E', textTransform: 'none', letterSpacing: 'normal' }}>{s.label} Shift</p>
                         </div>
-                        <div style={{ marginLeft: 'auto', fontSize: '.68rem', color: s.text, opacity: .6, paddingRight: 4, fontWeight: 600 }}>
+                        <div style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#A38070', fontWeight: 600 }}>
                             View ›
                         </div>
                     </div>
@@ -240,112 +205,85 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                 />
             )}
 
-            {/* Main Roster Table Card */}
-            <div className="card-white">
-                <div className="card-header">
-                    <h5 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <FaUserMd color="var(--d-orange)" />
+            {/* Simple Roster Table Card matching All Bookings */}
+            <div className="card-white" style={{ border: 'none', boxShadow: 'none', padding: 0 }}>
+                <div className="card-header" style={{ borderBottom: 'none', marginBottom: 10, paddingLeft: 0 }}>
+                    <h5 style={{ fontFamily: "var(--d-font-head)", fontSize: "1.35rem", fontWeight: 700, color: "var(--d-ink)" }}>
                         Staff Roster
-                        <small style={{ fontWeight: 400, color: 'var(--d-muted)', fontSize: '.78rem' }}>
+                        <small style={{ fontWeight: 400, color: '#7A5C4E', fontSize: '.84rem', marginLeft: 8 }}>
                             — {today}
                         </small>
                     </h5>
                     <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn-outline-sm" onClick={handlePrint}><FaPrint /> Print Roster</button>
-                        <button className="btn-outline-sm" onClick={onRefresh}><FaSync /> Refresh</button>
+                        <button className="btn-outline-sm" style={{ background: '#fff', border: '1px solid #E8D6CC', color: '#1A0A00' }} onClick={handlePrint}><FaPrint /> Print Roster</button>
+                        <button className="btn-outline-sm" style={{ background: '#fff', border: '1px solid #E8D6CC', color: '#1A0A00' }} onClick={onRefresh}><FaSync /> Refresh</button>
                     </div>
                 </div>
 
                 {activeStaff.length === 0 ? (
                     <div style={{ padding: '3rem', textAlign: 'center' }}>
-                        <FaUserMd style={{ fontSize: '2.5rem', color: 'var(--d-border)', display: 'block', margin: '0 auto 14px' }} />
-                        <p style={{ color: 'var(--d-muted)', margin: 0 }}>
-                            No active staff on duty. Activate staff members in <strong>User Management</strong>.
+                        <p style={{ color: 'var(--d-muted)', margin: 0, fontStyle: 'italic' }}>
+                            No active staff members found on duty.
                         </p>
                     </div>
                 ) : (
                     <>
-                        {/* Paginated Table View */}
                         <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "var(--d-font-body)" }}>
                                 <thead>
-                                    <tr style={{ background: 'var(--d-cream)', borderBottom: '2px solid var(--d-border)' }}>
-                                        <th style={th}>#</th>
-                                        <th style={th}>Name</th>
-                                        <th style={th}>Role</th>
-                                        <th style={th}>Shift</th>
-                                        <th style={th}>Phone</th>
-                                        <th style={th}>Email</th>
-                                        <th style={{ ...th, textAlign: 'center' }}>Status</th>
+                                    <tr style={{ background: '#FFF8F3', borderBottom: '1px solid #E8D6CC' }}>
+                                        <th style={{ ...thSimple, width: '5%' }}>#</th>
+                                        <th style={{ ...thSimple, width: '35%' }}>Personnel</th>
+                                        <th style={{ ...thSimple, width: '20%' }}>Role</th>
+                                        <th style={{ ...thSimple, width: '20%' }}>Assigned Shift</th>
+                                        <th style={{ ...thSimple, width: '20%' }}>Contact Info</th>
+                                        <th style={{ ...thSimple, width: '10%', textAlign: 'center' }}>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {paged.map((m, i) => {
-                                        const rs = roleStyle(m.role);
                                         const sc = m.shift;
                                         const rowNum = (page - 1) * PAGE_SIZE + i + 1;
                                         return (
-                                            <tr
-                                                key={m._id}
-                                                style={{
-                                                    borderBottom: '1px solid var(--d-border)',
-                                                    background: i % 2 === 0 ? '#fff' : 'var(--d-cream)',
-                                                    transition: 'background .15s',
-                                                }}
-                                            >
-                                                <td style={td}><span style={{ color: 'var(--d-muted)', fontSize: '.78rem' }}>{rowNum}</span></td>
-                                                <td style={td}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                                                        <FaUserCircle size={24} color={sc.border} style={{ flexShrink: 0 }} />
-                                                        <div>
-                                                            <div style={{ fontWeight: 600, color: 'var(--d-ink)', whiteSpace: 'nowrap' }}>
-                                                                {m.firstName} {m.lastName}
-                                                            </div>
-                                                            <div style={{ fontSize: '.7rem', color: 'var(--d-muted)' }}>@{m.username || '—'}</div>
+                                            <tr key={m._id} style={{ borderBottom: '1px solid #E8D6CC', background: '#FFF8F3' }}>
+                                                <td style={tdSimple}>
+                                                    <span style={{ color: '#7A5C4E', fontSize: '.84rem' }}>{rowNum}</span>
+                                                </td>
+                                                <td style={tdSimple}>
+                                                    <div style={{ fontWeight: 700, color: '#1A0A00', fontSize: '0.92rem', marginBottom: 2 }}>
+                                                        {m.firstName} {m.lastName}
+                                                    </div>
+                                                    <div style={{ fontSize: '.75rem', color: '#7A5C4E' }}>@{m.username || '—'}</div>
+                                                </td>
+                                                <td style={tdSimple}>
+                                                    <span style={{ fontSize: '0.88rem', color: '#1A0A00', textTransform: 'capitalize', fontWeight: 500 }}>
+                                                        {m.role || 'staff'}
+                                                    </span>
+                                                </td>
+                                                <td style={tdSimple}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1A0A00', fontSize: '0.88rem', fontWeight: 600 }}>
+                                                        {sc.icon} {sc.label}
+                                                    </div>
+                                                    <div style={{ fontSize: '.75rem', color: '#7A5C4E', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        <FaClock size={10} /> {sc.time}
+                                                    </div>
+                                                </td>
+                                                <td style={tdSimple}>
+                                                    {m.phone && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.82rem', color: '#1A0A00', marginBottom: 2 }}>
+                                                            <FaPhone size={10} style={{ color: '#7A5C4E' }} /> {m.phone}
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td style={td}>
-                                                    <span style={{
-                                                        padding: '3px 11px', borderRadius: 99,
-                                                        background: rs.bg, color: rs.color,
-                                                        fontSize: '.72rem', fontWeight: 700, textTransform: 'capitalize',
-                                                    }}>{m.role || 'staff'}</span>
-                                                </td>
-                                                <td style={td}>
-                                                    <div style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                                                        padding: '4px 11px', borderRadius: 20,
-                                                        background: sc.bg, border: `1.5px solid ${sc.border}`,
-                                                        fontSize: '.73rem', fontWeight: 600, color: sc.text,
-                                                        whiteSpace: 'nowrap',
-                                                    }}>
-                                                        <span style={{ fontSize: '.68rem' }}>{sc.icon}</span>
-                                                        {sc.label}
-                                                    </div>
-                                                    <div style={{ fontSize: '.69rem', color: 'var(--d-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                        <FaClock style={{ fontSize: '.6rem' }} /> {sc.time}
-                                                    </div>
-                                                </td>
-                                                <td style={td}>
-                                                    {m.phone ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.8rem', color: 'var(--d-ink)' }}>
-                                                            <FaPhone style={{ fontSize: '.65rem', color: 'var(--d-muted)' }} /> {m.phone}
+                                                    )}
+                                                    {m.email && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.82rem', color: '#1A0A00' }}>
+                                                            <FaEnvelope size={10} style={{ color: '#7A5C4E' }} /> {m.email}
                                                         </div>
-                                                    ) : <span style={{ color: 'var(--d-muted)' }}>—</span>}
+                                                    )}
                                                 </td>
-                                                <td style={{ ...td, maxWidth: 180 }}>
-                                                    {m.email ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.8rem', color: 'var(--d-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                            <FaEnvelope style={{ fontSize: '.65rem', color: 'var(--d-muted)', flexShrink: 0 }} /> {m.email}
-                                                        </div>
-                                                    ) : <span style={{ color: 'var(--d-muted)' }}>—</span>}
-                                                </td>
-                                                <td style={{ ...td, textAlign: 'center' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#28a745', boxShadow: '0 0 0 3px rgba(40,167,69,.2)' }} />
-                                                        <span style={{ fontSize: '.73rem', color: '#28a745', fontWeight: 600 }}>On Duty</span>
-                                                    </div>
+                                                <td style={{ ...tdSimple, textAlign: 'center' }}>
+                                                    <span style={{ background: '#E6F4EA', color: '#1E7D56', padding: '5px 14px', borderRadius: '14px', fontSize: '0.8rem', fontWeight: 700, display: 'inline-block' }}>
+                                                        on duty
+                                                    </span>
                                                 </td>
                                             </tr>
                                         );
@@ -354,42 +292,29 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                             </table>
                         </div>
 
-                        {/* Pagination Footer Element */}
+                        {/* Classic Paginator Layout */}
                         <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '14px 4px 4px', flexWrap: 'wrap', gap: 10,
+                            display: 'flex', alignItems: 'center', justifycontent: 'space-between',
+                            padding: '16px 4px', flexWrap: 'wrap', gap: 10,
                         }}>
-                            <span style={{ fontSize: '.8rem', color: 'var(--d-muted)' }}>
+                            <span style={{ fontSize: '.82rem', color: '#7A5C4E', background: '#FFF8F3', padding: '6px 14px', borderRadius: 20, border: '1px solid #E8D6CC' }}>
                                 Showing <strong>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, activeStaff.length)}</strong> of <strong>{activeStaff.length}</strong> staff
                             </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <button
+                                    className="page-btn"
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1}
-                                    style={pagBtn(page === 1)}
                                 >
-                                    <FaChevronLeft style={{ fontSize: '.7rem' }} />
+                                    &laquo; Prev
                                 </button>
-                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
-                                    <button
-                                        key={n}
-                                        onClick={() => setPage(n)}
-                                        style={{
-                                            ...pagBtn(false),
-                                            background: n === page ? 'var(--d-orange)' : 'transparent',
-                                            color: n === page ? '#fff' : 'var(--d-ink)',
-                                            borderColor: n === page ? 'var(--d-orange)' : 'var(--d-border)',
-                                            fontWeight: n === page ? 700 : 400,
-                                            minWidth: 34,
-                                        }}
-                                    >{n}</button>
-                                ))}
+                                <button className="page-btn active">{page}</button>
                                 <button
+                                    className="page-btn"
                                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                     disabled={page === totalPages}
-                                    style={pagBtn(page === totalPages)}
                                 >
-                                    <FaChevronRight style={{ fontSize: '.7rem' }} />
+                                    Next &raquo;
                                 </button>
                             </div>
                         </div>
@@ -400,35 +325,20 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
     );
 };
 
-/* ── Local style helpers ── */
-const th = {
-    padding: '11px 14px',
+/* ── Layout Constants matching Simple Table Spec ── */
+const thSimple = {
+    padding: '12px 16px',
     textAlign: 'left',
+    fontSize: '0.74rem',
     fontWeight: 700,
-    fontSize: '.78rem',
-    color: 'var(--d-muted)',
+    color: '#A38070',
     textTransform: 'uppercase',
-    letterSpacing: '.05em',
-    whiteSpace: 'nowrap',
+    letterSpacing: '0.06em',
 };
 
-const td = {
-    padding: '11px 14px',
+const tdSimple = {
+    padding: '16px 16px',
     verticalAlign: 'middle',
 };
-
-const pagBtn = (disabled) => ({
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: 34, padding: '0 10px',
-    border: '1.5px solid var(--d-border)',
-    borderRadius: 8,
-    background: 'transparent',
-    color: disabled ? 'var(--d-border)' : 'var(--d-ink)',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'var(--d-font-body)',
-    fontSize: '.82rem',
-    transition: 'all .15s',
-    opacity: disabled ? .5 : 1,
-});
 
 export default StaffRosterTab;
