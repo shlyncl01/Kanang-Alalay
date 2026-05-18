@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     FaUserCircle, FaUserMd, FaSync, FaClock,
     FaPhone, FaEnvelope, FaPrint, FaTimes,
@@ -37,7 +37,7 @@ const ShiftModal = ({ shift, members, onClose }) => {
             style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
                 zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 20, animation: 'fadeIn .18s ease',
+                padding: 20, backdropFilter: 'blur(4px)'
             }}
             onClick={onClose}
         >
@@ -72,7 +72,6 @@ const ShiftModal = ({ shift, members, onClose }) => {
                     <button onClick={onClose} style={{
                         background: 'none', border: 'none', cursor: 'pointer',
                         color: shift.text, fontSize: '1rem', padding: 6, borderRadius: 8,
-                        transition: 'background .15s',
                     }}><FaTimes /></button>
                 </div>
 
@@ -138,9 +137,8 @@ const ShiftModal = ({ shift, members, onClose }) => {
 
 /* ── Main Component ── */
 const StaffRosterTab = ({ staff = [], onRefresh }) => {
-    const printRef = useRef(null);
     const [page, setPage] = useState(1);
-    const [activeShiftModal, setActiveShiftModal] = useState(null); // shift key or null
+    const [activeShiftModal, setActiveShiftModal] = useState(null);
 
     const today = new Date().toLocaleDateString('en-PH', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -180,7 +178,6 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                     th { background: #b85c2d; color: #fff; padding: 10px 12px; text-align: left; }
                     td { padding: 9px 12px; border-bottom: 1px solid #E8D6CC; }
                     tr:nth-child(even) td { background: #FFF8F3; }
-                    @media print { body { padding: 10px; } }
                 </style>
             </head>
             <body>
@@ -210,21 +207,16 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
         win.close();
     };
 
-    const openShift = (shiftKey) => {
-        const found = shiftCounts.find(s => s.key === shiftKey);
-        setActiveShiftModal(found || null);
-    };
-
     return (
         <div>
-            {/* Shift summary cards — only 3 shifts, no Total on Duty */}
+            {/* Shift summary cards */}
             <div className="stats-grid" style={{ marginBottom: 20 }}>
                 {shiftCounts.map(s => (
                     <div
                         key={s.key}
                         className="stat-card clickable"
                         style={{ borderLeft: `4px solid ${s.border}`, cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => openShift(s.key)}
+                        onClick={() => setActiveShiftModal(s)}
                         title={`View ${s.label} Shift staff`}
                     >
                         <div className="stat-icon" style={{ background: s.border }}>{s.icon}</div>
@@ -232,7 +224,6 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                             <h3 style={{ color: s.text }}>{s.count}</h3>
                             <p style={{ fontSize: '.75rem' }}>{s.label} Shift</p>
                         </div>
-                        {/* subtle "click" hint */}
                         <div style={{ marginLeft: 'auto', fontSize: '.68rem', color: s.text, opacity: .6, paddingRight: 4, fontWeight: 600 }}>
                             View ›
                         </div>
@@ -240,7 +231,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                 ))}
             </div>
 
-            {/* Shift modal */}
+            {/* Shift Modal Popup */}
             {activeShiftModal && (
                 <ShiftModal
                     shift={activeShiftModal}
@@ -249,7 +240,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                 />
             )}
 
-            {/* Main roster table card */}
+            {/* Main Roster Table Card */}
             <div className="card-white">
                 <div className="card-header">
                     <h5 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -274,7 +265,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                     </div>
                 ) : (
                     <>
-                        {/* Table */}
+                        {/* Paginated Table View */}
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
                                 <thead>
@@ -301,8 +292,6 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                                                     background: i % 2 === 0 ? '#fff' : 'var(--d-cream)',
                                                     transition: 'background .15s',
                                                 }}
-                                                onMouseEnter={e => e.currentTarget.style.background = 'var(--d-orange-lt)'}
-                                                onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : 'var(--d-cream)'}
                                             >
                                                 <td style={td}><span style={{ color: 'var(--d-muted)', fontSize: '.78rem' }}>{rowNum}</span></td>
                                                 <td style={td}>
@@ -365,7 +354,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                             </table>
                         </div>
 
-                        {/* Pagination */}
+                        {/* Pagination Footer Element */}
                         <div style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             padding: '14px 4px 4px', flexWrap: 'wrap', gap: 10,
@@ -411,7 +400,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
     );
 };
 
-/* ── Style helpers ── */
+/* ── Local style helpers ── */
 const th = {
     padding: '11px 14px',
     textAlign: 'left',
