@@ -13,7 +13,7 @@ import {
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
 import InventoryTab from '../components/admin/InventoryTab';
-import StaffRosterTab from '../components/admin/StaffRosterTab';
+import StaffRosterTab from '../components/admin/StaffRosterTab?t=2';
 import ReportsTab from '../components/admin/ReportsTab';
 
 import '../styles/Dashboard.css';
