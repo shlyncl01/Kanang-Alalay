@@ -1867,12 +1867,16 @@ default:
                 <FaSpinner className="spin" style={{ color: 'var(--d-orange)', fontSize: '1.5rem' }} />
                 Loading dashboard…
             </div>
+
+            
         );
         switch (activeSection) {
             case 'overview': return renderOverview();
             case 'staff': return renderStaffManagement();
-            case 'roster': return <StaffRosterTab staff={staff} onRefresh={fetchStaffList} />;
-            case 'booking': return renderBookingManagement();
+case 'roster': 
+    console.log('Rendering StaffRosterTab');
+    return <StaffRosterTab staff={staff} onRefresh={fetchStaffList} />;
+                case 'booking': return renderBookingManagement();
             case 'donation': return renderDonationManagement();
             case 'alerts': return renderAlerts();
             case 'inventory': return renderInventory();

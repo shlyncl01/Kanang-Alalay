@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FaSun, FaCloudSun, FaMoon, FaPrint, FaSync, FaPhone, FaEnvelope, FaTimes } from 'react-icons/fa';
 
+console.log('✅ StaffRosterTab component loaded - NEW VERSION');
 const SHIFTS = [
   { key: 'morning', label: 'Morning', time: '6:00 AM – 2:00 PM', icon: <FaSun /> },
   { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun /> },
