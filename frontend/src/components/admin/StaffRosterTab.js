@@ -1,278 +1,208 @@
 import React, { useMemo, useState } from 'react';
-import {
-    FaUserCircle, FaSync, FaClock,
-    FaPhone, FaEnvelope, FaPrint, FaTimes,
-    FaSun, FaCloudSun, FaMoon
-} from 'react-icons/fa';
-
-const getAccountStatus = (m) => {
-    if (m.status) return m.status;
-    if (!m.isVerified && !m.isActive) return 'pending';
-    if (m.isActive) return 'active';
-    return 'deactivated';
-};
+import { FaSun, FaCloudSun, FaMoon, FaPrint, FaSync, FaPhone, FaEnvelope, FaTimes } from 'react-icons/fa';
 
 const SHIFTS = [
-    { key: 'morning',   label: 'Morning',   time: '6:00 AM – 2:00 PM',  icon: <FaSun /> },
-    { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun /> },
-    { key: 'night',     label: 'Night',     time: '10:00 PM – 6:00 AM', icon: <FaMoon /> },
+  { key: 'morning', label: 'Morning', time: '6:00 AM – 2:00 PM', icon: <FaSun /> },
+  { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun /> },
+  { key: 'night', label: 'Night', time: '10:00 PM – 6:00 AM', icon: <FaMoon /> },
 ];
+
 const getShift = (index) => SHIFTS[index % 3];
 
-const PAGE_SIZE = 10;
+const getAccountStatus = (m) => {
+  if (m.status === 'active') return 'active';
+  if (m.isActive) return 'active';
+  return 'inactive';
+};
 
-/* Shift Modal */
 const ShiftModal = ({ shift, members, onClose }) => {
-    if (!shift) return null;
-    return (
-        <div
-            style={{
-                position: 'fixed', inset: 0, background: 'rgba(26,10,0,.45)',
-                zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 20, backdropFilter: 'blur(4px)'
-            }}
-            onClick={onClose}
-        >
-            <div
-                style={{
-                    background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500,
-                    maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-                    boxShadow: '0 24px 64px rgba(0,0,0,.15)',
-                    border: '1px solid #E8D6CC',
-                    overflow: 'hidden',
-                }}
-                onClick={e => e.stopPropagation()}
-            >
-                <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '16px 20px', background: '#FFF8F3',
-                    borderBottom: '1px solid #E8D6CC',
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: '1.2rem' }}>{shift.icon}</span>
-                        <div>
-                            <div style={{ fontWeight: 700 }}>{shift.label} Shift</div>
-                            <div style={{ fontSize: '.72rem', color: '#7A5C4E' }}>{shift.time}</div>
-                        </div>
-                        <span style={{
-                            marginLeft: 12, padding: '2px 10px', borderRadius: 20,
-                            background: '#FFF3E0', color: '#D97706',
-                            fontSize: '.7rem', fontWeight: 700,
-                        }}>{members.length} staff</span>
-                    </div>
-                    <button onClick={onClose} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: '#7A5C4E', fontSize: '1rem'
-                    }}><FaTimes /></button>
-                </div>
-
-                <div style={{ overflowY: 'auto', padding: '12px 20px', flex: 1 }}>
-                    {members.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: '#7A5C4E', fontStyle: 'italic' }}>
-                            No staff assigned to this shift.
-                        </div>
-                    ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid #E8D6CC' }}>
-                                    <th style={{ padding: '8px 6px', textAlign: 'left', color: '#A38070', fontSize: '0.7rem', fontWeight: 700 }}>Name</th>
-                                    <th style={{ padding: '8px 6px', textAlign: 'left', color: '#A38070', fontSize: '0.7rem', fontWeight: 700 }}>Role</th>
-                                    <th style={{ padding: '8px 6px', textAlign: 'left', color: '#A38070', fontSize: '0.7rem', fontWeight: 700 }}>Contact</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {members.map((m) => (
-                                    <tr key={m._id} style={{ borderBottom: '1px solid #E8D6CC' }}>
-                                        <td style={{ padding: '10px 6px' }}>
-                                            <div style={{ fontWeight: 600 }}>{m.firstName} {m.lastName}</div>
-                                            <div style={{ fontSize: '.7rem', color: '#7A5C4E' }}>@{m.username || '—'}</div>
-                                        </td>
-                                        <td style={{ padding: '10px 6px', textTransform: 'capitalize' }}>{m.role || 'staff'}</td>
-                                        <td style={{ padding: '10px 6px', fontSize: '.75rem', color: '#7A5C4E' }}>
-                                            {m.phone && <div>{m.phone}</div>}
-                                            {m.email && <div style={{ fontSize: '.7rem' }}>{m.email}</div>}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-            </div>
+  if (!shift) return null;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div style={{
+        background: 'white', borderRadius: 16, width: 450, maxHeight: '80vh',
+        overflow: 'hidden', display: 'flex', flexDirection: 'column'
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: 16, borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong>{shift.label} Shift</strong>
+            <div style={{ fontSize: 12, color: '#7A5C4E' }}>{shift.time}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}><FaTimes /></button>
         </div>
-    );
+        <div style={{ padding: 16, overflowY: 'auto' }}>
+          {members.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#7A5C4E' }}>No staff assigned</div>
+          ) : (
+            members.map(m => (
+              <div key={m._id} style={{ padding: 10, borderBottom: '1px solid #E8D6CC' }}>
+                <strong>{m.firstName} {m.lastName}</strong>
+                <div style={{ fontSize: 12, color: '#7A5C4E' }}>{m.role || 'staff'} • {m.email || ''}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const StaffRosterTab = ({ staff = [], onRefresh }) => {
-    const [page, setPage] = useState(1);
-    const [activeShiftModal, setActiveShiftModal] = useState(null);
+  const [page, setPage] = useState(1);
+  const [activeShift, setActiveShift] = useState(null);
+  const itemsPerPage = 10;
 
-    const today = new Date().toLocaleDateString('en-PH', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    });
+  const activeStaff = useMemo(() => {
+    return staff
+      .filter(m => getAccountStatus(m) === 'active')
+      .map((m, idx) => ({ ...m, shift: getShift(idx) }));
+  }, [staff]);
 
-    const activeStaff = useMemo(
-        () => staff
-            .filter(m => getAccountStatus(m) === 'active')
-            .map((m, idx) => ({ ...m, shift: getShift(idx) })),
-        [staff]
-    );
+  const shiftCounts = useMemo(() => {
+    return SHIFTS.map(s => ({
+      ...s,
+      count: activeStaff.filter(m => m.shift.key === s.key).length,
+      members: activeStaff.filter(m => m.shift.key === s.key),
+    }));
+  }, [activeStaff]);
 
-    const shiftCounts = useMemo(
-        () => SHIFTS.map(s => ({
-            ...s,
-            count: activeStaff.filter(m => m.shift.key === s.key).length,
-            members: activeStaff.filter(m => m.shift.key === s.key),
-        })),
-        [activeStaff]
-    );
+  const paginatedStaff = activeStaff.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  const totalPages = Math.ceil(activeStaff.length / itemsPerPage);
 
-    const totalPages = Math.max(1, Math.ceil(activeStaff.length / PAGE_SIZE));
-    const paged = activeStaff.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head><title>Staff Roster</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+          th { background: #f5f5f5; }
+        </style>
+        </head>
+        <body>
+          <h2>Kanang-Alalay Staff Roster</h2>
+          <p>Generated: ${new Date().toLocaleString()}</p>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Role</th><th>Shift</th><th>Email</th><th>Phone</th></tr>
+            </thead>
+            <tbody>
+              ${activeStaff.map(m => `
+                <tr>
+                  <td>${m.firstName} ${m.lastName}</td>
+                  <td>${m.role || 'staff'}</td>
+                  <td>${m.shift.label}</td>
+                  <td>${m.email || '—'}</td>
+                  <td>${m.phone || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+    printWindow.close();
+  };
 
-    const handlePrint = () => {
-        const win = window.open('', '_blank');
-        win.document.write(`
-            <html>
-            <head>
-                <title>Staff Roster Report</title>
-                <style>
-                    body { font-family: 'DM Sans', sans-serif; padding: 24px; }
-                    h2 { color: #1A0A00; margin-bottom: 4px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    th { background: #FFF8F3; padding: 10px; text-align: left; border-bottom: 1px solid #E8D6CC; }
-                    td { padding: 10px; border-bottom: 1px solid #E8D6CC; }
-                </style>
-            </head>
-            <body>
-                <h2>Kanang-Alalay — Staff Roster</h2>
-                <p>Date: ${today} | Active staff: ${activeStaff.length}</p>
-                <table>
-                    <thead><tr><th>Name</th><th>Role</th><th>Shift</th><th>Email</th><th>Phone</th></tr></thead>
-                    <tbody>
-                        ${activeStaff.map(m => `
-                            <tr>
-                                <td>${m.firstName} ${m.lastName}</td>
-                                <td>${m.role || 'staff'}</td>
-                                <td>${m.shift.label} Shift</td>
-                                <td>${m.email || '—'}</td>
-                                <td>${m.phone || '—'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </body>
-            </html>
-        `);
-        win.document.close();
-        win.print();
-        win.close();
-    };
+  return (
+    <div>
+      {/* Shift Cards - Clickable */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        {shiftCounts.map(shift => (
+          <div
+            key={shift.key}
+            onClick={() => setActiveShift(shift)}
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 20,
+              textAlign: 'center',
+              cursor: 'pointer',
+              border: '1px solid #E8D6CC',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              transition: 'transform 0.2s, box-shadow 0.2s'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)'; }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{shift.icon}</div>
+            <div style={{ fontSize: 32, fontWeight: 'bold', color: '#1A0A00' }}>{shift.count}</div>
+            <div style={{ fontWeight: 600, color: '#7A5C4E' }}>{shift.label} Shift</div>
+            <div style={{ fontSize: 11, color: '#A38070', marginTop: 4 }}>{shift.time}</div>
+          </div>
+        ))}
+      </div>
 
-    return (
-        <div>
-            {/* Shift Cards - Clickable */}
-            <div className="stats-grid" style={{ marginBottom: 20 }}>
-                {shiftCounts.map(s => (
-                    <div
-                        key={s.key}
-                        className="stat-card clickable"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setActiveShiftModal(s)}
-                    >
-                        <div className="stat-icon">{s.icon}</div>
-                        <div className="stat-info">
-                            <h3>{s.count}</h3>
-                            <p>{s.label} Shift</p>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Shift Modal */}
-            {activeShiftModal && (
-                <ShiftModal
-                    shift={activeShiftModal}
-                    members={activeShiftModal.members}
-                    onClose={() => setActiveShiftModal(null)}
-                />
-            )}
-
-            {/* Simple Table - Just like Recent Bookings */}
-            <div className="card-white">
-                <div className="card-header">
-                    <h5>Staff Roster — {today}</h5>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn-outline-sm" onClick={handlePrint}>
-                            <FaPrint /> Print
-                        </button>
-                        <button className="btn-outline-sm" onClick={onRefresh}>
-                            <FaSync /> Refresh
-                        </button>
-                    </div>
-                </div>
-
-                {activeStaff.length === 0 ? (
-                    <div className="no-data">No active staff members found.</div>
-                ) : (
-                    <>
-                        <table className="custom-table">
-                            <thead>
-                                <tr>
-                                    <th>NAME</th>
-                                    <th>ROLE</th>
-                                    <th>SHIFT</th>
-                                    <th>CONTACT</th>
-                                    <th>STATUS</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {paged.map((m, i) => {
-                                    const shift = m.shift;
-                                    return (
-                                        <tr key={m._id}>
-                                            <td>
-                                                <strong>{m.firstName} {m.lastName}</strong>
-                                                <br />
-                                                <small style={{ color: 'var(--d-muted)' }}>@{m.username || '—'}</small>
-                                            </td>
-                                            <td style={{ textTransform: 'capitalize' }}>{m.role || 'staff'}</td>
-                                            <td>
-                                                {shift.icon} {shift.label}
-                                                <br />
-                                                <small style={{ color: 'var(--d-muted)' }}>{shift.time}</small>
-                                            </td>
-                                            <td>
-                                                {m.phone && <div><FaPhone size={10} style={{ marginRight: 5 }} />{m.phone}</div>}
-                                                {m.email && <div><FaEnvelope size={10} style={{ marginRight: 5 }} />{m.email}</div>}
-                                            </td>
-                                            <td>
-                                                <span className="status active">on duty</span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-
-                        {/* Pagination */}
-                        {totalPages > 1 && (
-                            <div className="pagination-container">
-                                <span className="pagination-info">
-                                    Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, activeStaff.length)} of {activeStaff.length}
-                                </span>
-                                <div className="pagination-controls">
-                                    <button className="page-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>&laquo; Prev</button>
-                                    <button className="page-btn active">{page}</button>
-                                    <button className="page-btn" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next &raquo;</button>
-                                </div>
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
+      {/* Staff Table - Simple like Recent Bookings */}
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E8D6CC', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h5 style={{ margin: 0, fontFamily: 'Playfair Display, serif', fontSize: '1.2rem' }}>Staff Roster</h5>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handlePrint} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #E8D6CC', background: 'white', cursor: 'pointer' }}><FaPrint /> Print</button>
+            <button onClick={onRefresh} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #E8D6CC', background: 'white', cursor: 'pointer' }}><FaSync /> Refresh</button>
+          </div>
         </div>
-    );
+
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#FFF8F3', borderBottom: '1px solid #E8D6CC' }}>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#A38070', textTransform: 'uppercase' }}>NAME</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#A38070', textTransform: 'uppercase' }}>ROLE</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#A38070', textTransform: 'uppercase' }}>SHIFT</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#A38070', textTransform: 'uppercase' }}>CONTACT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedStaff.length === 0 ? (
+              <tr><td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#7A5C4E' }}>No active staff members found.</td></tr>
+            ) : (
+              paginatedStaff.map(m => (
+                <tr key={m._id} style={{ borderBottom: '1px solid #E8D6CC' }}>
+                  <td style={{ padding: '14px 16px' }}>
+                    <strong>{m.firstName} {m.lastName}</strong>
+                    <div style={{ fontSize: 11, color: '#7A5C4E' }}>@{m.username || '—'}</div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>{m.role || 'staff'}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    {m.shift.icon} {m.shift.label}
+                    <div style={{ fontSize: 11, color: '#7A5C4E' }}>{m.shift.time}</div>
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    {m.phone && <div><FaPhone size={10} style={{ marginRight: 5 }} />{m.phone}</div>}
+                    {m.email && <div><FaEnvelope size={10} style={{ marginRight: 5 }} />{m.email}</div>}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ padding: '14px 20px', borderTop: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#7A5C4E' }}>Showing {(page - 1) * itemsPerPage + 1}–{Math.min(page * itemsPerPage, activeStaff.length)} of {activeStaff.length}</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #E8D6CC', background: 'white', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>Prev</button>
+              <span style={{ padding: '5px 12px', borderRadius: 6, background: '#F96B38', color: 'white', fontWeight: 600 }}>{page}</span>
+              <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #E8D6CC', background: 'white', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}>Next</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Shift Modal */}
+      {activeShift && (
+        <ShiftModal shift={activeShift} members={activeShift.members} onClose={() => setActiveShift(null)} />
+      )}
+    </div>
+  );
 };
 
 export default StaffRosterTab;
