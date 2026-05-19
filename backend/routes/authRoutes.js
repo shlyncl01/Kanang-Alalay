@@ -52,7 +52,8 @@ router.get('/profile', protect, async (req, res) => {
 // ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, platform } = req.body;
+        const isMobile = platform === 'mobile';
 
         if (!username || !password) {
             return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
@@ -62,6 +63,17 @@ router.post('/login', async (req, res) => {
 
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        }
+
+        if (!isMobile) {
+            const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
+            if (!WEB_ALLOWED_ROLES.includes(user.role)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Web access is not available for your role. Please use the mobile app.',
+                    accountStatus: 'role_blocked'
+                });
+            }
         }
 
         if (user.isFirstLogin && user.role !== 'admin') {
@@ -124,15 +136,6 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
-        if (!WEB_ALLOWED_ROLES.includes(user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Web access is not available for your role. Please use the mobile app.',
-                accountStatus: 'role_blocked'
-            });
-        }
-
         const token = jwt.sign(
             { userId: user._id, role: user.role, username: user.username, email: user.email },
             process.env.JWT_SECRET || 'fallback_secret',
@@ -174,7 +177,9 @@ router.post('/logout', (req, res) => {
 // ── Verify first login (OTP) ──────────────────────────────────────────────────
 router.post('/verify-first-login', async (req, res) => {
     try {
-        const { userId, otp } = req.body;
+        const { userId, otp, platform } = req.body;
+        const isMobile = platform === 'mobile';
+
         if (!userId || !otp) {
             return res.status(400).json({ success: false, message: 'userId and otp are required.' });
         }
@@ -189,13 +194,15 @@ router.post('/verify-first-login', async (req, res) => {
             return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
         }
 
-        const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
-        if (!WEB_ALLOWED_ROLES.includes(user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Web access is not available for your role. Please use the mobile app.',
-                accountStatus: 'role_blocked'
-            });
+        if (!isMobile) {
+            const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
+            if (!WEB_ALLOWED_ROLES.includes(user.role)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Web access is not available for your role. Please use the mobile app.',
+                    accountStatus: 'role_blocked'
+                });
+            }
         }
 
         user.isFirstLogin = false;
