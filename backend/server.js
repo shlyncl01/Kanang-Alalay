@@ -419,6 +419,7 @@ app.post('/api/inventory', async (req, res) => {
             unit: req.body.unit || 'pcs',
             category: req.body.category || 'General',
             minThreshold: req.body.minThreshold || 10,
+            barcode: req.body.barcode || undefined,
             expirationDate: req.body.expirationDate,
             notes: req.body.notes
         });
