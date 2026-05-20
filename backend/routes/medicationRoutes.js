@@ -222,12 +222,14 @@ router.post('/scan', authMiddleware, async (req, res) => {
         const { code } = req.body;
         if (!code) return res.status(400).json({ success: false, message: 'Scan code is required.' });
 
-        const scanCode = code.toUpperCase();
+        const scanCode = code.toString().trim();
+        const scanCodeUpper = scanCode.toUpperCase();
         const medication = await Medication.findOne({
             $or: [
-                { medicationId: scanCode },
-                { uniqueCode: scanCode },
+                { medicationId: scanCodeUpper },
+                { uniqueCode: scanCodeUpper },
                 { barcode: scanCode },
+                { barcode: scanCodeUpper },
                 { _id: mongoose.Types.ObjectId.isValid(scanCode) ? scanCode : null }
             ].filter(Boolean)
         });

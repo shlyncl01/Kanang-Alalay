@@ -439,11 +439,14 @@ app.post('/api/inventory/scan', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Scan code is required.' });
         }
 
-        const scanCode = code.toString().trim().toUpperCase();
+        const scanCode = code.toString().trim();
+        const scanCodeUpper = scanCode.toUpperCase();
         const item = await Inventory.findOne({
             $or: [
-                { itemId: scanCode },
-                { qrCode: scanCode },
+                { itemId: scanCodeUpper },
+                { qrCode: scanCodeUpper },
+                { barcode: scanCode },
+                { barcode: scanCodeUpper },
                 { _id: mongoose.Types.ObjectId.isValid(scanCode) ? scanCode : null }
             ].filter(Boolean)
         });

@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 
 const inventorySchema = new mongoose.Schema(
   {
-    itemId: { 
-      type: String, 
-      required: true, 
+    itemId: {
+      type: String,
+      required: true,
       unique: true,
       trim: true
     },
@@ -12,6 +12,11 @@ const inventorySchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true
+    },
+    barcode: {
+      type: String,
+      sparse: true,
       trim: true
     },
     name: {
