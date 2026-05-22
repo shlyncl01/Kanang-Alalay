@@ -84,6 +84,9 @@ mongoose.connect(process.env.MONGODB_URI, {
                 role: 'admin',
                 isActive: true,
                 isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
                 shift: 'morning',
                 department: 'Head Office'
             },
@@ -97,6 +100,9 @@ mongoose.connect(process.env.MONGODB_URI, {
                 role: 'head_caregiver',
                 isActive: true,
                 isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
                 shift: 'morning',
                 department: 'Care Management'
             },
@@ -110,6 +116,9 @@ mongoose.connect(process.env.MONGODB_URI, {
                 role: 'caregiver',
                 isActive: true,
                 isVerified: true,
+                isFirstLogin: false,
+                needsProfileUpdate: false,
+                status: 'active',
                 shift: 'morning',
                 department: 'Ward A'
             }

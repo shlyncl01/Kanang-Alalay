@@ -16,11 +16,38 @@ const inventorySchema = new mongoose.Schema(
       trim: true
     },
 
+    barcode: {
+      type: String,
+      sparse: true,
+      trim: true
+    },
+
     name: {
       type: String,
       required: true,
       trim: true,
     },
+
+    brand: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+
+    dosage: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+
+    batchNumber: {
+      type: String,
+      trim: true,
+      required: function() { return this.category === 'medication'; }
+    },
+
+    dateOfManufacture: { type: Date },
+    dateOfPurchase: { type: Date },
 
     category: {
       type: String,
@@ -50,7 +77,7 @@ const inventorySchema = new mongoose.Schema(
 
     expirationDate: {
       type: Date,
-      required: false, // optional unless needed
+      required: function() { return this.category === 'medication'; }
     },
 
     notes: {
