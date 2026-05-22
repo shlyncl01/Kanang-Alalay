@@ -463,8 +463,8 @@ router.post('/administer/:logId', authMiddleware, async (req, res) => {
         log.status = 'administered';
         log.administeredTime = new Date();
         log.verificationMethod = verificationMethod;
-        log.caregiverId = req.user._id;
-        log.notes = notes;
+        log.administeredBy = req.user._id;
+        if (notes) log.notes = notes;
 
         await log.save();
 
