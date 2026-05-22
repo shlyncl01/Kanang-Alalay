@@ -60,7 +60,11 @@ router.get('/resident/:residentId', authMiddleware, async (req, res) => {
             dosage: log.dosage || (log.medicationId?.dosage ? `${log.medicationId.dosage.value}${log.medicationId.dosage.unit}` : ''),
             form: log.medicationId?.form || '',
             stock: log.medicationId?.stock || {},
-            logId: log._id
+            scheduleTime: log.scheduledTime
+                ? new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Scheduled',
+            status: log.status || 'scheduled',
+            logId: log._id,
         }));
 
         res.json({ success: true, data: medications });

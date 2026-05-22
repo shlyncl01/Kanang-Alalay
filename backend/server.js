@@ -454,19 +454,52 @@ const io = socketIo(server, {
     transports: ['websocket', 'polling']
 });
 
+// Make io accessible in route handlers
+app.set('io', io);
+
 // Socket.io event handlers
 io.on('connection', (socket) => {
     console.log(`[Socket] User connected: ${socket.id}`);
-    
     socket.on('disconnect', () => {
         console.log(`[Socket] User disconnected: ${socket.id}`);
     });
-    
     socket.on('message', (data) => {
-        console.log('[Socket] Message received:', data);
         io.emit('message', data);
     });
 });
+
+// Medication reminder — check every minute for meds due in the next 15 minutes
+const MedicationLog = require('./models/MedicationLog');
+const _sentReminders = new Set();
+setInterval(async () => {
+    try {
+        const now = new Date();
+        const in15 = new Date(now.getTime() + 15 * 60 * 1000);
+        const logs = await MedicationLog.find({
+            status: { $in: ['scheduled', 'pending'] },
+            scheduledTime: { $gte: now, $lte: in15 },
+        }).populate('residentId', 'firstName lastName fullName room roomNumber');
+
+        for (const log of logs) {
+            const key = String(log._id);
+            if (_sentReminders.has(key)) continue;
+            _sentReminders.add(key);
+
+            const r = log.residentId;
+            const residentName = r?.fullName || `${r?.firstName || ''} ${r?.lastName || ''}`.trim() || 'Resident';
+            const minutesLeft = Math.round((new Date(log.scheduledTime) - now) / 60000);
+
+            io.emit('upcomingMedication', {
+                residentName,
+                medicationName: log.medicationName,
+                scheduleTime: new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                minutesLeft,
+            });
+        }
+    } catch (e) {
+        console.error('[Reminder] Error:', e.message);
+    }
+}, 60 * 1000);
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

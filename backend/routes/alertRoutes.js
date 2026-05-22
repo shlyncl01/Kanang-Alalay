@@ -47,6 +47,17 @@ router.post('/', protect, adminOnly, async (req, res) => {
         const alert = new Alert({ type, title, message, details, relatedUser });
         await alert.save();
 
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('newAlert', {
+                _id: alert._id,
+                type: alert.type,
+                message: alert.message,
+                subMessage: typeof alert.details === 'string' ? alert.details : alert.details?.message || '',
+                isRead: false,
+            });
+        }
+
         res.status(201).json({ success: true, data: alert });
     } catch (error) {
         console.error('Create alert error:', error);
