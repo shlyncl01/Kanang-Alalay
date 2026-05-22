@@ -1071,7 +1071,9 @@ const HeadCaregiverDashboard = () => {
         if (item.status === 'overdue')
             return <button className="sched-btn-verify" onClick={() => markStatus(item._id, 'completed', 'manual')}>Verify Now</button>;
         if (item.status === 'scheduled' || item.status === 'upcoming')
-            return <button className="sched-btn-prepare" onClick={() => markStatus(item._id, 'completed', 'manual')}>Prepare</button>;
+            return <button className="sched-btn-prepare" onClick={() => markStatus(item._id, 'pending', 'manual')}>Prepare</button>;
+        if (item.status === 'pending')
+            return <button className="sched-btn-view" disabled style={{ opacity: 0.7 }}>Prepared — Awaiting Caregiver</button>;
         if (item.status === 'completed' || item.status === 'administered')
             return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === item.residentName) || { _id: item.residentId, name: item.residentName } })}>View</button>;
         return <button className="btn-success-sm sched-btn-administer" onClick={() => markStatus(item._id, 'completed')}>Administer</button>;
