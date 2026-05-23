@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const { toFile } = require('openai');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -66,9 +67,9 @@ Always be professional, empathetic, and safety-conscious.`,
   }
 };
 
-const transcribeAudio = async (path) => {
+const transcribeAudio = async (filePath) => {
   const transcription = await openai.audio.transcriptions.create({
-    file: require('fs').createReadStream(path),
+    file: await toFile(require('fs').createReadStream(filePath), 'audio.m4a', { type: 'audio/mp4' }),
     model: 'whisper-1',
   });
   return transcription.text;
