@@ -628,7 +628,7 @@ router.post('/schedule', async (req, res) => {
             logId,
             residentId: resident._id,
             medicationId: medication._id,
-            caregiverId: req.user._id,
+            caregiverId: resident.primaryCaregiverId || resident.assignedStaff?.primaryCaregiverId || req.user._id,
             residentName: `${resident.firstName} ${resident.lastName}`.trim(),
             medicationName: medication.name,
             room: resident.roomNumber || '',

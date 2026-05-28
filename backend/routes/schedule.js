@@ -54,10 +54,6 @@ router.get('/my-assigned', protect, async (req, res) => {
       status: { $in: ['scheduled', 'pending', 'overdue'] },
     };
 
-    if (req.user.role === 'caregiver') {
-      logQuery.caregiverId = req.user._id;
-    }
-
     const logs = await MedicationLog.find(logQuery)
       .populate('medicationId', 'name dosage form')
       .sort({ scheduledTime: 1 });
