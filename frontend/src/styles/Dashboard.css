@@ -305,6 +305,8 @@ body {
   border-bottom: 1.5px solid var(--d-border);
   flex-shrink: 0;
   gap: 16px;
+  position: relative;
+  z-index: 200;
 }
 .nurse-topbar { border-bottom-color: var(--d-border); }
 

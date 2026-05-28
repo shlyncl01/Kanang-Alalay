@@ -416,7 +416,12 @@ const AdminDashboard = () => {
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [readIds, setReadIds] = useState(new Set());
+    const [readIds, setReadIds] = useState(() => {
+        try {
+            const stored = localStorage.getItem('admin_read_notif_ids');
+            return stored ? new Set(JSON.parse(stored)) : new Set();
+        } catch { return new Set(); }
+    });
     const [toastMessage, setToastMessage] = useState(null);
 
     const [currentPage, setCurrentPage] = useState(1);
@@ -429,6 +434,7 @@ const AdminDashboard = () => {
     const [donations, setDonations] = useState([]);
     const [staff, setStaff] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const [dbAlerts, setDbAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState(null);
 
@@ -582,8 +588,18 @@ const AdminDashboard = () => {
         notifications.filter(n => !readIds.has(n.id)).length,
         [notifications, readIds]);
 
-    const markAllRead = () => setReadIds(new Set(notifications.map(n => n.id)));
-    const markRead = (id) => setReadIds(prev => new Set([...prev, id]));
+    const markAllRead = () => {
+        const ids = new Set(notifications.map(n => n.id));
+        setReadIds(ids);
+        try { localStorage.setItem('admin_read_notif_ids', JSON.stringify([...ids])); } catch {}
+    };
+    const markRead = (id) => {
+        setReadIds(prev => {
+            const next = new Set([...prev, id]);
+            try { localStorage.setItem('admin_read_notif_ids', JSON.stringify([...next])); } catch {}
+            return next;
+        });
+    };
 
     const filteredStaff = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
@@ -674,11 +690,17 @@ const AdminDashboard = () => {
         };
         load();
         fetchStaffList();
+        fetchDbAlerts();
     }, [fetchApi]);
 
     const fetchStaffList = async () => {
         const d = await fetchApi('/admin/staff');
         if (d.success) setStaff(d.staff || []);
+    };
+
+    const fetchDbAlerts = async () => {
+        const d = await fetchApi('/alerts');
+        if (d.success) setDbAlerts(d.data || []);
     };
 
     const realLowStockCount = useMemo(() =>
@@ -699,6 +721,7 @@ const AdminDashboard = () => {
         if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
         if (iRes.success) setInventory(iRes.data || []);
         await fetchStaffList();
+        await fetchDbAlerts();
         setLoading(false);
         toast('All data refreshed successfully');
     };
@@ -1289,10 +1312,10 @@ const AdminDashboard = () => {
         <StaffRosterTab staff={staff} onRefresh={fetchStaffList} />
     );
 
-    // Booking Management Tab
+    // Booking Management Tab — passes raw bookings; the tab owns its own search
     const renderBookingManagement = () => (
         <BookingManagementTab
-            bookings={filteredBookings}
+            bookings={bookings}
             updateBookingStatus={updateBookingStatus}
             handleViewDetails={handleViewDetails}
             handleEditBooking={handleEditBooking}
@@ -1300,10 +1323,10 @@ const AdminDashboard = () => {
         />
     );
 
-    // Donation Management Tab
+    // Donation Management Tab — passes raw donations; the tab owns its own search
     const renderDonationManagement = () => (
         <DonationManagementTab
-            donations={filteredDonations}
+            donations={donations}
             updateDonationStatus={updateDonationStatus}
             handleViewDetails={handleViewDetails}
             handleExportPDF={() => handleExportPDF('donations')}
@@ -1326,7 +1349,7 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {notifications.length === 0 ? (
+            {notifications.length === 0 && dbAlerts.length === 0 ? (
                 <div className="empty-state" style={{ textAlign: 'center', padding: '60px 20px' }}>
                     <FaBell style={{ fontSize: '3rem', color: '#E8D6CC', marginBottom: 12 }} />
                     <p style={{ color: '#7A5C4E' }}>System is running smoothly. No alerts at this time.</p>
@@ -1340,9 +1363,9 @@ const AdminDashboard = () => {
                         return (
                             <div key={n.id}
                                 className={`alert-row ${isRead ? 'read' : 'unread'}`}
-                                style={{ 
-                                    cursor: targetSection ? 'pointer' : 'default', 
-                                    padding: '16px 20px', 
+                                style={{
+                                    cursor: targetSection ? 'pointer' : 'default',
+                                    padding: '16px 20px',
                                     borderBottom: '1px solid #E8D6CC',
                                     background: isRead ? '#fff' : '#FFF8F3',
                                     transition: 'background 0.2s',
@@ -1378,6 +1401,44 @@ const AdminDashboard = () => {
                             </div>
                         );
                     })}
+
+                    {dbAlerts.length > 0 && (
+                        <>
+                            <div style={{ padding: '8px 20px', background: '#F5F0EB', fontSize: '0.72rem', fontWeight: 700, color: '#7A5C4E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                System Alerts
+                            </div>
+                            {dbAlerts.map(a => {
+                                const typeColors = { OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d' };
+                                const color = typeColors[a.type] || '#6c757d';
+                                return (
+                                    <div key={a._id}
+                                        style={{
+                                            padding: '16px 20px',
+                                            borderBottom: '1px solid #E8D6CC',
+                                            background: a.isRead ? '#fff' : '#FFF8F3',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 12,
+                                        }}
+                                    >
+                                        <div style={{ background: color + '20', color, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
+                                            <FaBell />
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <strong style={{ display: 'block', marginBottom: 4 }}>{a.title}</strong>
+                                            <span style={{ fontSize: '0.85rem', color: '#555' }}>{a.message}</span>
+                                        </div>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                            <span style={{ background: color + '18', color, padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', display: 'inline-block', marginBottom: 6 }}>{a.type}</span>
+                                            <br />
+                                            <span style={{ fontSize: '0.7rem', color: '#999' }}>{timeAgo(a.createdAt)}</span>
+                                        </div>
+                                        {!a.isRead && <div style={{ width: 8, height: 8, background: color, borderRadius: '50%', flexShrink: 0 }} />}
+                                    </div>
+                                );
+                            })}
+                        </>
+                    )}
                 </div>
             )}
         </div>
@@ -1591,7 +1652,7 @@ const AdminDashboard = () => {
                                                     <FaBell style={{ fontSize: '2rem', color: '#E8D6CC' }} />
                                                     <p style={{ marginTop: 12, color: '#7A5C4E' }}>All caught up! No new alerts.</p>
                                                 </div>
-                                            ) : notifications.slice(0, 8).map(n => {
+                                            ) : notifications.slice(0, 20).map(n => {
                                                 const meta = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
                                                 const isRead = readIds.has(n.id);
                                                 return (
@@ -1626,9 +1687,9 @@ const AdminDashboard = () => {
                                             })}
                                         </div>
 
-                                        {notifications.length > 8 && (
+                                        {notifications.length > 0 && (
                                             <div className="notif-footer" onClick={() => { setActiveSection('alerts'); setNotifOpen(false); }} style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px solid #E8D6CC', cursor: 'pointer', color: '#F96B38', fontSize: '0.8rem' }}>
-                                                View all {notifications.length} notifications →
+                                                View all {notifications.length + dbAlerts.length} notifications →
                                             </div>
                                         )}
                                     </div>

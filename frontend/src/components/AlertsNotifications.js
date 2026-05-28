@@ -14,8 +14,12 @@ const AlertsNotifications = () => {
 
   const fetchAlerts = async () => {
     try {
-      const response = await axios.get(`${API_URL}/alerts`);
-      setAlerts(response.data);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/alerts`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = response.data;
+      setAlerts(Array.isArray(data) ? data : (data?.data || []));
     } catch (error) {
       console.error("Error fetching alerts:", error);
     }
@@ -25,8 +29,11 @@ const AlertsNotifications = () => {
     setSelectedAlert(alert);
     if (!alert.isRead) {
       try {
-        await axios.patch(`/api/alerts/${alert._id}/read`);
-        fetchAlerts(); // Refresh list to reflect read status
+        const token = localStorage.getItem('token');
+        await axios.put(`${API_URL}/alerts/${alert._id}/read`, {}, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        setAlerts(prev => prev.map(a => a._id === alert._id ? { ...a, isRead: true } : a));
       } catch (error) {
         console.error("Error updating alert status:", error);
       }

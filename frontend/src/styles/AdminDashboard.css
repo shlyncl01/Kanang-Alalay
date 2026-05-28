@@ -50,7 +50,7 @@
     gap: 16px;
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 200;
     box-shadow: var(--d-shadow-sm);
 }
 

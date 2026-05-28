@@ -90,12 +90,12 @@ const DonationManagementTab = ({ donations, updateDonationStatus, handleViewDeta
             </div>
 
             {/* Summary strip */}
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16, padding: '12px 16px', background: '#f0fff4', borderRadius: 10, border: '1.5px solid #c3e6cb' }}>
-                <div style={{ fontSize: '.82rem', color: '#555' }}>
-                    Showing <strong style={{ color: '#28a745' }}>{filtered.length}</strong> donations
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16, padding: '12px 16px', background: '#f0fff4', borderRadius: 10, border: '1.5px solid #c3e6cb', minWidth: 0 }}>
+                <div style={{ fontSize: '.82rem', color: '#555', flexShrink: 0 }}>
+                    Showing <strong style={{ color: '#28a745' }}>{filtered.length}</strong> donation{filtered.length !== 1 ? 's' : ''}
                 </div>
-                <div style={{ fontSize: '.82rem', color: '#555', marginLeft: 'auto' }}>
-                    Confirmed total: <strong style={{ color: '#28a745', fontSize: '.95rem' }}>₱{totalConfirmed.toLocaleString()}</strong>
+                <div style={{ fontSize: '.82rem', color: '#555', marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    Confirmed total:&nbsp;<strong style={{ color: '#28a745', fontSize: '.95rem' }}>₱{totalConfirmed.toLocaleString()}</strong>
                 </div>
             </div>
 

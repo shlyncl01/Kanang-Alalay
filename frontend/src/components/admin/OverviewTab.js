@@ -219,8 +219,10 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
 
                         {/* Value */}
                         <div style={{
-                            fontSize: '1.75rem', fontWeight: 700, color: card.bg,
-                            fontFamily: "'Playfair Display', serif", marginBottom: 4, lineHeight: 1,
+                            fontSize: typeof card.value === 'string' && card.value.length > 10 ? '1.2rem' : '1.75rem',
+                            fontWeight: 700, color: card.bg,
+                            fontFamily: "'Playfair Display', serif", marginBottom: 4, lineHeight: 1.2,
+                            overflowWrap: 'break-word', wordBreak: 'break-word',
                         }}>
                             {card.value}
                         </div>
