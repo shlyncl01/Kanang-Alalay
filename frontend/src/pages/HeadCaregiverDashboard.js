@@ -124,12 +124,13 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
         floor: '',
         bed: '',
         conditions: '',
-        primaryCaregiverId: '',  // CHANGED: use ID field name that matches schema
+        primaryCaregiverId: '',
         admissionDate: new Date().toISOString().slice(0, 10),
         alertLevel: 'stable',
     });
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
+    const [occupiedBeds, setOccupiedBeds] = useState([]);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
 
     const FLOORS = ['1st Floor', '2nd Floor', '3rd Floor', '4th Floor'];
@@ -139,6 +140,16 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
     useEffect(() => {
         if (fetchCaregivers) fetchCaregivers();
     }, [fetchCaregivers]);
+
+    // Fetch occupied beds when room or floor changes
+    useEffect(() => {
+        if (!f.roomNumber) { setOccupiedBeds([]); return; }
+        const params = new URLSearchParams({ roomNumber: f.roomNumber });
+        if (f.floor) params.append('floor', f.floor);
+        doFetch(`/head-caregiver/residents/occupied-beds?${params}`).then(r => {
+            if (r.success) setOccupiedBeds(r.data || []);
+        });
+    }, [f.roomNumber, f.floor, doFetch]);
 
     const submit = async () => {
         const e = {};
@@ -280,11 +291,23 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                                 {FLOORS.map(fl => <option key={fl} value={fl}>{fl}</option>)}
                             </select>
                         </Field>
-                        <Field label="Bed">
-                            <select className="form-input" value={f.bed} onChange={e => setField('bed', e.target.value)}>
+                        <Field label="Bed" error={errs.bed}>
+                            <select className={`form-input${errs.bed ? ' error' : ''}`} value={f.bed} onChange={e => setField('bed', e.target.value)}>
                                 <option value="">Select bed…</option>
-                                {BEDS.map(b => <option key={b} value={b}>{b}</option>)}
+                                {BEDS.map(b => {
+                                    const occ = occupiedBeds.find(o => o.bed === b);
+                                    return (
+                                        <option key={b} value={b} disabled={!!occ}>
+                                            {b}{occ ? ` — Occupied (${occ.residentName})` : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
+                            {f.roomNumber && occupiedBeds.length > 0 && (
+                                <small className="field-hint" style={{ color: 'var(--d-orange-dk)' }}>
+                                    {occupiedBeds.length} of {BEDS.length} bed{occupiedBeds.length !== 1 ? 's' : ''} occupied in Room {f.roomNumber}
+                                </small>
+                            )}
                         </Field>
                         <Field label="Alert Level">
                             <select className="form-input" value={f.alertLevel} onChange={e => setField('alertLevel', e.target.value)}>

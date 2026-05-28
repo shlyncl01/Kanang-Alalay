@@ -207,6 +207,22 @@ router.get('/caregivers', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// GET OCCUPIED BEDS (for bed availability check)
+// ─────────────────────────────────────────────────────────────
+router.get('/residents/occupied-beds', async (req, res) => {
+    try {
+        const { roomNumber, floor } = req.query;
+        const query = { status: 'active', bed: { $ne: '' } };
+        if (roomNumber) query.roomNumber = roomNumber;
+        if (floor) query.floor = floor;
+        const occupied = await Resident.find(query, 'bed roomNumber floor firstName lastName');
+        res.json({ success: true, data: occupied.map(r => ({ bed: r.bed, roomNumber: r.roomNumber, floor: r.floor, residentName: `${r.firstName} ${r.lastName}` })) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
 // GET RESIDENTS
 // ─────────────────────────────────────────────────────────────
 router.get('/residents', async (req, res) => {
@@ -237,10 +253,26 @@ router.post('/residents', async (req, res) => {
         } = req.body;
         
         if (!firstName || !age || !gender || !roomNumber) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'First name, age, gender, and room number are required.' 
+            return res.status(400).json({
+                success: false,
+                message: 'First name, age, gender, and room number are required.'
             });
+        }
+
+        // Bed availability check
+        if (bed) {
+            const bedOccupied = await Resident.findOne({
+                status: 'active',
+                roomNumber,
+                floor: floor || '',
+                bed,
+            });
+            if (bedOccupied) {
+                return res.status(400).json({
+                    success: false,
+                    message: `${bed} in Room ${roomNumber}${floor ? ' (' + floor + ')' : ''} is already occupied by ${bedOccupied.firstName} ${bedOccupied.lastName}.`,
+                });
+            }
         }
 
         const residentId = 'RES' + Date.now().toString().slice(-6);
@@ -511,19 +543,32 @@ router.get('/schedule', async (req, res) => {
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
-        const query = {
-            caregiverId: req.user._id,
-            scheduledTime: { $gte: target, $lt: nextDay },
-        };
-        if (residentId) query.residentId = residentId;
+        // Look back 7 days to catch any overdue/unresolved meds from prior days
+        const sevenDaysAgo = new Date(target);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-        let logs = await MedicationLog.find(query)
-            .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
-            .populate('medicationId', 'name dosage form purpose')
-            .sort({ scheduledTime: 1 });
+        const baseQuery = { caregiverId: req.user._id };
+        if (residentId) baseQuery.residentId = residentId;
 
-        logs = await autoMarkOverdue(logs);
-        res.json({ success: true, data: logs.map(shapeLog), count: logs.length });
+        // Today's full schedule + past unresolved (overdue/scheduled/pending)
+        const [todayLogs, pastLogs] = await Promise.all([
+            MedicationLog.find({ ...baseQuery, scheduledTime: { $gte: target, $lt: nextDay } })
+                .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
+                .populate('medicationId', 'name dosage form purpose')
+                .sort({ scheduledTime: 1 }),
+            MedicationLog.find({
+                ...baseQuery,
+                scheduledTime: { $gte: sevenDaysAgo, $lt: target },
+                status: { $in: ['scheduled', 'pending', 'overdue'] },
+            })
+                .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
+                .populate('medicationId', 'name dosage form purpose')
+                .sort({ scheduledTime: 1 }),
+        ]);
+
+        const allLogs = [...pastLogs, ...todayLogs];
+        await autoMarkOverdue(allLogs);
+        res.json({ success: true, data: allLogs.map(shapeLog), count: allLogs.length });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
