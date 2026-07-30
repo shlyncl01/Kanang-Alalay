@@ -431,3 +431,301 @@
 
   .gallery-section .carousel img { max-height: 260px; }
 }
+/* =========================================================
+   NEW SECTIONS ADDED FOR BROCHURE CONTENT
+   (existing rules above are unchanged)
+   ========================================================= */
+
+.history-section {
+  background: var(--hp-white);
+  padding: 80px 0;
+}
+
+.history-section p {
+  color: var(--hp-muted);
+  font-size: 1rem;
+  line-height: 1.85;
+  margin-bottom: 16px;
+  max-width: 900px;
+}
+
+.mission-vision-section {
+  background: var(--hp-cream-2);
+  padding: 80px 0;
+  border-top: 1px solid var(--hp-border);
+  border-bottom: 1px solid var(--hp-border);
+}
+
+.mv-card {
+  background: var(--hp-white);
+  border: 1.5px solid var(--hp-border);
+  border-radius: 16px;
+  padding: 36px 28px;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.mv-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 40px rgba(249,107,56,0.12);
+  border-color: var(--hp-orange);
+}
+
+.mv-icon {
+  font-size: 2.2rem;
+  color: var(--hp-orange);
+  margin-bottom: 16px;
+}
+
+.mv-card h3 {
+  font-family: var(--hp-font-head);
+  font-size: 1.3rem;
+  color: var(--hp-ink);
+  margin-bottom: 14px;
+}
+
+.mv-card p {
+  color: var(--hp-muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.objectives-section {
+  background: var(--hp-white);
+  padding: 80px 0;
+}
+
+.objectives-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.objectives-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--hp-muted);
+  font-size: 0.98rem;
+  line-height: 1.7;
+  margin-bottom: 18px;
+}
+
+.objectives-list li svg {
+  color: var(--hp-orange);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.detail-services-section {
+  background: var(--hp-cream-2);
+  padding: 80px 0;
+}
+
+.detail-services-intro {
+  color: var(--hp-muted);
+  max-width: 700px;
+  margin: 0 auto 44px;
+  line-height: 1.75;
+}
+
+.detail-service-card {
+  position: relative;
+  background: var(--hp-white);
+  border: 1.5px solid var(--hp-border);
+  border-radius: 16px;
+  padding: 32px 26px;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.detail-service-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 40px rgba(249,107,56,0.12);
+  border-color: var(--hp-orange);
+}
+
+.detail-service-letter {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  font-family: var(--hp-font-head);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--hp-orange-lt);
+}
+
+.detail-service-card h4 {
+  font-family: var(--hp-font-head);
+  font-size: 1.05rem;
+  color: var(--hp-ink);
+  margin: 10px 0 12px;
+}
+
+.detail-service-card p {
+  color: var(--hp-muted);
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+
+.facilities-section {
+  background: var(--hp-cream);
+  padding: 80px 0;
+}
+
+.facilities-intro {
+  color: var(--hp-muted);
+  max-width: 600px;
+  margin: 0 auto 40px;
+}
+
+.facility-card {
+  background: var(--hp-white);
+  border: 1.5px solid var(--hp-border);
+  border-radius: 14px;
+  padding: 26px 16px;
+  text-align: center;
+  height: 100%;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.facility-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--hp-orange);
+}
+
+.facility-icon {
+  font-size: 1.6rem;
+  color: var(--hp-orange);
+  margin-bottom: 10px;
+}
+
+.facility-card p {
+  color: var(--hp-ink-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.sisters-section {
+  background: var(--hp-white);
+  padding: 80px 0;
+}
+
+.sisters-section p {
+  color: var(--hp-muted);
+  font-size: 1rem;
+  line-height: 1.85;
+  margin-bottom: 16px;
+  max-width: 900px;
+}
+
+.activities-section {
+  background: var(--hp-cream-2);
+  padding: 72px 0;
+}
+
+.activities-intro {
+  color: var(--hp-muted);
+  font-size: 1rem;
+  line-height: 1.8;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.support-section {
+  background: var(--hp-white);
+  padding: 80px 0;
+}
+
+.support-detail {
+  color: var(--hp-ink-soft);
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  padding: 12px 16px;
+  background: var(--hp-cream-2);
+  border-left: 3px solid var(--hp-orange);
+  border-radius: 6px;
+}
+
+.support-section .hero-buttons {
+  justify-content: flex-start;
+  margin-top: 20px;
+}
+
+.support-quote {
+  background: linear-gradient(135deg, var(--hp-orange), var(--hp-orange-dk));
+  border-radius: 18px;
+  padding: 40px 32px;
+  color: var(--hp-white);
+  position: relative;
+  box-shadow: 0 16px 40px rgba(249,107,56,0.25);
+}
+
+.support-quote .quote-icon {
+  font-size: 1.6rem;
+  opacity: 0.6;
+  margin-bottom: 14px;
+}
+
+.support-quote p {
+  font-size: 1.02rem;
+  line-height: 1.7;
+  font-style: italic;
+  margin-bottom: 14px;
+}
+
+.support-quote span {
+  font-weight: 600;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .history-section, .mission-vision-section, .objectives-section,
+  .detail-services-section, .facilities-section, .sisters-section,
+  .activities-section, .support-section {
+    padding: 52px 0;
+  }
+}
+
+/* Sisters & Life at LSAE images */
+.sisters-img-wrap {
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(26,10,0,0.16);
+  border: 1px solid var(--hp-border);
+}
+
+.sisters-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.activities-gallery {
+  margin-top: 40px;
+}
+
+.activity-img-wrap {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(26,10,0,0.14);
+  border: 1px solid var(--hp-border);
+  aspect-ratio: 4 / 3;
+}
+
+.activity-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.activity-img-wrap:hover img {
+  transform: scale(1.06);
+}
