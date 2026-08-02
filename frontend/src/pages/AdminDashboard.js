@@ -1592,26 +1592,18 @@ const AdminDashboard = () => {
 
                 <div className="main-content-wrapper" style={{ flex: 1, background: '#F5F0EB', display: 'flex', flexDirection: 'column' }}>
                     <div className="admin-topbar" style={{ background: '#fff', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E8D6CC' }}>
-                        <div className="topbar-left" style={{ flex: 1, maxWidth: 400 }}>
-                            <div className="topbar-search-wrapper" style={{ position: 'relative' }}>
-                                <FaSearch className="topbar-search-icon" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#7A5C4E' }} />
+                        <div className="topbar-left">
+                            <div className="topbar-search-wrapper">
+                                <FaSearch className="topbar-search-icon" />
                                 <input
                                     type="text"
                                     className="topbar-search-input"
                                     placeholder={getSearchPlaceholder()}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 12px 10px 36px',
-                                        border: '1px solid #E8D6CC',
-                                        borderRadius: 10,
-                                        fontSize: '0.85rem',
-                                        outline: 'none'
-                                    }}
                                 />
                                 {searchQuery && (
-                                    <button className="search-clear-btn" onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E' }}>
+                                    <button className="search-clear-btn" onClick={() => setSearchQuery('')}>
                                         <FaTimes />
                                     </button>
                                 )}
@@ -1628,7 +1620,7 @@ const AdminDashboard = () => {
                                 >
                                     <FaBell />
                                     {unreadCount > 0 && (
-                                        <span className="notif-dot-badge" style={{ position: 'absolute', top: -5, right: -8, background: '#dc3545', color: '#fff', padding: '2px 6px', borderRadius: '50%', fontSize: '0.7rem' }}>
+                                        <span className="notif-dot-badge">
                                             {unreadCount > 9 ? '9+' : unreadCount}
                                         </span>
                                     )}
