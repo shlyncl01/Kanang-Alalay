@@ -14,7 +14,7 @@ const fromEmail = process.env.FROM_EMAIL || emailUser;
 
 // Provider priority: Resend > SendGrid > Gmail.
 // SendGrid support is kept only for backward compatibility in case that
-// key ever reappears in an environment — Resend is the preferred provider.
+// key ever reappears in an environment — Resend is the prefYour Kanang-Alalay Account Credentialserred provider.
 const useResend = Boolean(resendApiKey);
 const useSendGrid = !useResend && Boolean(sendgridApiKey);
 

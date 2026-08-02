@@ -61,6 +61,11 @@ const userSchema = new mongoose.Schema({
     resetOtp: { type: String },
     resetOtpExpires: { type: Date },
 
+    // Forgot-password OTP security tracking
+    resetOtpAttempts: { type: Number, default: 0 },          // failed verify attempts (max 5)
+    resetOtpResendCount: { type: Number, default: 0 },        // resends used in current window (max 3)
+    resetOtpResendWindowStart: { type: Date },                // start of the 15-min resend window
+
     assignedFloor:       { type: String, default: '' },
     assignedRoom:        { type: String, default: '' },
     temporaryPassword:   { type: String },

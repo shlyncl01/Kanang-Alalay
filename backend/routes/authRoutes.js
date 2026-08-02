@@ -1,10 +1,57 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const RegistrationCode = require('../models/VerificationCode');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { protect } = require('../middleware/authMiddleware');
+
+// ActivityLog is optional — wrapped in try/catch everywhere it's used so a
+// missing/mismatched field in your existing schema never breaks the reset flow.
+let ActivityLog = null;
+try {
+    ActivityLog = require('../models/ActivityLog');
+} catch (e) {
+    console.warn('ActivityLog model not found — password reset attempts will not be audit-logged.');
+}
+const logActivity = async (fields) => {
+    if (!ActivityLog) return;
+    try {
+        await ActivityLog.create(fields);
+    } catch (err) {
+        console.error('ActivityLog write failed (non-fatal):', err.message);
+    }
+};
+
+// ── OTP hashing ───────────────────────────────────────────────────────────────
+// OTPs are never stored in plain text — only their SHA-256 hash is persisted.
+const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
+
+// ── Lightweight in-memory rate limiter ────────────────────────────────────────
+// Per-IP brute-force guard for the forgot-password endpoints. For multi-instance
+// deployments, swap this Map for a shared store (e.g. Redis) or the
+// `express-rate-limit` package — this in-memory version is fine for a single
+// Node process like a typical Render/Railway deployment.
+const rateLimitStore = new Map();
+const rateLimit = ({ windowMs, max, keyPrefix }) => (req, res, next) => {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const key = `${keyPrefix}:${ip}`;
+    const now = Date.now();
+    const entry = rateLimitStore.get(key) || { count: 0, start: now };
+
+    if (now - entry.start > windowMs) {
+        entry.count = 0;
+        entry.start = now;
+    }
+    entry.count += 1;
+    rateLimitStore.set(key, entry);
+
+    if (entry.count > max) {
+        return res.status(429).json({ success: false, message: 'Too many requests. Please try again later.' });
+    }
+    next();
+};
 
 // ── Cookie helper ─────────────────────────────────────────────────────────────
 const COOKIE_NAME = 'ka_token';
@@ -516,19 +563,34 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // ── Forgot password ───────────────────────────────────────────────────────────
-router.post('/forgot-password', async (req, res) => {
+// NOTE on security trade-off: this endpoint explicitly reveals whether an email
+// is registered (per product decision). This is convenient for users but is a
+// known account-enumeration risk — an attacker can use it to test which emails
+// exist in your system. The rate limiter below mitigates automated scanning,
+// but if you ever want to close this gap, switch the 404 branch back to a
+// generic "If that email exists, an OTP has been sent." response.
+router.post('/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'forgot-password' }), async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
 
-        const user = await User.findOne({ email });
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+        }
+
+        const user = await User.findOne({ email: email.trim() });
         if (!user) {
-            return res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
+            await logActivity({ action: 'password_reset_requested', details: `Forgot-password request for unregistered email: ${email.trim()}` });
+            return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
         }
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-        user.resetPasswordOtp = otpCode;
-        user.resetPasswordOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
+        user.resetPasswordOtp = hashOtp(otpCode);
+        user.resetPasswordOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+        user.resetOtpAttempts = 0;
+        user.resetOtpResendCount = 0;
+        user.resetOtpResendWindowStart = new Date();
         await user.save();
 
         try {
@@ -537,7 +599,9 @@ router.post('/forgot-password', async (req, res) => {
             console.error('Email send FAILED (OTP still saved in DB):', mailError.message);
         }
 
-        res.json({ success: true, message: 'If that email exists, an OTP has been sent.' });
+        await logActivity({ user: user._id, action: 'password_reset_requested', details: `OTP sent to ${user.email} for password reset` });
+
+        res.json({ success: true, message: 'A verification code has been sent to your email.' });
     } catch (error) {
         console.error('Forgot password error:', error);
         res.status(500).json({ success: false, message: 'Server error: ' + error.message });
@@ -545,26 +609,46 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // ── Verify reset OTP ──────────────────────────────────────────────────────────
-router.post('/verify-reset-otp', async (req, res) => {
+const MAX_OTP_ATTEMPTS = 5;
+
+router.post('/verify-reset-otp', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyPrefix: 'verify-reset-otp' }), async (req, res) => {
     try {
         const { email, otp } = req.body;
         if (!email || !otp) {
             return res.status(400).json({ success: false, message: 'Email and OTP are required.' });
         }
 
-        const user = await User.findOne({ email });
-        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        const user = await User.findOne({ email: email.trim() });
+        if (!user) return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
 
         if (!user.resetPasswordOtp) {
-            return res.status(400).json({ success: false, message: 'No active OTP found. Please request a new one.' });
-        }
-        if (user.resetPasswordOtp !== otp) {
-            return res.status(400).json({ success: false, message: 'Invalid OTP.' });
-        }
-        if (user.resetPasswordOtpExpires < new Date()) {
-            return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+            return res.status(400).json({ success: false, message: 'No active verification code found. Please restart the process.' });
         }
 
+        if (user.resetOtpAttempts >= MAX_OTP_ATTEMPTS) {
+            user.resetPasswordOtp = undefined;
+            user.resetPasswordOtpExpires = undefined;
+            await user.save();
+            await logActivity({ user: user._id, action: 'password_reset_otp_locked', details: `Reset OTP locked after ${MAX_OTP_ATTEMPTS} failed attempts for ${user.email}` });
+            return res.status(429).json({ success: false, message: 'Too many incorrect attempts. Please request a new verification code.' });
+        }
+
+        // Check expiry before comparing so an expired code always gets the
+        // "expired" message rather than "invalid", per the required UX.
+        if (user.resetPasswordOtpExpires < new Date()) {
+            return res.status(400).json({ success: false, message: 'Verification code has expired.' });
+        }
+
+        if (hashOtp(otp) !== user.resetPasswordOtp) {
+            user.resetOtpAttempts = (user.resetOtpAttempts || 0) + 1;
+            await user.save();
+            await logActivity({ user: user._id, action: 'password_reset_otp_failed', details: `Incorrect reset OTP entered for ${user.email} (attempt ${user.resetOtpAttempts})` });
+            return res.status(400).json({ success: false, message: 'Invalid verification code.' });
+        }
+
+        // Correct code — reset the attempt counter and extend the window
+        // slightly so the person has time to fill in the password step.
+        user.resetOtpAttempts = 0;
         user.resetPasswordOtpExpires = new Date(Date.now() + 5 * 60 * 1000);
         await user.save();
 
@@ -574,9 +658,11 @@ router.post('/verify-reset-otp', async (req, res) => {
             { expiresIn: '10m' }
         );
 
+        await logActivity({ user: user._id, action: 'password_reset_otp_verified', details: `Reset OTP verified successfully for ${user.email}` });
+
         res.json({
             success: true,
-            message: 'OTP verified. You may now reset your password.',
+            message: 'Verification code confirmed. You may now reset your password.',
             resetToken,
             userId: user._id
         });
@@ -626,47 +712,6 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// ── Reset password using URL token (web flow) ─────────────────────────────────
-router.post('/reset-password/:token', async (req, res) => {
-    try {
-        const { token } = req.params;
-        const { password, confirmPassword } = req.body;
-
-        if (!token || !password) {
-            return res.status(400).json({ success: false, message: 'Reset token and new password are required.' });
-        }
-        if (confirmPassword && password !== confirmPassword) {
-            return res.status(400).json({ success: false, message: 'Passwords do not match.' });
-        }
-        if (password.length < 6) {
-            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
-        }
-
-        let decoded;
-        try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
-            if (decoded.purpose !== 'password-reset') {
-                return res.status(400).json({ success: false, message: 'Invalid reset token.' });
-            }
-        } catch (err) {
-            return res.status(400).json({ success: false, message: 'Reset token has expired or is invalid.' });
-        }
-
-        const user = await User.findById(decoded.userId);
-        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-
-        user.password = password;
-        user.resetPasswordOtp = undefined;
-        user.resetPasswordOtpExpires = undefined;
-        await user.save();
-
-        res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
-    } catch (error) {
-        console.error('Reset password token error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
 // ── Reset password with OTP ───────────────────────────────────────────────────
 router.post('/reset-password-with-otp', async (req, res) => {
     try {
@@ -678,25 +723,30 @@ router.post('/reset-password-with-otp', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
         }
 
-        const user = await User.findOne({ email });
-        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        const user = await User.findOne({ email: email.trim() });
+        if (!user) return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
 
         if (!user.resetPasswordOtp) {
-            return res.status(400).json({ success: false, message: 'No active OTP found. Please restart the process.' });
+            return res.status(400).json({ success: false, message: 'No active verification code found. Please restart the process.' });
         }
-        if (user.resetPasswordOtp !== otp) {
-            return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+        if (hashOtp(otp) !== user.resetPasswordOtp) {
+            return res.status(400).json({ success: false, message: 'Invalid verification code.' });
         }
         if (user.resetPasswordOtpExpires < new Date()) {
-            return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+            return res.status(400).json({ success: false, message: 'Verification code has expired.' });
         }
 
-        user.password = password;
+        user.password = password; // hashed automatically by the User pre-save hook (bcrypt)
         user.resetPasswordOtp = undefined;
         user.resetPasswordOtpExpires = undefined;
+        user.resetOtpAttempts = 0;
+        user.resetOtpResendCount = 0;
+        user.resetOtpResendWindowStart = undefined;
         await user.save();
 
-        res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
+        await logActivity({ user: user._id, action: 'password_reset_completed', details: `Password successfully reset for ${user.email}` });
+
+        res.json({ success: true, message: 'Your password has been successfully updated. Please log in with your new password.' });
     } catch (error) {
         console.error('Reset password error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -704,19 +754,34 @@ router.post('/reset-password-with-otp', async (req, res) => {
 });
 
 // ── Resend reset OTP ──────────────────────────────────────────────────────────
+const MAX_RESENDS = 3;
+const RESEND_WINDOW_MS = 15 * 60 * 1000;
+
 router.post('/resend-reset-otp', async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: email.trim() });
         if (!user) {
-            return res.json({ success: true, message: 'If that email exists, a new OTP has been sent.' });
+            return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
+        }
+
+        const now = new Date();
+        if (!user.resetOtpResendWindowStart || (now - user.resetOtpResendWindowStart) > RESEND_WINDOW_MS) {
+            user.resetOtpResendWindowStart = now;
+            user.resetOtpResendCount = 0;
+        }
+
+        if (user.resetOtpResendCount >= MAX_RESENDS) {
+            return res.status(429).json({ success: false, message: 'Maximum resend attempts reached. Please try again in a few minutes.' });
         }
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-        user.resetPasswordOtp = otpCode;
-        user.resetPasswordOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
+        user.resetPasswordOtp = hashOtp(otpCode); // invalidates the previous code
+        user.resetPasswordOtpExpires = new Date(now.getTime() + 5 * 60 * 1000);
+        user.resetOtpAttempts = 0;
+        user.resetOtpResendCount += 1;
         await user.save();
 
         try {
@@ -725,7 +790,9 @@ router.post('/resend-reset-otp', async (req, res) => {
             console.error('Email error:', mailError.message);
         }
 
-        res.json({ success: true, message: 'New OTP sent to your email.' });
+        await logActivity({ user: user._id, action: 'password_reset_otp_resent', details: `Reset OTP resent to ${user.email} (resend ${user.resetOtpResendCount}/${MAX_RESENDS})` });
+
+        res.json({ success: true, message: 'New verification code sent to your email.' });
     } catch (error) {
         console.error('Resend reset OTP error:', error);
         res.status(500).json({ success: false, message: 'Server error' });

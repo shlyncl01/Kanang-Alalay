@@ -30,10 +30,15 @@ const getHomeRoute = (role) => {
     return '/';
 };
 
+const OTP_LENGTH = 6;
+const OTP_EXPIRY_SECONDS = 5 * 60; // matches backend's 5-minute OTP expiry
+const RESEND_COOLDOWN_SECONDS = 60;
+
 const ForgotPasswordModal = ({ onClose }) => {
     const [step, setStep]               = useState('email');
     const [email, setEmail]             = useState('');
-    const [otp, setOtp]                 = useState('');
+    const [emailTouched, setEmailTouched] = useState(false);
+    const [otpDigits, setOtpDigits]     = useState(Array(OTP_LENGTH).fill(''));
     const [newPassword, setNewPassword] = useState('');
     const [confirmPass, setConfirmPass] = useState('');
     const [showNew, setShowNew]         = useState(false);
@@ -41,19 +46,42 @@ const ForgotPasswordModal = ({ onClose }) => {
     const [msg, setMsg]                 = useState({ text: '', type: '' });
     const [loading, setLoading]         = useState(false);
     const [resendTimer, setResendTimer] = useState(0);
+    const [expiryTimer, setExpiryTimer] = useState(OTP_EXPIRY_SECONDS);
 
+    const otpRefs = React.useRef([]);
+    const otp = otpDigits.join('');
+    const otpComplete = otp.length === OTP_LENGTH;
+
+    // 60s cooldown before the Resend button becomes clickable again
     useEffect(() => {
         if (resendTimer <= 0) return;
         const t = setInterval(() => setResendTimer(p => p - 1), 1000);
         return () => clearInterval(t);
     }, [resendTimer]);
 
+    // 5:00 countdown showing how long the current code is valid for
+    useEffect(() => {
+        if (step !== 'otp' || expiryTimer <= 0) return;
+        const t = setInterval(() => setExpiryTimer(p => (p <= 1 ? 0 : p - 1)), 1000);
+        return () => clearInterval(t);
+    }, [step, expiryTimer]);
+
     const setInfo  = (text) => setMsg({ text, type: 'info' });
     const setError = (text) => setMsg({ text, type: 'error' });
     const setOk    = (text) => setMsg({ text, type: 'success' });
 
+    const formatTime = (secs) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}:${String(s).padStart(2, '0')}`;
+    };
+
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
     const handleRequestOtp = async () => {
+        setEmailTouched(true);
         if (!email.trim()) { setError('Please enter your email address.'); return; }
+        if (!emailValid) { setError('Please enter a valid email address.'); return; }
         setLoading(true);
         setMsg({ text: '', type: '' });
         try {
@@ -63,11 +91,15 @@ const ForgotPasswordModal = ({ onClose }) => {
             });
             const data = await res.json();
             if (data.success) {
-                setOk('OTP sent! Check your email inbox.');
+                setOk('A verification code has been sent to your email.');
                 setStep('otp');
-                setResendTimer(60);
+                setOtpDigits(Array(OTP_LENGTH).fill(''));
+                setResendTimer(RESEND_COOLDOWN_SECONDS);
+                setExpiryTimer(OTP_EXPIRY_SECONDS);
+                setTimeout(() => otpRefs.current[0]?.focus(), 100);
             } else {
-                setError(data.message || 'Failed to send OTP.');
+                // Covers "No account is registered with this email address." from the backend
+                setError(data.message || 'Failed to send verification code.');
             }
         } catch {
             setError('Network error. Please try again.');
@@ -76,8 +108,35 @@ const ForgotPasswordModal = ({ onClose }) => {
         }
     };
 
+    const handleOtpChange = (index, value) => {
+        if (!/^\d*$/.test(value)) return;
+        const next = [...otpDigits];
+        next[index] = value.slice(-1);
+        setOtpDigits(next);
+        setMsg({ text: '', type: '' });
+        if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+    };
+
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+        if (e.key === 'Enter' && otpComplete) handleVerifyOtp();
+    };
+
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+        if (!pasted) return;
+        const next = [...otpDigits];
+        pasted.split('').forEach((ch, i) => { next[i] = ch; });
+        setOtpDigits(next);
+        otpRefs.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
+    };
+
     const handleVerifyOtp = async () => {
-        if (!otp || otp.length < 6) { setError('Enter the full 6-digit OTP.'); return; }
+        if (!otpComplete) { setError(`Enter the full ${OTP_LENGTH}-digit code.`); return; }
+        if (expiryTimer <= 0) { setError('Verification code has expired.'); return; }
         setLoading(true);
         setMsg({ text: '', type: '' });
         try {
@@ -87,10 +146,13 @@ const ForgotPasswordModal = ({ onClose }) => {
             });
             const data = await res.json();
             if (data.success) {
-                setOk('OTP verified! Set your new password.');
+                setOk('Code verified! Set your new password.');
                 setStep('newpass');
             } else {
-                setError(data.message || 'Invalid or expired OTP.');
+                // Backend distinguishes "Invalid verification code." vs "Verification code has expired."
+                setError(data.message || 'Invalid verification code.');
+                setOtpDigits(Array(OTP_LENGTH).fill(''));
+                setTimeout(() => otpRefs.current[0]?.focus(), 50);
             }
         } catch {
             setError('Network error. Please try again.');
@@ -102,7 +164,7 @@ const ForgotPasswordModal = ({ onClose }) => {
     const handleResendOtp = async () => {
         if (resendTimer > 0) return;
         setLoading(true);
-        setInfo('Sending new OTP…');
+        setInfo('Sending new code…');
         try {
             const res  = await authFetch('/auth/resend-reset-otp', {
                 method: 'POST',
@@ -110,17 +172,24 @@ const ForgotPasswordModal = ({ onClose }) => {
             });
             const data = await res.json();
             if (data.success) {
-                setOk(data.message || 'New OTP sent.');
-                setResendTimer(60);
+                setOk(data.message || 'New code sent.');
+                setOtpDigits(Array(OTP_LENGTH).fill(''));
+                setResendTimer(RESEND_COOLDOWN_SECONDS);
+                setExpiryTimer(OTP_EXPIRY_SECONDS);
+                setTimeout(() => otpRefs.current[0]?.focus(), 100);
             } else {
-                setError(data.message || 'Failed to resend OTP.');
+                // Covers the "Maximum resend attempts reached" 429 case
+                setError(data.message || 'Failed to resend code.');
             }
         } catch {
-            setError('Failed to resend OTP.');
+            setError('Failed to resend code.');
         } finally {
             setLoading(false);
         }
     };
+
+    const passwordsMatch = confirmPass.length > 0 && newPassword === confirmPass;
+    const passwordsMismatch = confirmPass.length > 0 && newPassword !== confirmPass;
 
     const handleResetPassword = async () => {
         if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
@@ -136,7 +205,7 @@ const ForgotPasswordModal = ({ onClose }) => {
             if (data.success) {
                 setNewPassword('');
                 setConfirmPass('');
-                setOtp('');
+                setOtpDigits(Array(OTP_LENGTH).fill(''));
                 setEmail('');
                 setStep('done');
             } else {
@@ -151,15 +220,15 @@ const ForgotPasswordModal = ({ onClose }) => {
 
     const stepTitles = {
         email:   'Forgot Password',
-        otp:     'Enter OTP',
+        otp:     'Enter Verification Code',
         newpass: 'New Password',
         done:    'All Done!'
     };
 
     const stepSubs = {
         email:   "Enter the email address linked to your account and we'll send a one-time code.",
-        otp:     `We sent a 6-digit code to ${email}. Enter it below.`,
-        newpass: 'Choose a strong new password for your account.',
+        otp:     `We sent a ${OTP_LENGTH}-digit code to ${email}. Enter it below.`,
+        newpass: 'Choose a new password for your account.',
         done:    'Your password has been reset successfully.'
     };
 
@@ -202,13 +271,19 @@ const ForgotPasswordModal = ({ onClose }) => {
                                     placeholder="you@example.com"
                                     value={email}
                                     onChange={e => { setEmail(e.target.value); setMsg({ text:'', type:'' }); }}
+                                    onBlur={() => setEmailTouched(true)}
                                     onKeyDown={e => e.key === 'Enter' && handleRequestOtp()}
                                     autoFocus
                                 />
                             </div>
+                            {emailTouched && email.trim() && !emailValid && (
+                                <span style={{ color: '#dc3545', fontSize: '.8rem', marginTop: 4, display: 'block' }}>
+                                    Please enter a valid email address.
+                                </span>
+                            )}
                         </div>
-                        <button className="fp-btn" onClick={handleRequestOtp} disabled={loading}>
-                            {loading ? <FaSpinner className="spin" /> : 'Send OTP'}
+                        <button className="fp-btn" onClick={handleRequestOtp} disabled={loading || (emailTouched && !!email.trim() && !emailValid)}>
+                            {loading ? <FaSpinner className="spin" /> : 'Send Verification Code'}
                         </button>
                     </div>
                 )}
@@ -216,26 +291,49 @@ const ForgotPasswordModal = ({ onClose }) => {
                 {step === 'otp' && (
                     <div className="fp-body">
                         <div className="fp-field">
-                            <label>6-Digit OTP</label>
-                            <input
-                                type="text"
-                                className="fp-input otp-center"
-                                placeholder="• • • • • •"
-                                value={otp}
-                                onChange={e => setOtp(e.target.value.replace(/\D/g,'').slice(0,6))}
-                                onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
-                                maxLength={6}
-                                autoFocus
-                            />
+                            <label>{OTP_LENGTH}-Digit Code</label>
+                            <div
+                                onPaste={handleOtpPaste}
+                                style={{ display: 'flex', gap: 8, justifyContent: 'center', margin: '4px 0 6px' }}
+                            >
+                                {otpDigits.map((digit, i) => (
+                                    <input
+                                        key={i}
+                                        ref={el => otpRefs.current[i] = el}
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={1}
+                                        value={digit}
+                                        onChange={e => handleOtpChange(i, e.target.value)}
+                                        onKeyDown={e => handleOtpKeyDown(i, e)}
+                                        autoComplete="one-time-code"
+                                        style={{
+                                            width: 42, height: 52,
+                                            textAlign: 'center', fontSize: '1.35rem', fontWeight: 700,
+                                            fontFamily: 'monospace',
+                                            border: `2px solid ${digit ? '#F96B38' : '#E8D6CC'}`,
+                                            borderRadius: 10,
+                                            outline: 'none',
+                                            background: digit ? '#FFF8F3' : '#fff',
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                            <div style={{ textAlign: 'center', fontSize: '.8rem', color: expiryTimer <= 30 ? '#dc3545' : '#7A5C4E' }}>
+                                {expiryTimer > 0 ? `Code expires in ${formatTime(expiryTimer)}` : 'Code has expired — request a new one'}
+                            </div>
                         </div>
-                        <button className="fp-btn" onClick={handleVerifyOtp} disabled={loading}>
-                            {loading ? <FaSpinner className="spin" /> : 'Verify OTP'}
+                        <button className="fp-btn" onClick={handleVerifyOtp} disabled={loading || !otpComplete}>
+                            {loading ? <FaSpinner className="spin" /> : 'Verify Code'}
                         </button>
                         <div className="fp-resend-row">
-                            <button className="fp-link" onClick={handleResendOtp} disabled={resendTimer > 0}>
-                                {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                            <button className="fp-link" onClick={handleResendOtp} disabled={resendTimer > 0 || loading}>
+                                {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Code'}
                             </button>
-                            <button className="fp-link muted" onClick={() => { setStep('email'); setOtp(''); setMsg({ text:'', type:'' }); }}>
+                            <button
+                                className="fp-link muted"
+                                onClick={() => { setStep('email'); setOtpDigits(Array(OTP_LENGTH).fill('')); setMsg({ text:'', type:'' }); }}
+                            >
                                 ← Change Email
                             </button>
                         </div>
@@ -277,6 +375,16 @@ const ForgotPasswordModal = ({ onClose }) => {
                                     {showConfirm ? <FaEyeSlash /> : <FaEye />}
                                 </button>
                             </div>
+                            {passwordsMismatch && (
+                                <span style={{ color: '#dc3545', fontSize: '.8rem', marginTop: 4, display: 'block' }}>
+                                    Passwords do not match.
+                                </span>
+                            )}
+                            {passwordsMatch && (
+                                <span style={{ color: '#28a745', fontSize: '.8rem', marginTop: 4, display: 'block' }}>
+                                    ✓ Passwords match
+                                </span>
+                            )}
                         </div>
 
                         {newPassword && (
@@ -290,7 +398,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                             </div>
                         )}
 
-                        <button className="fp-btn" onClick={handleResetPassword} disabled={loading}>
+                        <button className="fp-btn" onClick={handleResetPassword} disabled={loading || newPassword.length < 6 || passwordsMismatch}>
                             {loading ? <FaSpinner className="spin" /> : 'Reset Password'}
                         </button>
                     </div>

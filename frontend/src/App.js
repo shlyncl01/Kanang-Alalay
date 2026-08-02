@@ -8,7 +8,7 @@ import LoginPage from './pages/LoginPage';
 import DonationPage from './pages/DonationPage';
 import BookingPage from './pages/BookingPage';
 import VerifyEmail from './pages/VerifyEmail';
-import ResetPassword from './pages/ResetPassword';
+// import ResetPassword from './pages/ResetPassword';
 
 import AdminDashboard from './pages/AdminDashboard';
 import HeadCaregiverDashboard from './pages/HeadCaregiverDashboard';
@@ -31,7 +31,7 @@ function App() {
           <Route path="/donation" element={<DonationPage />} />
           <Route path="/booking" element={<BookingPage />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          {/* <Route path="/reset-password/:token" element={<ResetPassword />} /> */}
 
           <Route path="/admin" element={
             <ProtectedRoute allowedRoles={['admin']}>
