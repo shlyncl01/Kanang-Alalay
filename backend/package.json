@@ -23,6 +23,7 @@
     "openai": "^4.9.0",
     "qrcode": "^1.5.4",
     "react-native-qrcode-svg": "^6.3.21",
+    "resend": "^6.18.1",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
