@@ -28,7 +28,9 @@ router.get('/schedule', authMiddleware, async (req, res) => {
         const logs = await MedicationLog.find({
             caregiverId: req.user._id,
             scheduledTime: { $gte: today, $lt: tomorrow },
-            status: { $in: ['scheduled', 'overdue'] }
+            // 'scheduled' means not yet prepared by the head caregiver — only surface
+            // once prepared ('pending') or overdue.
+            status: { $in: ['pending', 'overdue'] }
         })
         .populate('residentId', 'firstName lastName roomNumber')
         .populate('medicationId', 'name dosage form')
@@ -47,7 +49,7 @@ router.get('/resident/:residentId', authMiddleware, async (req, res) => {
         const residentId = req.params.residentId;
         const logs = await MedicationLog.find({
             residentId,
-            status: { $in: ['scheduled', 'overdue'] }
+            status: { $in: ['pending', 'overdue'] }
         })
         .populate('medicationId', 'name dosage form uniqueCode medicationId stock')
         .sort({ scheduledTime: 1 });

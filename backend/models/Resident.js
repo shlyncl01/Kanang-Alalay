@@ -24,7 +24,7 @@ const residentSchema = new mongoose.Schema({
     medications: [
         {
             name: { type: String, required: true },
-            dosage: String,
+            dosage: { type: String, required: true, validate: { validator: v => !!v && v.trim().length > 0, message: 'Dosage is required.' } },
             frequency: String,
             scheduleTime: String,
             status: { type: String, default: 'active' },

@@ -16,7 +16,7 @@ const medicationLogSchema = new mongoose.Schema({
     floor:        { type: String, default: '' },   // '2nd Floor'
     bed:          { type: String, default: '' },   // 'Bed 1'
     condition:    { type: String, default: '' },   // medication purpose/condition
-    dosage:       { type: String, default: '' },   // '1 tablet'
+    dosage:       { type: String, required: true, validate: { validator: v => !!v && v.trim().length > 0, message: 'Dosage is required.' } },   // '1 tablet'
     frequency:    { type: String, default: '' },   // 'Daily', 'Twice daily'
     nextDose:     { type: String, default: '' },   // '8:00 PM'
 

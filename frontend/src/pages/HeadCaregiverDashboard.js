@@ -615,7 +615,7 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
 const ProfileModal = ({ resident, schedule, onClose }) => {
     const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'Resident';
     const todayMeds = (schedule || []).filter(l =>
-        l.residentName === resName || l.residentId?.toString() === resident._id?.toString()
+        l.residentId?.toString() === resident._id?.toString()
     );
 
     const InfoRow = ({ label, value }) => value ? (
@@ -782,6 +782,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
         if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
             e.scheduledTime = 'Scheduled time cannot be in the past.';
         }
+        if (!f.dosage.trim()) e.dosage = 'Dosage is required.';
         if (Object.keys(e).length) { setErrs(e); return; }
         setSaving(true);
         const r = await doFetch('/head-caregiver/schedule', { method: 'POST', body: JSON.stringify(f) });
@@ -814,8 +815,8 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                         <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
                             <input type="datetime-local" style={hcInputStyle(errs.scheduledTime)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
                         </HCField>
-                        <HCField label="Dosage Override">
-                            <input style={hcInputStyle(false)} value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
+                        <HCField label="Dosage" required error={errs.dosage}>
+                            <input style={hcInputStyle(errs.dosage)} value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
                         </HCField>
                     </div>
                     <HCField label="Notes" style={{ marginBottom: 6 }}>
@@ -1124,7 +1125,7 @@ const HeadCaregiverDashboard = () => {
         let arr = schedule.filter(l => {
             const mQ = !q || l.residentName?.toLowerCase().includes(q) || l.medicationName?.toLowerCase().includes(q) || l.room?.toLowerCase().includes(q);
             const mSt = filterStatus === 'All' || l.status === filterStatus.toLowerCase();
-            const mR = filterResident === 'All' || l.residentName === filterResident;
+            const mR = filterResident === 'All' || String(l.residentId) === filterResident;
             return mQ && mSt && mR;
         });
         return [...arr].sort((a, b) => {
@@ -1152,13 +1153,23 @@ const HeadCaregiverDashboard = () => {
         return arr;
     }, [residents, searchQuery, filterStatus]);
 
-    const residentNames = useMemo(() => ['All', ...new Set(schedule.map(l => l.residentName).filter(Boolean))], [schedule]);
+    const residentFilterOptions = useMemo(() => {
+        const seen = new Map();
+        schedule.forEach(l => {
+            const id = l.residentId ? String(l.residentId) : null;
+            if (id && !seen.has(id)) {
+                seen.set(id, { id, name: l.residentName || 'Unknown', room: l.room });
+            }
+        });
+        return [{ id: 'All', name: 'All', room: '' }, ...seen.values()];
+    }, [schedule]);
 
     const groupedByResident = useMemo(() => {
         const g = {};
         schedule.forEach(l => {
-            const key = l.residentName || 'Unknown';
-            if (!g[key]) g[key] = { name: key, room: l.room, floor: l.floor, residentId: l.residentId, meds: [] };
+            // Group by residentId, not name — two residents can share the same display name.
+            const key = l.residentId ? String(l.residentId) : (l.residentName || 'Unknown');
+            if (!g[key]) g[key] = { name: l.residentName || 'Unknown', room: l.room, floor: l.floor, residentId: l.residentId, meds: [] };
             g[key].meds.push(l);
         });
         return Object.values(g);
@@ -1174,7 +1185,7 @@ const HeadCaregiverDashboard = () => {
         if (item.status === 'pending')
             return <button className="sched-btn-view" disabled style={{ opacity: 0.7 }}>Prepared — Awaiting Caregiver</button>;
         if (item.status === 'completed' || item.status === 'administered')
-            return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === item.residentName) || { _id: item.residentId, name: item.residentName } })}>View</button>;
+            return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => String(r._id) === String(item.residentId)) || { _id: item.residentId, name: item.residentName } })}>View</button>;
         return <button className="btn-success-sm sched-btn-administer" onClick={() => markStatus(item._id, 'completed')}>Administer</button>;
     };
 
@@ -1352,7 +1363,6 @@ const HeadCaregiverDashboard = () => {
                     paged.map((r, i) => {
                         const isLast = i === paged.length - 1;
                         const todayMeds = schedule.filter(l =>
-                            l.residentName === getResidentName(r) ||
                             l.residentId?.toString() === r._id?.toString()
                         );
                         const allDone = todayMeds.length > 0 && todayMeds.every(l => l.status === 'completed' || l.status === 'administered');
@@ -1475,7 +1485,11 @@ const HeadCaregiverDashboard = () => {
                         <option value="missed">Missed</option>
                     </select>
                     <select className="filter-select" value={filterResident} onChange={e => setFRes(e.target.value)}>
-                        {residentNames.map(r => <option key={r} value={r}>{r === 'All' ? 'Residents: All' : r}</option>)}
+                        {residentFilterOptions.map(r => (
+                            <option key={r.id} value={r.id}>
+                                {r.id === 'All' ? 'Residents: All' : `${r.name}${r.room ? ` — Room ${r.room}` : ''}`}
+                            </option>
+                        ))}
                     </select>
                     <select className="filter-select" value={sortTime} onChange={e => setSort(e.target.value)}>
                         <option value="Asc">Sort: Time ↑</option>
@@ -1567,7 +1581,7 @@ const HeadCaregiverDashboard = () => {
                                                 <td><DotBadge s={m.status} /></td>
                                                 <td>
                                                     <ActionMenu
-                                                        onViewHistory={() => setModal({ type: 'history', data: residents.find(r => r.name === grp.name) || { _id: m.residentId, name: grp.name } })}
+                                                        onViewHistory={() => setModal({ type: 'history', data: residents.find(r => String(r._id) === String(m.residentId)) || { _id: m.residentId, name: grp.name } })}
                                                         onAddMedication={() => setModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
                                                         onEditSchedule={() => setModal({ type: 'editSchedule', data: m })}
                                                     />

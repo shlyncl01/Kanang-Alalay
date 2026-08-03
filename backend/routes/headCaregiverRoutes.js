@@ -547,7 +547,9 @@ router.get('/schedule', async (req, res) => {
         const sevenDaysAgo = new Date(target);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-        const baseQuery = { caregiverId: req.user._id };
+        const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)
+            ? {}
+            : { caregiverId: req.user._id };
         if (residentId) baseQuery.residentId = residentId;
 
         // Today's full schedule + past unresolved (overdue/scheduled/pending)
@@ -622,6 +624,11 @@ router.post('/schedule', async (req, res) => {
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
         if (!medication) return res.status(404).json({ success: false, message: 'Medication not found.' });
 
+        const finalDosage = dosage || (medication.dosage ? `${medication.dosage.value}${medication.dosage.unit}` : '');
+        if (!finalDosage || !String(finalDosage).trim()) {
+            return res.status(400).json({ success: false, message: 'Dosage is required.' });
+        }
+
         const logId = `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
         const log = new MedicationLog({
@@ -635,7 +642,7 @@ router.post('/schedule', async (req, res) => {
             floor: resident.floor || '',
             bed: resident.bed || '',
             condition: medication.purpose || '',
-            dosage: dosage || (medication.dosage ? `${medication.dosage.value}${medication.dosage.unit}` : ''),
+            dosage: finalDosage,
             frequency: frequency || '',
             nextDose: nextDose || '',
             scheduledTime: new Date(scheduledTime),
@@ -733,6 +740,9 @@ router.put('/schedule/:id/status', async (req, res) => {
 router.put('/schedule/:id', async (req, res) => {
     try {
         const { scheduledTime, dosage, notes, nextDose, frequency } = req.body;
+        if (dosage !== undefined && !String(dosage).trim()) {
+            return res.status(400).json({ success: false, message: 'Dosage is required.' });
+        }
         const update = {};
         if (scheduledTime !== undefined) update.scheduledTime = new Date(scheduledTime);
         if (dosage !== undefined) update.dosage = dosage;
@@ -740,7 +750,7 @@ router.put('/schedule/:id', async (req, res) => {
         if (nextDose !== undefined) update.nextDose = nextDose;
         if (frequency !== undefined) update.frequency = frequency;
 
-        const log = await MedicationLog.findByIdAndUpdate(req.params.id, update, { new: true })
+        const log = await MedicationLog.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true })
             .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
             .populate('medicationId', 'name dosage form purpose');
 

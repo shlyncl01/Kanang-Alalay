@@ -51,7 +51,9 @@ router.get('/my-assigned', protect, async (req, res) => {
     const logQuery = {
       residentId: { $in: residentIds },
       scheduledTime: { $gte: today, $lt: tomorrow },
-      status: { $in: ['scheduled', 'pending', 'overdue'] },
+      // 'scheduled' means the head caregiver hasn't prepared it yet — only show
+      // once it's been prepared ('pending') or has become overdue.
+      status: { $in: ['pending', 'overdue'] },
     };
 
     const logs = await MedicationLog.find(logQuery)
