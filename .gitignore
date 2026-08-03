@@ -45,3 +45,4 @@ backend/env.txt
 *secret*
 *key*
 *.pem
+.DS_Store

@@ -7,21 +7,15 @@
    Medium Brown: #b85c2d
 ============================================ */
 
-/* CSS Variables for consistent theming */
+/* NOTE: color/font custom properties (--d-ink, --d-border, --d-muted,
+   --d-font-body, --d-font-head, etc.) are defined once in Dashboard.css,
+   which loads first. Re-declaring :root here previously silently
+   overwrote them (Playfair/DM Sans → Inter, near-black ink → orange-ish
+   ink, etc.) for every element that reads the variable. Removed to stop
+   that conflict. Add only variables that don't already exist above. */
 :root {
-    --d-orange: #F96B38;
-    --d-orange-dk: #D94E1B;
-    --d-orange-lt: #FDDECA;
     --d-brown-deep: #b8560b;
     --d-brown-med: #b85c2d;
-    --d-cream: #FFF9F5;
-    --d-white: #FFFFFF;
-    --d-ink: #b8481c;
-    --d-muted: #8B6B5C;
-    --d-border: #F0E4DC;
-    --d-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-    --d-font-body: 'Inter', system-ui, -apple-system, sans-serif;
-    --d-font-head: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 /* Base Layout */
@@ -83,38 +77,12 @@
     max-width: 420px;
 }
 
-.topbar-search-icon {
-    position: absolute;
-    left: 13px;
-    color: var(--d-muted);
-    font-size: 0.88rem;
-    pointer-events: none;
-}
+/* .topbar-search-icon / .topbar-search-input were redefined here with
+   their own border+radius+background — since .topbar-search-wrapper
+   ALSO has a border+radius (from Dashboard.css), this produced a
+   "box inside a box" around the search field. Removed; the clean
+   single-box versions in Dashboard.css are now the only definition. */
 
-.topbar-search-input {
-    width: 100%;
-    padding: 9px 14px 9px 38px;
-    border: 1.5px solid var(--d-border);
-    border-radius: 10px;
-    font-family: var(--d-font-body);
-    font-size: 0.88rem;
-    background: var(--d-cream);
-    color: var(--d-ink);
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-}
-
-.topbar-search-input:focus {
-    border-color: var(--d-orange);
-    background: var(--d-white);
-    box-shadow: 0 0 0 3px rgba(249, 107, 56, 0.1);
-}
-
-.topbar-search-input::placeholder {
-    color: var(--d-muted);
-}
-
-/* Search clear button */
 .search-clear-btn {
     position: absolute;
     right: 10px;
@@ -134,6 +102,87 @@
 .search-clear-btn:hover {
     background: var(--d-orange);
     color: #fff;
+}
+
+/* ===== GLOBAL SEARCH RESULTS DROPDOWN ===== */
+.global-search-dropdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--d-white);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--d-border);
+    z-index: 600;
+    animation: fadeIn 0.18s ease;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.global-search-empty {
+    padding: 18px 16px;
+    color: var(--d-muted);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.global-search-group {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--d-border);
+}
+
+.global-search-group:last-child {
+    border-bottom: none;
+}
+
+.global-search-group-label {
+    padding: 4px 16px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--d-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.global-search-item {
+    padding: 9px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.global-search-item:hover {
+    background: var(--d-orange-lt);
+}
+
+.global-search-item-label {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--d-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.global-search-item-sub {
+    font-size: 0.74rem;
+    color: var(--d-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+    max-width: 45%;
+    text-align: right;
+}
+
+@media (max-width: 576px) {
+    .global-search-dropdown { max-height: 320px; }
+    .global-search-item-sub { display: none; }
 }
 
 /* Right side - contains SINGLE user menu area */
@@ -788,16 +837,7 @@
     margin-bottom: 10px;
 }
 
-/* ===== STAT CARDS ===== */
-.stat-card.clickable {
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.stat-card.clickable:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(249, 107, 56, 0.18);
-}
+/* .stat-card.clickable rules live in Dashboard.css */
 
 /* ===== ERROR BANNER ===== */
 .api-error-banner {
@@ -888,6 +928,10 @@
         max-width: 200px;
     }
 
+    .topbar-left {
+        gap: 10px;
+    }
+
     .topbar-user-info {
         display: none;
     }
@@ -918,8 +962,19 @@
 @media (max-width: 520px) {
     .notif-dropdown {
         width: calc(100vw - 32px);
-        right: -80px;
+        right: -70px;
+        max-width: 360px;
     }
+}
+
+@media (max-width: 425px) {
+    .admin-topbar { padding: 0 10px; gap: 8px; }
+    .topbar-search-wrapper { max-width: 120px; }
+    .topbar-right { gap: 6px; }
+}
+
+@media (max-width: 375px) {
+    .topbar-search-wrapper { max-width: 90px; }
 }
 
 /* ===== UTILITY CLASSES ===== */
@@ -939,14 +994,9 @@
     cursor: pointer;
 }
 
-/* Card base style */
-.card-white {
-    background: var(--d-white);
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: var(--d-shadow-sm);
-    border: 1px solid var(--d-border);
-}
+/* .card-white base rules live in Dashboard.css (includes margin-bottom
+   for consistent vertical rhythm between stacked cards); duplicate
+   removed from here to avoid the two files fighting over padding/spacing. */
 
 /* Flex utilities */
 .flex-between {

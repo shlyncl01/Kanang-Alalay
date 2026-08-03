@@ -108,6 +108,79 @@ const SaveBtn = ({ saving, label, onClick, disabled }) => (
     </button>
 );
 
+// ─── Shared inline-style system (matches Add Inventory Item exactly) ─────────
+// Used only by AddResidentModal, AddScheduleModal, RequestStockModal — fully
+// self-contained inline styles, independent of any external CSS classes.
+const hcModalStyle = { maxWidth: 560, padding: 0, width: '100%' };
+const hcHeaderStyle = {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '22px 28px', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)',
+    borderRadius: '20px 20px 0 0',
+};
+const hcHeaderTitleStyle = {
+    margin: 0, color: '#fff', fontFamily: "'Playfair Display', Georgia, serif",
+    display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.2rem',
+};
+const hcCloseBtnStyle = {
+    background: 'rgba(255,255,255,.15)', border: '2px solid rgba(255,255,255,.2)',
+    color: '#fff', width: 36, height: 36, borderRadius: '50%',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'background .2s', flexShrink: 0,
+};
+const hcBodyStyle = { padding: '26px 28px', maxHeight: '70vh', overflowY: 'auto', boxSizing: 'border-box' };
+const hcSectionLabel = {
+    fontSize: '.78rem', fontWeight: 700, color: '#b85c2d', textTransform: 'uppercase',
+    letterSpacing: '.05em', margin: '22px 0 14px', paddingBottom: 8,
+    borderBottom: '1.5px solid #F3D9C4', display: 'flex', alignItems: 'center',
+};
+const hcFieldWrap = { marginBottom: 18 };
+const hcGrid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 };
+const hcLabelStyle = {
+    display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#2c3e50',
+    marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em',
+};
+const hcInputStyle = (hasError) => ({
+    width: '100%', padding: '11px 14px',
+    border: `1.5px solid ${hasError ? '#dc3545' : '#E8D6CC'}`,
+    borderRadius: 10, fontSize: '.9rem',
+    background: '#FFF8F3', color: '#1A0A00',
+    outline: 'none', boxSizing: 'border-box',
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+});
+const hcErrorText = { color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' };
+const hcHintText = { fontSize: '.74rem', color: '#A38070', marginTop: 4, display: 'block' };
+const hcFooter = { display: 'flex', gap: 12, marginTop: 22, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' };
+const hcCancelBtn = (disabled) => ({
+    flex: 1, padding: '11px', background: '#fff', color: '#7A5C4E',
+    border: '1.5px solid #E8D6CC', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 600, fontSize: '.9rem',
+    transition: 'all .2s', opacity: disabled ? 0.6 : 1,
+});
+const hcSaveBtn = (disabled) => ({
+    flex: 2, padding: '11px',
+    background: disabled ? '#ccc' : 'linear-gradient(135deg, #F96B38, #D94E1B)',
+    color: '#fff', border: 'none', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, fontSize: '.9rem',
+    boxShadow: disabled ? 'none' : '0 4px 14px rgba(249,107,56,.3)', transition: 'all .22s',
+});
+// Reusable field wrapper so every modal renders label/input/error identically
+const HCField = ({ label, required, error, hint, style, children }) => (
+    <div style={style || hcFieldWrap}>
+        <label style={hcLabelStyle}>
+            {label} {required && <span style={{ color: '#dc3545' }}>*</span>}
+        </label>
+        {children}
+        {error && <small style={hcErrorText}>{error}</small>}
+        {!error && hint && <small style={hcHintText}>{hint}</small>}
+    </div>
+);
+const HCHeader = ({ icon, title, onClose }) => (
+    <div style={hcHeaderStyle}>
+        <h3 style={hcHeaderTitleStyle}>{icon} {title}</h3>
+        <button onClick={onClose} type="button" style={hcCloseBtnStyle}><FaTimes /></button>
+    </div>
+);
+
 /// ════════════════════════════════════════════════════════════
 //  MODAL: Add Resident (UPDATED with better UI and caregivers dropdown - NO EMOJIS)
 // ════════════════════════════════════════════════════════════
@@ -200,99 +273,105 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal add-resident-modal">
-                <MHeader icon={<FaUserPlus />} title="Add New Resident" onClose={onClose} />
-                <div className="modal-body add-resident-body">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaUserPlus />} title="Add New Resident" onClose={onClose} />
+                <div style={hcBodyStyle}>
 
                     {/* Personal Information Section */}
-                    <div className="modal-section-label">
+                    <div style={{ ...hcSectionLabel, marginTop: 0 }}>
                         <FaUserCircle style={{ marginRight: 6 }} /> Personal Information
                     </div>
-                    <div className="form-grid-2">
-                        <Field label="First Name" required error={errs.firstName}>
+                    <div style={hcGrid2}>
+                        <HCField label="First Name" required error={errs.firstName}>
                             <input
-                                className={`form-input${errs.firstName ? ' error' : ''}`}
+                                style={hcInputStyle(errs.firstName)}
                                 value={f.firstName}
                                 onChange={e => setField('firstName', e.target.value)}
                                 placeholder="Enter first name"
                             />
-                        </Field>
-                        <Field label="Last Name">
+                        </HCField>
+                        <HCField label="Last Name">
                             <input
-                                className="form-input"
+                                style={hcInputStyle(false)}
                                 value={f.lastName}
                                 onChange={e => setField('lastName', e.target.value)}
                                 placeholder="Enter last name (optional)"
                             />
-                        </Field>
-                        <Field label="Middle Name">
+                        </HCField>
+                        <HCField label="Middle Name">
                             <input
-                                className="form-input"
+                                style={hcInputStyle(false)}
                                 value={f.middleName}
                                 onChange={e => setField('middleName', e.target.value)}
                                 placeholder="Optional"
                             />
-                        </Field>
-                        <Field label="Nickname">
+                        </HCField>
+                        <HCField label="Nickname">
                             <input
-                                className="form-input"
+                                style={hcInputStyle(false)}
                                 value={f.nickname}
                                 onChange={e => setField('nickname', e.target.value)}
                                 placeholder="What they prefer to be called"
                             />
-                        </Field>
-                        <Field label="Age" required error={errs.age}>
+                        </HCField>
+                        <HCField label="Age" required error={errs.age}>
                             <input
                                 type="number"
                                 min="1"
                                 max="130"
-                                className={`form-input${errs.age ? ' error' : ''}`}
+                                style={hcInputStyle(errs.age)}
                                 value={f.age}
                                 onChange={e => setField('age', e.target.value)}
                                 placeholder="e.g. 75"
                             />
-                        </Field>
-                        <Field label="Gender">
-                            <select className="form-input" value={f.gender} onChange={e => setField('gender', e.target.value)}>
+                        </HCField>
+                        <HCField label="Gender">
+                            <select style={hcInputStyle(false)} value={f.gender} onChange={e => setField('gender', e.target.value)}>
                                 <option value="male">Male</option>
                                 <option value="female">Female</option>
                                 <option value="other">Other / Prefer not to say</option>
                             </select>
-                        </Field>
-                        <Field label="Admission Date">
+                        </HCField>
+                        <HCField label="Admission Date" style={{ ...hcFieldWrap, gridColumn: '1 / -1' }}>
                             <input
                                 type="date"
-                                className="form-input"
+                                style={hcInputStyle(false)}
                                 value={f.admissionDate}
                                 onChange={e => setField('admissionDate', e.target.value)}
                             />
-                        </Field>
+                        </HCField>
                     </div>
 
                     {/* Room Assignment Section */}
-                    <div className="modal-section-label">
+                    <div style={hcSectionLabel}>
                         <FaHome style={{ marginRight: 6 }} /> Room Assignment
                     </div>
-                    <div className="form-grid-2">
-                        <Field label="Room Number" required error={errs.roomNumber}>
+                    <div style={hcGrid2}>
+                        <HCField label="Room Number" required error={errs.roomNumber}>
                             <input
-                                className={`form-input${errs.roomNumber ? ' error' : ''}`}
+                                style={hcInputStyle(errs.roomNumber)}
                                 value={f.roomNumber}
                                 onChange={e => setField('roomNumber', e.target.value)}
                                 placeholder="e.g. 201"
                             />
-                        </Field>
-                        <Field label="Floor / Ward" required error={errs.floor}>
+                        </HCField>
+                        <HCField label="Floor / Ward" required error={errs.floor}>
                             <select
-                                className={`form-input${errs.floor ? ' error' : ''}`}
+                                style={hcInputStyle(errs.floor)}
                                 value={f.floor}
                                 onChange={e => setField('floor', e.target.value)}>
                                 <option value="">Select floor…</option>
                                 {FLOORS.map(fl => <option key={fl} value={fl}>{fl}</option>)}
                             </select>
-                        </Field>
-                        <Field label="Bed" error={errs.bed}>
-                            <select className={`form-input${errs.bed ? ' error' : ''}`} value={f.bed} onChange={e => setField('bed', e.target.value)}>
+                        </HCField>
+                        <HCField
+                            label="Bed"
+                            error={errs.bed}
+                            hint={f.roomNumber && occupiedBeds.length > 0
+                                ? `${occupiedBeds.length} of ${BEDS.length} bed${occupiedBeds.length !== 1 ? 's' : ''} occupied in Room ${f.roomNumber}`
+                                : null}
+                        >
+                            <select style={hcInputStyle(errs.bed)} value={f.bed} onChange={e => setField('bed', e.target.value)}>
                                 <option value="">Select bed…</option>
                                 {BEDS.map(b => {
                                     const occ = occupiedBeds.find(o => o.bed === b);
@@ -303,42 +382,45 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                                     );
                                 })}
                             </select>
-                            {f.roomNumber && occupiedBeds.length > 0 && (
-                                <small className="field-hint" style={{ color: 'var(--d-orange-dk)' }}>
-                                    {occupiedBeds.length} of {BEDS.length} bed{occupiedBeds.length !== 1 ? 's' : ''} occupied in Room {f.roomNumber}
-                                </small>
-                            )}
-                        </Field>
-                        <Field label="Alert Level">
-                            <select className="form-input" value={f.alertLevel} onChange={e => setField('alertLevel', e.target.value)}>
+                        </HCField>
+                        <HCField label="Alert Level">
+                            <select style={hcInputStyle(false)} value={f.alertLevel} onChange={e => setField('alertLevel', e.target.value)}>
                                 <option value="stable">Stable</option>
                                 <option value="alert">Alert - Monitor closely</option>
                                 <option value="critical">Critical - Immediate attention</option>
                             </select>
-                        </Field>
+                        </HCField>
                     </div>
 
                     {/* Medical Information Section */}
-                    <div className="modal-section-label">
+                    <div style={hcSectionLabel}>
                         <FaStethoscope style={{ marginRight: 6 }} /> Medical Information
                     </div>
-                    <Field label="Medical Conditions (comma-separated)">
+                    <HCField label="Medical Conditions (comma-separated)" hint="Separate multiple conditions with commas">
                         <input
-                            className="form-input"
+                            style={hcInputStyle(false)}
                             value={f.conditions}
                             onChange={e => setField('conditions', e.target.value)}
                             placeholder="e.g. Hypertension, Diabetes, Arthritis"
                         />
-                        <small className="field-hint">Separate multiple conditions with commas</small>
-                    </Field>
+                    </HCField>
 
                     {/* Assignment Section with Caregivers Dropdown */}
-                    <div className="modal-section-label">
+                    <div style={hcSectionLabel}>
                         <FaUserMd style={{ marginRight: 6 }} /> Assignment
                     </div>
-                    <Field label="Primary Caregiver">
+                    <HCField
+                        label="Primary Caregiver"
+                        style={{ marginBottom: 6 }}
+                        hint={
+                            selectedCaregiverName ? `Assigned to: ${selectedCaregiverName}`
+                            : caregivers.filter(c => String(c.role || '').toLowerCase() === 'caregiver').length === 0
+                                ? 'No caregiver accounts found. Please register a caregiver first in User Management.'
+                                : 'Optional — can be assigned later.'
+                        }
+                    >
                         <select
-                            className="form-input"
+                            style={hcInputStyle(false)}
                             value={f.primaryCaregiverId}
                             onChange={e => setField('primaryCaregiverId', e.target.value)}>
                             <option value="">— Select a caregiver —</option>
@@ -350,29 +432,15 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                                     </option>
                                 ))}
                         </select>
-                        {selectedCaregiverName && (
-                            <small className="field-hint success">
-                                <FaCheckCircle style={{ marginRight: 4 }} />
-                                Assigned to: {selectedCaregiverName}
-                            </small>
-                        )}
-                        {!f.primaryCaregiverId && caregivers.filter(c => String(c.role || '').toLowerCase() === 'caregiver').length === 0 && (
-                            <small className="field-hint" style={{ color: 'var(--d-orange-dk)' }}>
-                                <FaExclamationTriangle style={{ marginRight: 4 }} />
-                                No caregiver accounts found. Please register a caregiver first in User Management.
-                            </small>
-                        )}
-                        {!f.primaryCaregiverId && caregivers.filter(c => String(c.role || '').toLowerCase() === 'caregiver').length > 0 && (
-                            <small className="field-hint">
-                                <FaUserMd style={{ marginRight: 4 }} />
-                                Optional — can be assigned later.
-                            </small>
-                        )}
-                    </Field>
+                    </HCField>
 
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="✓ Add Resident" onClick={submit} />
+                    <div style={hcFooter}>
+                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                            Cancel
+                        </button>
+                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                            {saving ? 'Saving…' : '✓ Add Resident'}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -724,38 +792,42 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-md">
-                <MHeader icon={<FaPlus />} title="Add Medication to Schedule" onClose={onClose} />
-                <div className="modal-body">
-                    <Field label="Resident" required error={errs.residentId}>
-                        <select className={`form-input${errs.residentId ? ' error' : ''}`} value={f.residentId} onChange={e => setField('residentId', e.target.value)}>
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaPlus />} title="Add Medication to Schedule" onClose={onClose} />
+                <div style={hcBodyStyle}>
+                    <HCField label="Resident" required error={errs.residentId}>
+                        <select style={hcInputStyle(errs.residentId)} value={f.residentId} onChange={e => setField('residentId', e.target.value)}>
                             <option value="">Select resident…</option>
                             {residents.map(r => {
                                 const displayName = r.name || `${r.firstName || ''} ${r.lastName || ''}`.trim();
                                 return <option key={r._id} value={r._id}>{displayName} — Room {r.room || '?'}</option>;
                             })}
                         </select>
-                    </Field>
-                    <Field label="Medication" required error={errs.medicationId}>
-                        <select className={`form-input${errs.medicationId ? ' error' : ''}`} value={f.medicationId} onChange={e => setField('medicationId', e.target.value)}>
+                    </HCField>
+                    <HCField label="Medication" required error={errs.medicationId}>
+                        <select style={hcInputStyle(errs.medicationId)} value={f.medicationId} onChange={e => setField('medicationId', e.target.value)}>
                             <option value="">Select medication…</option>
                             {medications.map(m => <option key={m._id} value={m._id}>{m.name} {m.dosage?.value ? `${m.dosage.value}${m.dosage.unit}` : ''}</option>)}
                         </select>
-                    </Field>
-                    <div className="form-grid-2">
-                        <Field label="Scheduled Date & Time" required error={errs.scheduledTime}>
-                            <input type="datetime-local" className={`form-input${errs.scheduledTime ? ' error' : ''}`} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
-                        </Field>
-                        <Field label="Dosage Override">
-                            <input className="form-input" value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
-                        </Field>
+                    </HCField>
+                    <div style={hcGrid2}>
+                        <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
+                            <input type="datetime-local" style={hcInputStyle(errs.scheduledTime)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
+                        </HCField>
+                        <HCField label="Dosage Override">
+                            <input style={hcInputStyle(false)} value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
+                        </HCField>
                     </div>
-                    <Field label="Notes">
-                        <textarea rows={3} maxLength="500" className="form-input" value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Special instructions…" />
-                    </Field>
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="✓ Schedule Medication" onClick={submit} />
+                    <HCField label="Notes" style={{ marginBottom: 6 }}>
+                        <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Special instructions…" />
+                    </HCField>
+                    <div style={hcFooter}>
+                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                            Cancel
+                        </button>
+                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                            {saving ? 'Saving…' : '✓ Schedule Medication'}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -835,27 +907,31 @@ const RequestStockModal = ({ items, onClose, doFetch, toast }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-sm">
-                <MHeader icon={<FaBoxOpen />} title="Request Stock Replenishment" onClose={onClose} />
-                <div className="modal-body">
-                    <Field label="Select Item" error={errs.itemName}>
-                        <select className={`form-input${errs.itemName ? ' error' : ''}`} value={f.itemId} onChange={e => pickItem(e.target.value)}>
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaBoxOpen />} title="Request Stock Replenishment" onClose={onClose} />
+                <div style={hcBodyStyle}>
+                    <HCField label="Select Item" error={errs.itemName}>
+                        <select style={hcInputStyle(errs.itemName)} value={f.itemId} onChange={e => pickItem(e.target.value)}>
                             <option value="">Choose from inventory…</option>
                             {items.map(i => <option key={i._id} value={i._id}>{i.name} (Current: {i.quantity} {i.unit})</option>)}
                         </select>
-                    </Field>
-                    <Field label="Item Name (manual if not in list)">
-                        <input className={`form-input${errs.itemName ? ' error' : ''}`} value={f.itemName} onChange={e => setField('itemName', e.target.value)} placeholder="e.g. Paracetamol 500mg" />
-                    </Field>
-                    <Field label="Quantity Needed" required error={errs.quantity}>
-                        <input type="number" min="1" className={`form-input${errs.quantity ? ' error' : ''}`} value={f.quantity} onChange={e => setField('quantity', e.target.value)} />
-                    </Field>
-                    <Field label="Reason / Notes">
-                        <textarea rows={3} className="form-input" value={f.reason} onChange={e => setField('reason', e.target.value)} placeholder="Why is this stock needed?" />
-                    </Field>
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="✓ Submit Request" onClick={submit} />
+                    </HCField>
+                    <HCField label="Item Name (manual if not in list)">
+                        <input style={hcInputStyle(errs.itemName)} value={f.itemName} onChange={e => setField('itemName', e.target.value)} placeholder="e.g. Paracetamol 500mg" />
+                    </HCField>
+                    <HCField label="Quantity Needed" required error={errs.quantity}>
+                        <input type="number" min="1" style={hcInputStyle(errs.quantity)} value={f.quantity} onChange={e => setField('quantity', e.target.value)} />
+                    </HCField>
+                    <HCField label="Reason / Notes" style={{ marginBottom: 6 }}>
+                        <textarea rows={3} style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.reason} onChange={e => setField('reason', e.target.value)} placeholder="Why is this stock needed?" />
+                    </HCField>
+                    <div style={hcFooter}>
+                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                            Cancel
+                        </button>
+                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                            {saving ? 'Saving…' : '✓ Submit Request'}
+                        </button>
                     </div>
                 </div>
             </div>

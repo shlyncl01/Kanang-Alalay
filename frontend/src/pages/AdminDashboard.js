@@ -10,7 +10,7 @@ import {
     FaPhone, FaEnvelope, FaCalendarAlt, FaUserTag, FaIdCard, FaDownload, FaBox, FaChevronDown,
     FaSearch, FaCog, FaQuestionCircle, FaTimes, FaCheck, FaInfoCircle,
     FaExclamationCircle, FaSpinner, FaTimesCircle, FaHistory, FaFilter,
-    FaPrint, FaChevronLeft, FaChevronRight
+    FaPrint, FaChevronLeft, FaChevronRight, FaBars
 } from 'react-icons/fa';
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
@@ -410,11 +410,15 @@ const AdminDashboard = () => {
     const navigate = useNavigate();
     const notifRef = useRef(null);
     const dropdownRef = useRef(null);
+    const searchRef = useRef(null);
 
     const [activeSection, setActiveSection] = useState('overview');
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+    const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false); // drawer toggle, <768px only
     const [notifications, setNotifications] = useState([]);
     const [readIds, setReadIds] = useState(() => {
         try {
@@ -574,10 +578,19 @@ const AdminDashboard = () => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
                 setOpenDropdown(null);
             }
+            if (searchRef.current && !searchRef.current.contains(e.target)) {
+                setGlobalSearchOpen(false);
+            }
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
+
+    // Debounce the search query so filtering/searching doesn't run on every keystroke.
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 250);
+        return () => clearTimeout(t);
+    }, [searchQuery]);
 
     useEffect(() => {
         const built = buildNotifications(bookings, donations, staff, inventory);
@@ -602,7 +615,7 @@ const AdminDashboard = () => {
     };
 
     const filteredStaff = useMemo(() => {
-        const q = searchQuery.toLowerCase().trim();
+        const q = debouncedSearchQuery.toLowerCase().trim();
         if (!q) return staff;
         return staff.filter(m =>
             `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
@@ -612,10 +625,10 @@ const AdminDashboard = () => {
             m.staffId?.toLowerCase().includes(q) ||
             m.phone?.toLowerCase().includes(q)
         );
-    }, [staff, searchQuery]);
+    }, [staff, debouncedSearchQuery]);
 
     const filteredBookings = useMemo(() => {
-        const q = searchQuery.toLowerCase().trim();
+        const q = debouncedSearchQuery.toLowerCase().trim();
         if (!q) return bookings;
         return bookings.filter(b =>
             b.name?.toLowerCase().includes(q) ||
@@ -624,10 +637,10 @@ const AdminDashboard = () => {
             b.purpose?.toLowerCase().includes(q) ||
             b.status?.toLowerCase().includes(q)
         );
-    }, [bookings, searchQuery]);
+    }, [bookings, debouncedSearchQuery]);
 
     const filteredDonations = useMemo(() => {
-        const q = searchQuery.toLowerCase().trim();
+        const q = debouncedSearchQuery.toLowerCase().trim();
         if (!q) return donations;
         return donations.filter(d =>
             d.donorName?.toLowerCase().includes(q) ||
@@ -635,24 +648,90 @@ const AdminDashboard = () => {
             d.donationType?.toLowerCase().includes(q) ||
             d.paymentStatus?.toLowerCase().includes(q)
         );
-    }, [donations, searchQuery]);
+    }, [donations, debouncedSearchQuery]);
 
     const filteredInventory = useMemo(() => {
-        const q = searchQuery.toLowerCase().trim();
+        const q = debouncedSearchQuery.toLowerCase().trim();
         if (!q) return inventory;
         return inventory.filter(i =>
             i.name?.toLowerCase().includes(q) ||
             i.category?.toLowerCase().includes(q) ||
             i.status?.toLowerCase().includes(q)
         );
-    }, [inventory, searchQuery]);
+    }, [inventory, debouncedSearchQuery]);
+
+    // Instant cross-module results for the topbar global search dropdown.
+    // Searches Staff, Inventory, Bookings, Donations, and Notifications at once,
+    // case-insensitively, with partial matching. (Resident records are not
+    // fetched/available in this dashboard, so they're excluded from this list.)
+    const globalSearchResults = useMemo(() => {
+        const q = debouncedSearchQuery.toLowerCase().trim();
+        if (!q) return null;
+
+        const MAX_PER_GROUP = 5;
+
+        const staffMatches = staff.filter(m =>
+            `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
+            m.email?.toLowerCase().includes(q) ||
+            m.role?.toLowerCase().includes(q)
+        ).slice(0, MAX_PER_GROUP).map(m => ({
+            id: m._id, label: `${m.firstName} ${m.lastName}`, sub: m.role || 'staff', section: 'staff',
+        }));
+
+        const inventoryMatches = inventory.filter(i =>
+            i.name?.toLowerCase().includes(q) ||
+            i.category?.toLowerCase().includes(q) ||
+            i.status?.toLowerCase().includes(q)
+        ).slice(0, MAX_PER_GROUP).map(i => ({
+            id: i._id, label: i.name, sub: `${i.category || 'General'} • Qty: ${i.quantity}`, section: 'inventory',
+        }));
+
+        const bookingMatches = bookings.filter(b =>
+            b.name?.toLowerCase().includes(q) ||
+            b.email?.toLowerCase().includes(q) ||
+            b.purpose?.toLowerCase().includes(q) ||
+            b.status?.toLowerCase().includes(q)
+        ).slice(0, MAX_PER_GROUP).map(b => ({
+            id: b._id, label: b.name || 'Booking', sub: b.status || '', section: 'booking',
+        }));
+
+        const donationMatches = donations.filter(d =>
+            d.donorName?.toLowerCase().includes(q) ||
+            d.email?.toLowerCase().includes(q) ||
+            d.donationType?.toLowerCase().includes(q) ||
+            d.paymentStatus?.toLowerCase().includes(q)
+        ).slice(0, MAX_PER_GROUP).map(d => ({
+            id: d._id, label: d.donorName || 'Donor', sub: `${d.donationType || ''} • ${d.paymentStatus || ''}`, section: 'donation',
+        }));
+
+        const notificationMatches = notifications.filter(n =>
+            n.body?.toLowerCase().includes(q) || n.title?.toLowerCase().includes(q)
+        ).slice(0, MAX_PER_GROUP).map(n => ({
+            id: n.id, label: n.title || 'Notification', sub: n.body || '', section: NOTIF_TYPES[n.type]?.section || null,
+        }));
+
+        const groups = [
+            { key: 'staff', label: 'Staff', items: staffMatches },
+            { key: 'inventory', label: 'Inventory', items: inventoryMatches },
+            { key: 'booking', label: 'Bookings', items: bookingMatches },
+            { key: 'donation', label: 'Donations', items: donationMatches },
+            { key: 'notification', label: 'Notifications', items: notificationMatches },
+        ].filter(g => g.items.length > 0);
+
+        return { groups, total: groups.reduce((sum, g) => sum + g.items.length, 0) };
+    }, [staff, inventory, bookings, donations, notifications, debouncedSearchQuery]);
+
+    const handleGlobalResultClick = (section) => {
+        if (section) setActiveSection(section);
+        setGlobalSearchOpen(false);
+    };
 
     useEffect(() => {
         setCurrentPage(1);
         setBookingPage(1);
         setDonationPage(1);
         setInventoryPage(1);
-    }, [activeSection, searchQuery]);
+    }, [activeSection, debouncedSearchQuery]);
 
     const fetchApi = useCallback(async (endpoint, options = {}) => {
         const token = localStorage.getItem('token');
@@ -696,6 +775,7 @@ const AdminDashboard = () => {
     const fetchStaffList = async () => {
         const d = await fetchApi('/admin/staff');
         if (d.success) setStaff(d.staff || []);
+        return d;
     };
 
     const fetchDbAlerts = async () => {
@@ -1062,6 +1142,7 @@ const AdminDashboard = () => {
                     unit: item.unit || 'pcs',
                     minThreshold: Number(item.minThreshold) || 10,
                     expirationDate: item.expirationDate || undefined,
+                    supplier: item.supplier || undefined,
                     notes: item.notes || '',
                 }),
             });
@@ -1069,12 +1150,19 @@ const AdminDashboard = () => {
             if (data.success && data.data) {
                 setInventory(prev => [data.data, ...prev]);
                 toast('Inventory item added successfully.');
+                setShowAddInventory(false);
+                return { success: true };
             }
+            // Server responded but rejected the item (e.g. validation failure, duplicate name).
+            const message = data.message || 'Failed to add inventory item. Please check the details and try again.';
+            toast(message, 'error');
+            return { success: false, message };
         } catch (err) {
             console.error('Add inventory error:', err);
-            toast('Failed to add inventory item.', 'error');
+            const message = 'Could not reach the server. Please check your connection and try again.';
+            toast(message, 'error');
+            return { success: false, message };
         }
-        setShowAddInventory(false);
     };
 
     const handleViewDetails = (type, data) => setDetailsModal({ isOpen: true, type, data });
@@ -1309,7 +1397,7 @@ const AdminDashboard = () => {
 
     // Staff Roster Tab
     const renderStaffRoster = () => (
-        <StaffRosterTab staff={staff} onRefresh={fetchStaffList} />
+        <StaffRosterTab staff={staff} onRefresh={fetchStaffList} currentUser={user} />
     );
 
     // Booking Management Tab — passes raw bookings; the tab owns its own search
@@ -1450,6 +1538,7 @@ const AdminDashboard = () => {
             inventory={filteredInventory}
             setInventory={setInventory}
             setShowAddInventory={setShowAddInventory}
+            currentUser={user}
         />
     );
 
@@ -1538,8 +1627,15 @@ const AdminDashboard = () => {
 
     return (
         <div className="dashboard-layout">
-            <div className="dashboard-body" style={{ display: 'flex', minHeight: '100vh' }}>
-                <div className="sidebar" style={{ width: 260, background: '#1A0A00', color: '#fff', display: 'flex', flexDirection: 'column' }}>
+            <div className="dashboard-body">
+                {/* Mobile drawer backdrop — click to close */}
+                {mobileSidebarOpen && (
+                    <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />
+                )}
+                <div
+                    className={`sidebar${mobileSidebarOpen ? ' mobile-open' : ''}`}
+                    style={{ background: '#1A0A00', color: '#fff', display: 'flex', flexDirection: 'column' }}
+                >
                     <div className="sidebar-header" style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                         <div className="brand-section" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <div className="logo-circle" style={{ width: 40, height: 40, background: '#F96B38', borderRadius: '50%' }} />
@@ -1567,6 +1663,7 @@ const AdminDashboard = () => {
                                 onClick={() => {
                                     setActiveSection(key);
                                     setSearchQuery('');
+                                    setMobileSidebarOpen(false);
                                 }}
                                 style={{
                                     padding: '12px 20px',
@@ -1591,21 +1688,56 @@ const AdminDashboard = () => {
                 </div>
 
                 <div className="main-content-wrapper" style={{ flex: 1, background: '#F5F0EB', display: 'flex', flexDirection: 'column' }}>
-                    <div className="admin-topbar" style={{ background: '#fff', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E8D6CC' }}>
+                    <div className="admin-topbar">
                         <div className="topbar-left">
-                            <div className="topbar-search-wrapper">
+                            <button
+                                className="mobile-menu-toggle"
+                                onClick={() => setMobileSidebarOpen(o => !o)}
+                                aria-label="Toggle menu"
+                                title="Menu"
+                            >
+                                <FaBars />
+                            </button>
+                            <div className="topbar-search-wrapper" ref={searchRef} style={{ position: 'relative' }}>
                                 <FaSearch className="topbar-search-icon" />
                                 <input
                                     type="text"
                                     className="topbar-search-input"
                                     placeholder={getSearchPlaceholder()}
                                     value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onChange={(e) => { setSearchQuery(e.target.value); setGlobalSearchOpen(true); }}
+                                    onFocus={() => { if (searchQuery.trim()) setGlobalSearchOpen(true); }}
                                 />
                                 {searchQuery && (
-                                    <button className="search-clear-btn" onClick={() => setSearchQuery('')}>
+                                    <button className="search-clear-btn" onClick={() => { setSearchQuery(''); setGlobalSearchOpen(false); }}>
                                         <FaTimes />
                                     </button>
+                                )}
+
+                                {globalSearchOpen && debouncedSearchQuery && (
+                                    <div className="global-search-dropdown">
+                                        {!globalSearchResults || globalSearchResults.total === 0 ? (
+                                            <div className="global-search-empty">
+                                                No matches for "{debouncedSearchQuery}"
+                                            </div>
+                                        ) : (
+                                            globalSearchResults.groups.map(group => (
+                                                <div key={group.key} className="global-search-group">
+                                                    <div className="global-search-group-label">{group.label}</div>
+                                                    {group.items.map(item => (
+                                                        <div
+                                                            key={`${group.key}-${item.id}`}
+                                                            className="global-search-item"
+                                                            onClick={() => handleGlobalResultClick(item.section)}
+                                                        >
+                                                            <span className="global-search-item-label">{item.label}</span>
+                                                            {item.sub && <span className="global-search-item-sub">{item.sub}</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>

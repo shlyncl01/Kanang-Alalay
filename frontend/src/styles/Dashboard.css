@@ -496,9 +496,10 @@ body {
    ─────────────────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 18px;
   margin-bottom: 26px;
+  width: 100%;
 }
 
 .stat-card {
@@ -511,6 +512,8 @@ body {
   box-shadow: var(--d-shadow-sm);
   border: 1px solid var(--d-border);
   transition: transform .22s, box-shadow .22s;
+  min-width: 0; /* allow grid item to shrink instead of overflowing its track */
+  overflow: hidden;
 }
 
 .stat-card:hover {
@@ -538,12 +541,19 @@ body {
   background: var(--d-orange);
 }
 
+.stat-info {
+  min-width: 0; /* the missing piece: without this, long values push the card wider instead of wrapping */
+  flex: 1;
+}
+
 .stat-info h3 {
   margin: 0 0 3px;
   font-family: var(--d-font-head);
   font-size: 1.9rem;
   color: var(--d-ink);
-  line-height: 1;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .stat-info p {
@@ -553,6 +563,7 @@ body {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: .04em;
+  overflow-wrap: break-word;
 }
 
 /* ── ACTIVITY FEED ────────────────────────────────────────────
@@ -1265,17 +1276,79 @@ body {
   .card-white { box-shadow: none !important; border: 1px solid #ddd; }
 }
 
-@media (max-width: 900px) {
-  .sidebar { width: 72px; }
-  .sidebar .brand-text, .sidebar .user-details, .sidebar .user-status,
-  .sidebar .arrow-icon, .sidebar-menu li span:not(svg),
-  .sidebar-footer span { display: none; }
+/* ============================================================
+   RESPONSIVE SYSTEM
+   Breakpoints: 320 / 375 / 425 / 576 / 768 / 992 / 1200 / 1400 / 1600+
+   ============================================================ */
+
+/* Any div wrapping a <table> should scroll horizontally instead of
+   clipping content — overrides any inline overflow:hidden set for
+   border-radius clipping on individual cards. */
+.card-white { overflow-x: auto !important; }
+
+.custom-table { min-width: 560px; } /* keeps columns legible; card scrolls instead of crushing them */
+
+.mobile-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--d-ink);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.mobile-menu-toggle:hover { background: var(--d-orange-lt); color: var(--d-orange-dk); }
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 899;
 }
 
+/* ── ≤1200px (laptop): tighten stat grid slightly ── */
+@media (max-width: 1200px) {
+  .main-content { padding: 24px; }
+}
+
+/* ── ≤992px (tablet): collapse sidebar to icon rail ── */
+@media (max-width: 992px) {
+  .sidebar:not(.mobile-open) { width: 72px; }
+  .sidebar:not(.mobile-open) .brand-text,
+  .sidebar:not(.mobile-open) .user-details,
+  .sidebar:not(.mobile-open) .user-status,
+  .sidebar:not(.mobile-open) .arrow-icon,
+  .sidebar:not(.mobile-open) .sidebar-menu li span:not(svg),
+  .sidebar:not(.mobile-open) .sidebar-footer span,
+  .sidebar:not(.mobile-open) .sidebar-badge { display: none; }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+  .reports-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── ≤768px (mobile): sidebar becomes an off-canvas drawer ── */
 @media (max-width: 768px) {
+  .mobile-menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 900;
+    width: 260px !important;
+    transform: translateX(-100%);
+    transition: transform .28s ease;
+  }
+  .sidebar .brand-text, .sidebar .user-details, .sidebar .user-status,
+  .sidebar .arrow-icon, .sidebar-menu li span:not(svg),
+  .sidebar-footer span, .sidebar-badge { display: revert; }
+  .sidebar.mobile-open { transform: translateX(0); box-shadow: 8px 0 30px rgba(0,0,0,.3); }
+  .sidebar-overlay { display: block; }
+
   .main-content    { padding: 16px; }
   .card-white      { padding: 16px; }
-  .stats-grid      { grid-template-columns: 1fr 1fr; }
+  .stats-grid      { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .reports-grid    { grid-template-columns: 1fr 1fr; }
   .content-row     { flex-direction: column; }
   .compliance-overview { flex-direction: column; }
@@ -1284,59 +1357,55 @@ body {
   .donation-content    { flex-direction: column; align-items: flex-start; gap: 14px; }
   .donation-amount-info{ text-align: left; width: 100%; }
   .pagination-container{ flex-direction: column; align-items: flex-start; }
+
+  .stat-card { padding: 16px; gap: 12px; }
+  .stat-icon { width: 44px; height: 44px; font-size: 1.1rem; }
+  .stat-info h3 { font-size: 1.4rem; }
+  .stat-info p  { font-size: .7rem; }
+
+  .modal-overlay { padding: 16px; }
 }
 
-@media (max-width: 480px) {
+/* ── ≤576px (large phone) ── */
+@media (max-width: 576px) {
   .reports-grid { grid-template-columns: 1fr; }
-  .stats-grid   { grid-template-columns: 1fr 1fr; }
+  .welcome-banner { flex-direction: column; text-align: center; gap: 12px; }
+
+  /* Inventory toolbar + filters: stack for easy tapping on small screens */
+  .inventory-toolbar { width: 100%; }
+  .inventory-toolbar .btn-outline-sm,
+  .inventory-toolbar .btn-primary-sm { flex: 1 1 auto; justify-content: center; }
+
+  .inventory-filters-row { flex-direction: column; align-items: stretch; }
+  .inventory-filter-search { width: 100%; min-width: 0 !important; }
+  .inventory-filter-icon { display: none; }
+  .inventory-filter-select { width: 100%; }
+}
+
+/* ── ≤425px (phone) ── */
+@media (max-width: 425px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-card  { flex-direction: column; text-align: center; padding: 14px 10px; gap: 8px; }
+  .stat-icon  { margin: 0 auto; }
+  .stat-info h3 { font-size: 1.25rem; }
+  .stat-info p  { font-size: .68rem; }
+
+  .inventory-toolbar { flex-direction: column; }
+  .inventory-toolbar button { width: 100%; }
+}
+
+/* ── ≤375px / 320px (small phone): drop lowest-priority table columns
+     rather than crushing them illegibly — the card itself still scrolls
+     if the person needs the full table. ── */
+@media (max-width: 375px) {
+  .stats-grid { grid-template-columns: 1fr; }
   .custom-table th:nth-child(n+4),
   .custom-table td:nth-child(n+4) { display: none; }
 }
-@media (max-width: 768px) {
-  .stat-card {
-      padding: 18px 16px;
-      gap: 12px;
-  }
-  
-  .stat-icon {
-      width: 45px;
-      height: 45px;
-      font-size: 1.1rem;
-  }
-  
-  .stat-info h3 {
-      font-size: 1.5rem;
-      word-break: break-word;
-      overflow-wrap: break-word;
-  }
-  
-  .stat-info p {
-      font-size: .72rem;
-  }
-}
 
-@media (max-width: 480px) {
-  .stat-card {
-      flex-direction: column;
-      text-align: center;
-      padding: 16px 12px;
-      gap: 10px;
-  }
-  
-  .stat-icon {
-      width: 48px;
-      height: 48px;
-      font-size: 1.2rem;
-      margin: 0 auto;
-  }
-  
-  .stat-info h3 {
-      font-size: 1.4rem;
-      text-align: center;
-  }
-  
-  .stat-info p {
-      text-align: center;
-      font-size: .7rem;
-  }
+/* ── ≤320px (smallest supported phone) ── */
+@media (max-width: 320px) {
+  .card-white { padding: 12px; }
+  .card-header h5 { font-size: 1rem; }
+  .registration-modal { padding: 0; }
 }

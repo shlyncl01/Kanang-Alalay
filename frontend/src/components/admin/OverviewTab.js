@@ -359,7 +359,7 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
         <div className="overview-content">
 
             {/* ── 6 Stat Cards ── */}
-            <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
+            <div className="stats-grid">
                 {statCards.map((s, i) => (
                     <div
                         key={i}
@@ -376,9 +376,9 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
             </div>
 
             {/* ── Recent Bookings + Recent Donations ── */}
-            <div className="content-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="content-row" style={{ marginBottom: 20 }}>
                 {/* Recent Bookings */}
-                <div className="card-white" style={{ background: '#fff', borderRadius: 16, padding: 0, overflow: 'hidden' }}>
+                <div className="card-white" style={{ background: '#fff', borderRadius: 16, padding: 0, overflowX: 'auto' }}>
                     <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h5 style={{ margin: 0 }}>Recent Bookings</h5>
                         <button
@@ -416,7 +416,7 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
                 </div>
 
                 {/* Recent Donations */}
-                <div className="card-white" style={{ background: '#fff', borderRadius: 16, padding: 0, overflow: 'hidden' }}>
+                <div className="card-white" style={{ background: '#fff', borderRadius: 16, padding: 0, overflowX: 'auto' }}>
                     <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h5 style={{ margin: 0 }}>Recent Donations</h5>
                         <button
