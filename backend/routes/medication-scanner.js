@@ -4,9 +4,12 @@ const router = express.Router();
 const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
 const ScanHistory = require('../models/ScanHistory');
+const { protect } = require('../middleware/authMiddleware');
+
+const canSeeAllScans = (user) => ['admin', 'head_caregiver'].includes(user.role);
 
 // POST /api/medication-scanner/lookup
-router.post('/lookup', async (req, res) => {
+router.post('/lookup', protect, async (req, res) => {
   try {
     const { barcode } = req.body;
     if (!barcode) {
@@ -60,6 +63,7 @@ router.post('/lookup', async (req, res) => {
       medication: medication._id,
       residents: matchedResidents.map((r) => r._id),
       source: 'database',
+      caregiverId: req.user._id,
     });
 
     res.json({
@@ -113,9 +117,10 @@ router.post('/lookup', async (req, res) => {
   }
 });
 
-router.get('/last-results', async (req, res) => {
+router.get('/last-results', protect, async (req, res) => {
   try {
-    const results = await ScanHistory.find()
+    const query = canSeeAllScans(req.user) ? {} : { caregiverId: req.user._id };
+    const results = await ScanHistory.find(query)
       .populate('medication')
       .populate('residents')
       .sort({ createdAt: -1 })
@@ -127,9 +132,10 @@ router.get('/last-results', async (req, res) => {
   }
 });
 
-router.get('/all-results', async (req, res) => {
+router.get('/all-results', protect, async (req, res) => {
   try {
-    const results = await ScanHistory.find()
+    const query = canSeeAllScans(req.user) ? {} : { caregiverId: req.user._id };
+    const results = await ScanHistory.find(query)
       .populate('medication')
       .populate('residents')
       .sort({ createdAt: -1 });
@@ -140,7 +146,7 @@ router.get('/all-results', async (req, res) => {
   }
 });
 
-router.post('/confirm', async (req, res) => {
+router.post('/confirm', protect, async (req, res) => {
   try {
     const { scanId, residentId, medicationName, dosage, notes = '' } = req.body;
 

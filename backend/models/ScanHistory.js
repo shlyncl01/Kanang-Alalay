@@ -11,6 +11,10 @@ const scanHistorySchema = new mongoose.Schema(
       ref: 'Medication',
       required: true,
     },
+    caregiverId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     residents: [
       {
         type: mongoose.Schema.Types.ObjectId,
