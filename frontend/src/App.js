@@ -34,15 +34,15 @@ function App() {
           {/* <Route path="/reset-password/:token" element={<ResetPassword />} /> */}
 
           <Route path="/admin" element={
-            //<ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
-            //</ProtectedRoute>
+            </ProtectedRoute>
           } />
 
           <Route path="/head-caregiver" element={
-            //<ProtectedRoute allowedRoles={['head_caregiver']}>
+            <ProtectedRoute allowedRoles={['head_caregiver']}>
               <HeadCaregiverDashboard />
-            //</ProtectedRoute>
+            </ProtectedRoute>
           } />
 
           <Route path="/profile" element={<ProtectedRoute allowedRoles={ALL_ROLES}><ViewProfile /></ProtectedRoute>} />
