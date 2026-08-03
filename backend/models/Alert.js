@@ -3,7 +3,11 @@ const mongoose = require("mongoose");
 const alertSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["OTP", "Booking", "Inventory", "System"],
+    enum: [
+      "OTP", "Booking", "Inventory", "System",
+      "side-effect", "low-stock", "medication-administered",
+      "delayed-patient", "refusal", "upcoming-medication"
+    ],
     required: true
   },
   title: { type: String, required: true },

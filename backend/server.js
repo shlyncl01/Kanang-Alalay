@@ -470,6 +470,7 @@ io.on('connection', (socket) => {
 
 // Medication reminder — check every minute for meds due in the next 15 minutes
 const MedicationLog = require('./models/MedicationLog');
+const Alert = require('./models/Alert');
 const _sentReminders = new Set();
 setInterval(async () => {
     try {
@@ -488,13 +489,27 @@ setInterval(async () => {
             const r = log.residentId;
             const residentName = r?.fullName || `${r?.firstName || ''} ${r?.lastName || ''}`.trim() || 'Resident';
             const minutesLeft = Math.round((new Date(log.scheduledTime) - now) / 60000);
+            const scheduleTime = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-            io.emit('upcomingMedication', {
-                residentName,
-                medicationName: log.medicationName,
-                scheduleTime: new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                minutesLeft,
-            });
+            try {
+                const alert = await Alert.create({
+                    type: 'upcoming-medication',
+                    title: 'Upcoming Medication',
+                    message: `${log.medicationName || 'Medication'} for ${residentName}`,
+                    details: { subMessage: `Scheduled at ${scheduleTime} (${minutesLeft} min from now)` },
+                    relatedUser: log.caregiverId,
+                });
+
+                io.emit('newAlert', {
+                    _id: alert._id,
+                    type: alert.type,
+                    message: alert.message,
+                    subMessage: alert.details?.subMessage || '',
+                    isRead: false,
+                });
+            } catch (alertErr) {
+                console.error('[Reminder] Failed to create alert:', alertErr.message);
+            }
         }
     } catch (e) {
         console.error('[Reminder] Error:', e.message);
