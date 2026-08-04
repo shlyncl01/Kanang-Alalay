@@ -189,7 +189,7 @@
 .topbar-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 18px;
     flex-shrink: 0;
 }
 
@@ -225,14 +225,15 @@
     border: 2px solid var(--d-white);
 }
 
-/* Notification count badge */
+/* Notification count badge — sits on the icon's outer corner so it never
+   crowds into whatever sits next to it in the topbar. */
 .notif-dot-badge {
     position: absolute;
-    top: 3px;
-    right: 3px;
+    top: -4px;
+    right: -2px;
     background: #dc3545;
     color: #fff;
-    font-size: 0.58rem;
+    font-size: 0.6rem;
     font-weight: 700;
     min-width: 17px;
     height: 17px;
@@ -243,6 +244,7 @@
     border: 2px solid var(--d-white);
     line-height: 1;
     padding: 0 3px;
+    box-sizing: border-box;
 }
 
 /* SINGLE user menu - the only account area */
@@ -253,8 +255,8 @@
 .topbar-user-trigger {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 7px 13px;
+    gap: 10px;
+    padding: 7px 14px;
     border-radius: 10px;
     cursor: pointer;
     transition: background 0.2s;

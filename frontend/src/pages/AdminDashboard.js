@@ -1748,7 +1748,6 @@ const AdminDashboard = () => {
                                     className="topbar-icon-btn"
                                     onClick={() => { setNotifOpen(o => !o); setAccountMenuOpen(false); }}
                                     title="Notifications"
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', position: 'relative' }}
                                 >
                                     <FaBell />
                                     {unreadCount > 0 && (
@@ -1820,19 +1819,17 @@ const AdminDashboard = () => {
                                 )}
                             </div>
 
-                            <div className="topbar-user-menu" style={{ position: 'relative' }}>
+                            <div className="topbar-user-menu">
                                 <div
                                     className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`}
                                     onClick={() => { setAccountMenuOpen(o => !o); setNotifOpen(false); }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
                                 >
-                                    <FaUserCircle className="topbar-user-avatar" style={{ fontSize: '2rem', color: '#b85c2d' }} />
+                                    <FaUserCircle className="topbar-user-avatar" />
                                     <div className="topbar-user-info">
-                                        <span className="topbar-user-name" style={{ fontWeight: 600 }}>{user?.firstName} {user?.lastName}</span>
-                                        <br />
-                                        <span className="topbar-user-role" style={{ fontSize: '0.7rem', color: '#7A5C4E' }}>{user?.role?.toUpperCase() || 'ADMIN'}</span>
+                                        <span className="topbar-user-name">{user?.firstName} {user?.lastName}</span>
+                                        <span className="topbar-user-role">{user?.role?.toUpperCase() || 'ADMIN'}</span>
                                     </div>
-                                    <FaChevronDown className={`topbar-arrow ${accountMenuOpen ? 'rotate' : ''}`} style={{ fontSize: '0.7rem', transition: 'transform 0.2s' }} />
+                                    <FaChevronDown className={`topbar-arrow ${accountMenuOpen ? 'rotate' : ''}`} />
                                 </div>
 
                                 {accountMenuOpen && (

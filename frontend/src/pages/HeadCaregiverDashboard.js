@@ -192,7 +192,7 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
         middleName: '',
         nickname: '',
         age: '',
-        gender: 'male',
+        gender: 'female',
         roomNumber: '',
         floor: '',
         bed: '',
@@ -327,7 +327,6 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                         </HCField>
                         <HCField label="Gender">
                             <select style={hcInputStyle(false)} value={f.gender} onChange={e => setField('gender', e.target.value)}>
-                                <option value="male">Male</option>
                                 <option value="female">Female</option>
                                 <option value="other">Other / Prefer not to say</option>
                             </select>
