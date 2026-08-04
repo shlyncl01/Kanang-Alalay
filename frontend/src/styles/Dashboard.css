@@ -118,10 +118,13 @@ body {
 .logo-circle {
   width: 44px;
   height: 44px;
-  background: linear-gradient(135deg, var(--d-orange), var(--d-orange-dk)); /* #F96B38 → #D94E1B */
   border-radius: 12px;
   flex-shrink: 0;
+  display: block;
+  background: linear-gradient(135deg, var(--d-orange), var(--d-orange-dk)); /* #F96B38 → #D94E1B, shows if the logo image has transparent areas */
   box-shadow: 0 4px 12px rgba(249,107,56,.4);
+  object-fit: cover;
+  object-position: center;
 }
 
 .brand-text h4 {

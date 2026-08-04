@@ -34,9 +34,9 @@ function App() {
           {/* <Route path="/reset-password/:token" element={<ResetPassword />} /> */}
 
           <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
-            </ProtectedRoute>
+          </ProtectedRoute>
           } />
 
           <Route path="/head-caregiver" element={

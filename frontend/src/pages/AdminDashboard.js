@@ -15,6 +15,7 @@ import {
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
 import InventoryTab from '../components/admin/InventoryTab';
+import mainLogo from '../assets/mainLogo.png';
 // ReportsTab removed — reports now embedded in OverviewTab
 import OverviewTab from '../components/admin/OverviewTab';
 import StaffRosterTab from '../components/admin/StaffRosterTab';
@@ -269,7 +270,7 @@ const DetailsModal = ({ data, type, onClose }) => {
                         <InfoRow label="Receipt" value={data.receiptNumber || 'Awaiting confirmation'} mono />
                         <div>
                             <small style={{ color: 'var(--d-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: '.7rem' }}>
-                                Proof of Payment
+                                Transaction Receipt
                             </small>
                             {data.proofOfPayment ? (
                                 <div style={{ marginTop: 8 }}>
@@ -277,7 +278,7 @@ const DetailsModal = ({ data, type, onClose }) => {
                                         <a href={proofUrl(data.proofOfPayment)} target="_blank" rel="noopener noreferrer">
                                             <img
                                                 src={proofUrl(data.proofOfPayment)}
-                                                alt="Proof of payment"
+                                                alt="Transaction Receipt"
                                                 style={{
                                                     width: '100%', maxHeight: 260,
                                                     objectFit: 'contain', borderRadius: 10,
@@ -1638,7 +1639,7 @@ const AdminDashboard = () => {
                 >
                     <div className="sidebar-header" style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                         <div className="brand-section" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div className="logo-circle" style={{ width: 40, height: 40, background: '#F96B38', borderRadius: '50%' }} />
+                            <img src={mainLogo} alt="Kanang-Alalay logo" className="logo-circle" />
                             <div className="brand-text">
                                 <h4 style={{ margin: 0, fontSize: '1.1rem' }}>Kanang-Alalay</h4>
                                 <h5 style={{ margin: 0, fontSize: '0.7rem', opacity: 0.7 }}>Admin Panel</h5>
