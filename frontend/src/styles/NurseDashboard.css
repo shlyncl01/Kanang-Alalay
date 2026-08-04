@@ -878,13 +878,17 @@ textarea.form-input { resize: vertical; }
 .res-action-icons {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
 }
 
 .res-action-icons-group {
     display: flex;
-    gap: 8px;
+    justify-content: space-between;
     align-items: center;
+    flex: 1;
+    gap: 8px;
 }
 
 .res-action-icon {
@@ -1014,13 +1018,17 @@ textarea.form-input { resize: vertical; }
 .res-action-icons {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
 }
 
 .res-action-icons-group {
     display: flex;
-    gap: 8px;
+    justify-content: space-between;
     align-items: center;
+    flex: 1;
+    gap: 8px;
 }
 
 .res-action-icon {

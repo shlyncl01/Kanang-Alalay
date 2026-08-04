@@ -182,6 +182,105 @@ const HCHeader = ({ icon, title, onClose }) => (
     </div>
 );
 
+// ─── Medical condition options (Add Resident modal) ──────────────────────────
+const MEDICAL_CONDITIONS = [
+    'Hypertension',
+    'Type 2 Diabetes',
+    'High Cholesterol',
+    'Atrial Fibrillation / Stroke Prevention',
+    'Cardiovascular Disease',
+    'Arthritis',
+    'Osteoporosis',
+    'Gout',
+    "Alzheimer's Disease / Dementia",
+    "Parkinson's Disease",
+    'Depression',
+    'Anxiety',
+    'Insomnia',
+    'GERD / Heartburn',
+    'Constipation',
+    'Hypothyroidism',
+    'Urinary Incontinence / Overactive Bladder',
+    'Allergies',
+    'Cold',
+];
+
+// Multi-select dropdown (checkbox list) for Medical Conditions — styled to
+// match the rest of the Add Resident form inputs.
+const ConditionsMultiSelect = ({ value, onChange }) => {
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef(null);
+
+    useEffect(() => {
+        const onDocClick = (e) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('mousedown', onDocClick);
+        return () => document.removeEventListener('mousedown', onDocClick);
+    }, []);
+
+    const toggleCondition = (condition) => {
+        if (value.includes(condition)) {
+            onChange(value.filter(c => c !== condition));
+        } else {
+            onChange([...value, condition]);
+        }
+    };
+
+    return (
+        <div ref={wrapRef} style={{ position: 'relative' }}>
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                style={{
+                    ...hcInputStyle(false),
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    cursor: 'pointer', textAlign: 'left', gap: 10,
+                }}
+            >
+                <span style={{
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    color: value.length ? '#1A0A00' : '#A38070',
+                }}>
+                    {value.length ? value.join(', ') : 'Select medical condition(s)…'}
+                </span>
+                <FaChevronDown style={{ flexShrink: 0, fontSize: '.75rem', color: '#A38070', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+            </button>
+
+            {open && (
+                <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 20,
+                    background: '#fff', border: '1.5px solid #E8D6CC', borderRadius: 10,
+                    boxShadow: '0 10px 28px rgba(0,0,0,.14)', maxHeight: 240, overflowY: 'auto',
+                    padding: 8,
+                }}>
+                    {MEDICAL_CONDITIONS.map(condition => (
+                        <label
+                            key={condition}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                                fontSize: '.87rem', color: '#1A0A00',
+                                fontFamily: "'DM Sans', system-ui, sans-serif",
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#FFF8F3'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={value.includes(condition)}
+                                onChange={() => toggleCondition(condition)}
+                                style={{ width: 16, height: 16, accentColor: '#F96B38', cursor: 'pointer', flexShrink: 0 }}
+                            />
+                            {condition}
+                        </label>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 /// ════════════════════════════════════════════════════════════
 //  MODAL: Add Resident (UPDATED with better UI and caregivers dropdown - NO EMOJIS)
 // ════════════════════════════════════════════════════════════
@@ -197,7 +296,7 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
         roomNumber: '',
         floor: '',
         bed: '',
-        conditions: '',
+        conditions: [],
         primaryCaregiverId: '',
         admissionDate: new Date().toISOString().slice(0, 10),
         alertLevel: 'stable',
@@ -207,7 +306,8 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
     const [occupiedBeds, setOccupiedBeds] = useState([]);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
 
-    const FLOORS = ['1st Floor', '2nd Floor', '3rd Floor', '4th Floor'];
+    const FLOORS = ['2nd Floor', '3rd Floor', '4th Floor'];
+    const ROOM_NUMBERS = ['1', '2', '3', '4', '5', '6'];
     const BEDS = ['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4'];
 
     // Fetch caregivers when modal opens
@@ -252,7 +352,7 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                 bed: f.bed,
                 alertLevel: f.alertLevel,
                 admissionDate: f.admissionDate,
-                conditions: f.conditions ? f.conditions.split(',').map(c => ({ name: c.trim() })).filter(c => c.name) : [],
+                conditions: f.conditions.map(c => ({ name: c })),
                 primaryCaregiverId: f.primaryCaregiverId || '',  // Send as ObjectId reference
                 primaryCaregiver: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',  // Store name for display
                 primaryCaregiverName: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',
@@ -348,12 +448,13 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                     </div>
                     <div style={hcGrid2}>
                         <HCField label="Room Number" required error={errs.roomNumber}>
-                            <input
+                            <select
                                 style={hcInputStyle(errs.roomNumber)}
                                 value={f.roomNumber}
-                                onChange={e => setField('roomNumber', e.target.value)}
-                                placeholder="e.g. 201"
-                            />
+                                onChange={e => setField('roomNumber', e.target.value)}>
+                                <option value="">Select room…</option>
+                                {ROOM_NUMBERS.map(rn => <option key={rn} value={rn}>Room {rn}</option>)}
+                            </select>
                         </HCField>
                         <HCField label="Floor / Ward" required error={errs.floor}>
                             <select
@@ -396,12 +497,10 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                     <div style={hcSectionLabel}>
                         <FaStethoscope style={{ marginRight: 6 }} /> Medical Information
                     </div>
-                    <HCField label="Medical Conditions (comma-separated)" hint="Separate multiple conditions with commas">
-                        <input
-                            style={hcInputStyle(false)}
+                    <HCField label="Medical Conditions" hint="Select one or more conditions">
+                        <ConditionsMultiSelect
                             value={f.conditions}
-                            onChange={e => setField('conditions', e.target.value)}
-                            placeholder="e.g. Hypertension, Diabetes, Arthritis"
+                            onChange={vals => setField('conditions', vals)}
                         />
                     </HCField>
 
