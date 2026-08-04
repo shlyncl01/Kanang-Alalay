@@ -3,13 +3,19 @@ const { toFile } = require('openai');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const processVoice = async (text, language = 'english') => {
+const processVoice = async (text, language = 'English') => {
+  const languageInstruction = language === 'Tagalog'
+    ? 'Respond in natural, conversational Tagalog (Filipino) appropriate for a Filipino care home setting. Keep medication/drug names and dosage units in their original form (do not translate them).'
+    : 'Respond in English.';
+
   const completion = await openai.chat.completions.create({
     model: 'gpt-4.1-mini',
     messages: [
       {
         role: 'system',
         content: `You are a smart nursing assistant in a care home. You help caregivers with medication management and resident care.
+
+LANGUAGE: ${languageInstruction} This applies regardless of what language the caregiver's message is written in.
 
 You handle TWO types of input:
 
@@ -33,7 +39,7 @@ Return ONLY valid JSON in this exact format:
   "time": "time or null",
   "room": "room number or null",
   "symptom": "detected symptom or null",
-  "response": "Your helpful response to the caregiver in plain English"
+  "response": "Your helpful response to the caregiver, written per the LANGUAGE instruction above"
 }
 
 For symptom inputs, the response field should contain actionable advice including:
@@ -62,7 +68,9 @@ Always be professional, empathetic, and safety-conscious.`,
       time: null,
       room: null,
       symptom: null,
-      response: 'I received your message but had trouble processing it. Please try again.',
+      response: language === 'Tagalog'
+        ? 'Natanggap ko ang iyong mensahe pero nagkaproblema sa pagproseso nito. Pakisubukang muli.'
+        : 'I received your message but had trouble processing it. Please try again.',
     };
   }
 };
