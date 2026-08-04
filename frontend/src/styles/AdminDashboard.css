@@ -31,22 +31,14 @@
     overflow: hidden;
 }
 
-/* ===== TOPBAR STYLES ===== */
-.admin-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    height: 64px;
-    background: var(--d-white);
-    border-bottom: 1.5px solid var(--d-border);
-    flex-shrink: 0;
-    gap: 16px;
-    position: sticky;
-    top: 0;
-    z-index: 200;
-    box-shadow: var(--d-shadow-sm);
-}
+/* ===== TOPBAR STYLES =====
+   .admin-topbar itself is defined once in Dashboard.css (it's shared
+   with the Head Caregiver dashboard, which doesn't load this file).
+   Re-declaring it here previously created a second, conflicting
+   definition that fought the shared one depending on bundle/load
+   order — that's what was causing the topbar user-menu to render
+   oversized and overlapping. Only admin-specific topbar pieces
+   (search wrapper sizing, global search dropdown) stay in this file. */
 
 /* Left side - contains SINGLE search area */
 .topbar-left {
@@ -185,15 +177,8 @@
     .global-search-item-sub { display: none; }
 }
 
-/* Right side - contains SINGLE user menu area */
-.topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-shrink: 0;
-}
-
-/* Icon buttons (notifications, settings, etc) */
+/* .topbar-right is defined once in Dashboard.css (shared with Head
+   Caregiver dashboard) — see note above .topbar-icon-btn below. */
 .topbar-icon-btn {
     position: relative;
     background: none;
@@ -247,106 +232,19 @@
     box-sizing: border-box;
 }
 
-/* SINGLE user menu - the only account area */
-.topbar-user-menu {
-    position: relative;
-}
+/* .topbar-user-menu, .topbar-user-trigger, .topbar-user-avatar,
+   .topbar-user-info, .topbar-user-name, .topbar-user-role, and
+   .topbar-arrow are all defined once, in Dashboard.css — that file
+   is shared by both the Admin and Head Caregiver dashboards. This
+   file previously had a second, conflicting copy of all of these
+   with different padding/gap/font-size values, which is what made
+   the fix "not take effect": depending on how the app bundled and
+   loaded the two stylesheets, properties from each file could mix,
+   producing an oversized, overlapping user-menu pill. Edit the
+   shared rules in Dashboard.css, not here.
 
-.topbar-user-trigger {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 14px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: background 0.2s;
-    border: 1.5px solid var(--d-border);
-    background: var(--d-white);
-    user-select: none;
-}
-
-.topbar-user-trigger:hover,
-.topbar-user-trigger.active {
-    background: var(--d-orange-lt);
-    border-color: var(--d-orange);
-}
-
-.topbar-user-avatar {
-    font-size: 1.7rem;
-    color: var(--d-orange);
-    flex-shrink: 0;
-}
-
-.topbar-user-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.topbar-user-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--d-ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 130px;
-}
-
-.topbar-user-role {
-    font-size: 0.68rem;
-    color: var(--d-orange-dk);
-    font-weight: 600;
-    letter-spacing: 0.06em;
-}
-
-.topbar-arrow {
-    font-size: 0.7rem;
-    color: var(--d-muted);
-    transition: transform 0.25s;
-    flex-shrink: 0;
-}
-
-.topbar-arrow.rotate {
-    transform: rotate(180deg);
-}
-
-/* User dropdown menu */
-.topbar-dropdown {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    background: var(--d-white);
-    border-radius: 12px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
-    border: 1px solid var(--d-border);
-    list-style: none;
-    padding: 6px 0;
-    min-width: 200px;
-    z-index: 500;
-    animation: fadeIn 0.18s ease;
-}
-
-.topbar-dropdown li {
-    padding: 11px 18px;
-    color: var(--d-muted);
-    font-size: 0.88rem;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.topbar-dropdown li:hover {
-    background: var(--d-orange-lt);
-    color: var(--d-orange-dk);
-}
-
-.topbar-dropdown li svg {
-    font-size: 0.9rem;
-    flex-shrink: 0;
-}
+   Same applies to .topbar-dropdown, .topbar-dropdown li, and
+   .topbar-dropdown li svg — canonical copy lives in Dashboard.css. */
 
 .dropdown-divider {
     border-top: 1px solid var(--d-border);

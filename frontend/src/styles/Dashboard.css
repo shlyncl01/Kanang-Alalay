@@ -299,19 +299,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 28px;
-  height: 62px;
+  padding: 0 24px;
+  height: 64px;
   background: var(--d-white);
   border-bottom: 1.5px solid var(--d-border);
   flex-shrink: 0;
   gap: 16px;
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 200;
 }
 .nurse-topbar { border-bottom-color: var(--d-border); }
 
 .topbar-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-.topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.topbar-right { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
 
 .topbar-search-wrapper {
   display: flex;
@@ -368,20 +369,21 @@ body {
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  padding: 7px 12px;
+  padding: 7px 14px;
   border-radius: 10px;
   border: 1.5px solid var(--d-border);
-  background: var(--d-cream);
+  background: var(--d-white);
   transition: all .2s;
   white-space: nowrap;
+  user-select: none;
 }
 .topbar-user-trigger:hover,
 .topbar-user-trigger.active { background: var(--d-orange-lt); border-color: var(--d-orange); }
-.topbar-user-avatar { font-size: 1.5rem; color: var(--d-orange); flex-shrink: 0; }
+.topbar-user-avatar { font-size: 1.7rem; color: var(--d-orange); flex-shrink: 0; }
 .topbar-user-info { display: flex; flex-direction: column; min-width: 0; }
 .topbar-user-name {
-  font-size: .84rem;
-  font-weight: 700;
+  font-size: .85rem;
+  font-weight: 600;
   color: var(--d-ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -391,7 +393,7 @@ body {
 .topbar-user-role {
   font-size: .68rem;
   font-weight: 600;
-  color: var(--d-muted);
+  color: var(--d-orange-dk);
   letter-spacing: .06em;
   text-transform: uppercase;
 }
