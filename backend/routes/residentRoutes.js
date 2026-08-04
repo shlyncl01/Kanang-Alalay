@@ -175,7 +175,7 @@ router.delete('/:id/care-notes/:noteId', protect, async (req, res) => {
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
         const note = resident.careNotes.id(req.params.noteId);
         if (!note) return res.status(404).json({ success: false, message: 'Care note not found' });
-        note.remove();
+        note.deleteOne();
         await resident.save();
         res.json({ success: true, data: resident.careNotes });
     } catch (error) {
