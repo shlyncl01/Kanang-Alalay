@@ -12,7 +12,7 @@ const residentSchema = new mongoose.Schema({
     middleName: { type: String, default: '', trim: true },
     nickname:   { type: String, default: '', trim: true },
     age:        { type: Number, required: true },
-    gender:     { type: String, enum: ['male', 'female', 'other'], required: true },
+    gender:     { type: String, enum: ['female', 'other'], required: true },
 
     // ── Location ──────────────────────────────────────────────────────────────
     roomNumber: { type: String, required: true },
