@@ -489,7 +489,7 @@ setInterval(async () => {
             const r = log.residentId;
             const residentName = r?.fullName || `${r?.firstName || ''} ${r?.lastName || ''}`.trim() || 'Resident';
             const minutesLeft = Math.round((new Date(log.scheduledTime) - now) / 60000);
-            const scheduleTime = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const scheduleTime = new Date(log.scheduledTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' });
 
             try {
                 const alert = await Alert.create({

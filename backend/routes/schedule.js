@@ -32,7 +32,7 @@ const assignedResidentQuery = (user) => {
 
 const formatTime = (date) => {
   if (!date) return 'No time';
-  return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' });
 };
 
 const residentName = (resident) =>

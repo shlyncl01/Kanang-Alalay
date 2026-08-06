@@ -70,6 +70,7 @@ router.post('/lookup', protect, async (req, res) => {
       success: true,
       medication: {
         id: medication._id,
+        barcode: medication.barcode || cleanBarcode,
         name: medication.name,
         genericName: medication.genericName,
         dosage: medication.dosage,
@@ -84,6 +85,7 @@ router.post('/lookup', protect, async (req, res) => {
         drugInteractions: medication.drugInteractions,
         pregnancy: medication.pregnancy,
         storage: medication.storage,
+        ingredients: medication.ingredients,
       },
       residents: matchedResidents.map((resident) => {
         const matchingMed = resident.medications.find((med) => {

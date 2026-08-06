@@ -11,6 +11,18 @@ const medicationSchema = new mongoose.Schema({
     form: String,
     route: String,
     manufacturer: String,
+    barcode: String,
+    uniqueCode: String,
+    ndc: String,
+    purpose: String,
+    instructions: String,
+    warnings: String,
+    sideEffects: String,
+    contraindications: String,
+    drugInteractions: String,
+    pregnancy: String,
+    storage: String,
+    ingredients: { type: String, default: '' },
     dateOfManufacture: Date, // Added field
     dateOfPurchase: Date,    // Added field
     expiryDate: { type: Date, required: true }, // Structured expiration
