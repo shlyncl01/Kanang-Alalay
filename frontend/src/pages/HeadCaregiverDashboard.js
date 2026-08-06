@@ -9,7 +9,7 @@ import {
     FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV,
     FaExclamationCircle, FaHeartbeat, FaFileAlt,
     FaBoxOpen, FaClock, FaFilter,
-    FaBell, FaUserMd, FaUserPlus, FaStethoscope,
+    FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
 } from 'react-icons/fa';
 import '../styles/Dashboard.css';
 import '../styles/NurseDashboard.css';
@@ -284,9 +284,28 @@ const ConditionsMultiSelect = ({ value, onChange }) => {
 /// ════════════════════════════════════════════════════════════
 //  MODAL: Add Resident (UPDATED with better UI and caregivers dropdown - NO EMOJIS)
 // ════════════════════════════════════════════════════════════
-// AddResidentModal - FIXED VERSION
-const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchCaregivers }) => {
-    const [f, setF] = useState({
+// AddResidentModal - now doubles as the Edit modal when a `resident` prop is passed
+const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregivers, fetchCaregivers }) => {
+    const isEdit = !!resident;
+    const [f, setF] = useState(() => isEdit ? {
+        firstName: resident.firstName || '',
+        lastName: resident.lastName || '',
+        middleName: resident.middleName || '',
+        nickname: resident.nickname || '',
+        age: resident.age ?? '',
+        gender: resident.gender || 'female',
+        roomNumber: resident.room || resident.roomNumber || '',
+        floor: resident.floor || '',
+        bed: resident.bed || '',
+        conditions: (resident.conditions || []).map(c => c?.name || c),
+        primaryCaregiverId: (typeof resident.primaryCaregiverId === 'object'
+            ? resident.primaryCaregiverId?._id
+            : resident.primaryCaregiverId) || '',
+        admissionDate: resident.admissionDate
+            ? new Date(resident.admissionDate).toISOString().slice(0, 10)
+            : new Date().toISOString().slice(0, 10),
+        alertLevel: resident.alertLevel || 'stable',
+    } : {
         firstName: '',
         lastName: '',
         middleName: '',
@@ -321,9 +340,15 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
         const params = new URLSearchParams({ roomNumber: f.roomNumber });
         if (f.floor) params.append('floor', f.floor);
         doFetch(`/head-caregiver/residents/occupied-beds?${params}`).then(r => {
-            if (r.success) setOccupiedBeds(r.data || []);
+            if (r.success) {
+                // When editing, don't count this resident's own current bed as "occupied".
+                const beds = isEdit
+                    ? (r.data || []).filter(o => String(o.residentId) !== String(resident._id))
+                    : (r.data || []);
+                setOccupiedBeds(beds);
+            }
         });
-    }, [f.roomNumber, f.floor, doFetch]);
+    }, [f.roomNumber, f.floor, doFetch, isEdit, resident]);
 
     const submit = async () => {
         const e = {};
@@ -334,37 +359,41 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
         if (Object.keys(e).length) { setErrs(e); return; }
 
         setSaving(true);
-        
+
         // Find selected caregiver to get their name
         const selectedCaregiver = caregivers.find(c => String(c._id) === String(f.primaryCaregiverId));
-        
-        const r = await doFetch('/head-caregiver/residents', {
-            method: 'POST',
-            body: JSON.stringify({
-                firstName: f.firstName.trim(),
-                lastName: f.lastName.trim(),
-                middleName: f.middleName.trim(),
-                nickname: f.nickname.trim(),
-                age: +f.age,
-                gender: f.gender,
-                roomNumber: f.roomNumber.trim(),
-                floor: f.floor,
-                bed: f.bed,
-                alertLevel: f.alertLevel,
-                admissionDate: f.admissionDate,
-                conditions: f.conditions.map(c => ({ name: c })),
-                primaryCaregiverId: f.primaryCaregiverId || '',  // Send as ObjectId reference
-                primaryCaregiver: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',  // Store name for display
-                primaryCaregiverName: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',
-            })
-        });
+
+        const payload = {
+            firstName: f.firstName.trim(),
+            lastName: f.lastName.trim(),
+            middleName: f.middleName.trim(),
+            nickname: f.nickname.trim(),
+            age: +f.age,
+            gender: f.gender,
+            roomNumber: f.roomNumber.trim(),
+            floor: f.floor,
+            bed: f.bed,
+            alertLevel: f.alertLevel,
+            admissionDate: f.admissionDate,
+            conditions: f.conditions.map(c => ({ name: c })),
+            primaryCaregiverId: f.primaryCaregiverId || '',  // Send as ObjectId reference
+            primaryCaregiver: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',  // Store name for display
+            primaryCaregiverName: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',
+        };
+
+        const r = isEdit
+            ? await doFetch(`/head-caregiver/residents/${resident._id}`, { method: 'PUT', body: JSON.stringify(payload) })
+            : await doFetch('/head-caregiver/residents', { method: 'POST', body: JSON.stringify(payload) });
+
         setSaving(false);
         if (r.success) {
-            toast(`Resident ${f.firstName} ${f.lastName} added successfully.`);
+            toast(isEdit
+                ? `Resident ${f.firstName} ${f.lastName} updated successfully.`
+                : `Resident ${f.firstName} ${f.lastName} added successfully.`);
             onSaved(r.data);
             onClose();
         } else {
-            toast(r.message || 'Failed to add resident.', 'error');
+            toast(r.message || (isEdit ? 'Failed to update resident.' : 'Failed to add resident.'), 'error');
         }
     };
 
@@ -375,7 +404,7 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
     return (
         <div className="modal-overlay">
             <div className="registration-modal" style={hcModalStyle}>
-                <HCHeader icon={<FaUserPlus />} title="Add New Resident" onClose={onClose} />
+                <HCHeader icon={<FaUserPlus />} title={isEdit ? `Edit Resident — ${resident.firstName} ${resident.lastName}`.trim() : 'Add New Resident'} onClose={onClose} />
                 <div style={hcBodyStyle}>
 
                     {/* Personal Information Section */}
@@ -538,7 +567,7 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
                             Cancel
                         </button>
                         <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
-                            {saving ? 'Saving…' : '✓ Add Resident'}
+                            {saving ? 'Saving…' : isEdit ? '✓ Save Changes' : '✓ Add Resident'}
                         </button>
                     </div>
                 </div>
@@ -548,8 +577,135 @@ const AddResidentModal = ({ onClose, onSaved, doFetch, toast, caregivers, fetchC
 };
 
 // ════════════════════════════════════════════════════════════
-//  MODAL: Log Vital Signs
+//  MODAL: Discharge / Remove Resident
 // ════════════════════════════════════════════════════════════
+const DISCHARGE_REASON_OPTIONS = [
+    { value: '', label: 'Select a reason…' },
+    { value: 'deceased', label: 'Death' },
+    { value: 'legal_guardianship', label: 'Legal Guardianship Change' },
+    { value: 'adopted', label: 'Adopted' },
+    { value: 'reunited_with_family', label: 'Reunited with Family' },
+    { value: 'transferred_hospital', label: 'Transferred to Hospital (end-of-life care)' },
+    { value: 'other', label: 'Other' },
+];
+
+const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
+    const [reason, setReason] = useState('');
+    const [causeOfDeath, setCauseOfDeath] = useState('');
+    const [destination, setDestination] = useState('');
+    const [notes, setNotes] = useState('');
+    const [errs, setErrs] = useState({});
+    const [saving, setSaving] = useState(false);
+
+    const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'this resident';
+
+    // Reasons where a "destination" (hospital / guardian / family) makes sense.
+    const showDestination = ['legal_guardianship', 'adopted', 'reunited_with_family', 'transferred_hospital'].includes(reason);
+    const destinationLabel = {
+        legal_guardianship: 'New Legal Guardian',
+        adopted: 'Adoptive Family / Guardian',
+        reunited_with_family: 'Receiving Family Member',
+        transferred_hospital: 'Hospital Name',
+    }[reason] || 'Destination';
+
+    const submit = async () => {
+        const e = {};
+        if (!reason) e.reason = 'Please select a reason.';
+        if (reason === 'deceased' && !causeOfDeath.trim()) e.causeOfDeath = 'Cause of death is required.';
+        if (Object.keys(e).length) { setErrs(e); return; }
+
+        setSaving(true);
+        const r = await doFetch(`/head-caregiver/residents/${resident._id}/discharge`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                reason,
+                causeOfDeath: reason === 'deceased' ? causeOfDeath.trim() : undefined,
+                destination: showDestination ? destination.trim() : undefined,
+                notes: notes.trim(),
+            })
+        });
+        setSaving(false);
+        if (r.success) {
+            toast(r.message || `${resName} has been removed from active residents.`);
+            onSaved(resident._id);
+            onClose();
+        } else {
+            toast(r.message || 'Failed to remove resident.', 'error');
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaExclamationCircle />} title={`Remove Resident — ${resName}`} onClose={onClose} />
+                <div style={hcBodyStyle}>
+                    <p style={{ color: 'var(--d-muted)', fontSize: '.85rem', marginTop: 0 }}>
+                        This does not delete {resName}'s record — it keeps their medication and care
+                        history on file and moves them out of the active resident list.
+                    </p>
+
+                    <HCField label="Reason for removal" required error={errs.reason}>
+                        <select
+                            style={hcInputStyle(errs.reason)}
+                            value={reason}
+                            onChange={e => { setReason(e.target.value); setErrs(p => ({ ...p, reason: '' })); }}
+                        >
+                            {DISCHARGE_REASON_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
+                    </HCField>
+
+                    {reason === 'deceased' && (
+                        <HCField label="Cause of Death" required error={errs.causeOfDeath}>
+                            <input
+                                style={hcInputStyle(errs.causeOfDeath)}
+                                value={causeOfDeath}
+                                onChange={e => { setCauseOfDeath(e.target.value); setErrs(p => ({ ...p, causeOfDeath: '' })); }}
+                                placeholder="e.g. Cardiac arrest, natural causes, etc."
+                            />
+                        </HCField>
+                    )}
+
+                    {showDestination && (
+                        <HCField label={destinationLabel}>
+                            <input
+                                style={hcInputStyle(false)}
+                                value={destination}
+                                onChange={e => setDestination(e.target.value)}
+                                placeholder={`Enter ${destinationLabel.toLowerCase()}`}
+                            />
+                        </HCField>
+                    )}
+
+                    <HCField label="Additional Notes">
+                        <textarea
+                            style={{ ...hcInputStyle(false), minHeight: 70, resize: 'vertical' }}
+                            value={notes}
+                            onChange={e => setNotes(e.target.value)}
+                            placeholder="Optional — any additional details for the record"
+                        />
+                    </HCField>
+
+                    <div style={hcFooter}>
+                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                            Cancel
+                        </button>
+                        <button
+                            onClick={submit}
+                            type="button"
+                            disabled={saving}
+                            style={{ ...hcSaveBtn(saving), background: saving ? undefined : '#C0392B' }}
+                        >
+                            {saving ? 'Removing…' : 'Confirm Removal'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
     const [f, setF] = useState({ bloodPressure: '', heartRate: '', temperature: '', oxygenSat: '', weight: '', notes: '' });
     const [saving, setSaving] = useState(false);
@@ -1522,6 +1678,21 @@ const HeadCaregiverDashboard = () => {
                                             >
                                                 <FaUserMd />
                                             </button>
+                                            <button
+                                                className="res-action-icon"
+                                                onClick={() => setModal({type:'editResident',data:r})}
+                                                title="Edit Resident"
+                                            >
+                                                <FaEdit />
+                                            </button>
+                                            <button
+                                                className="res-action-icon res-action-icon-danger"
+                                                onClick={() => setModal({type:'discharge',data:r})}
+                                                title="Remove Resident"
+                                                style={{ color: '#C0392B' }}
+                                            >
+                                                <FaUserMinus />
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -1808,6 +1979,22 @@ const HeadCaregiverDashboard = () => {
                 toast={toast}
                 caregivers={caregivers}
                 fetchCaregivers={fetchCaregivers}
+            />}
+            {modal?.type === 'editResident' && <AddResidentModal
+                resident={modal.data}
+                onClose={() => setModal(null)}
+                onSaved={updated => { setResidents(p => p.map(r => r._id === updated._id ? { ...r, ...updated } : r)); loadAll(); }}
+                doFetch={doFetch}
+                toast={toast}
+                caregivers={caregivers}
+                fetchCaregivers={fetchCaregivers}
+            />}
+            {modal?.type === 'discharge' && <DischargeResidentModal
+                resident={modal.data}
+                onClose={() => setModal(null)}
+                onSaved={removedId => { setResidents(p => p.filter(r => r._id !== removedId)); loadAll(); }}
+                doFetch={doFetch}
+                toast={toast}
             />}
             {modal?.type === 'profile' && <ProfileModal onClose={() => setModal(null)} resident={modal.data} schedule={schedule} />}
             {modal?.type === 'assignCaregiver' && <AssignCaregiverModal

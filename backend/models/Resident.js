@@ -103,6 +103,29 @@ const residentSchema = new mongoose.Schema({
         default: 'active'
     },
 
+    // ── Discharge / removal record ────────────────────────────────────────────
+    // Populated when a resident leaves the facility for any reason. Never
+    // hard-deleted — kept for records/audit even after leaving.
+    discharge: {
+        reason: {
+            type: String,
+            enum: [
+                'deceased',
+                'legal_guardianship',
+                'adopted',
+                'reunited_with_family',
+                'transferred_hospital',
+                'other'
+            ],
+            default: null
+        },
+        date:         { type: Date, default: null },
+        causeOfDeath: { type: String, default: '' }, // required in practice when reason === 'deceased'
+        destination:  { type: String, default: '' }, // hospital name / guardian / receiving family member
+        notes:        { type: String, default: '' },
+        recordedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+    },
+
 }, {
     timestamps: true,
     toJSON: {

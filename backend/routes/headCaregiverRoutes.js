@@ -54,6 +54,8 @@ function shapeResident(r) {
         latestVitals: r.latestVitals || null,
         vitalLogs: r.vitalLogs || [],
         status: r.status,
+        admissionDate: r.admissionDate || null,
+        discharge: r.discharge || null,
     };
 }
 
@@ -419,6 +421,89 @@ router.put('/residents/:id', async (req, res) => {
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
         
         res.json({ success: true, data: resident });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// DISCHARGE / REMOVE RESIDENT
+// (soft-remove only — never hard-deletes a resident record, so medication
+// history and care notes stay intact for audit/compliance purposes)
+// ─────────────────────────────────────────────────────────────
+const DISCHARGE_REASONS = [
+    'deceased',
+    'legal_guardianship',
+    'adopted',
+    'reunited_with_family',
+    'transferred_hospital',
+    'other'
+];
+
+// Maps a discharge reason to the resident's overall status.
+function statusForDischargeReason(reason) {
+    if (reason === 'deceased') return 'deceased';
+    if (reason === 'transferred_hospital') return 'transferred';
+    return 'discharged'; // legal_guardianship, adopted, reunited_with_family, other
+}
+
+router.put('/residents/:id/discharge', async (req, res) => {
+    try {
+        const { reason, causeOfDeath, destination, notes } = req.body;
+
+        if (!DISCHARGE_REASONS.includes(reason)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid reason. Allowed: ${DISCHARGE_REASONS.join(', ')}`
+            });
+        }
+        if (reason === 'deceased' && !causeOfDeath?.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cause of death is required when marking a resident as deceased.'
+            });
+        }
+
+        const resident = await Resident.findById(req.params.id);
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
+        if (resident.status !== 'active') {
+            return res.status(400).json({ success: false, message: 'This resident has already been discharged.' });
+        }
+
+        resident.status = statusForDischargeReason(reason);
+        resident.discharge = {
+            reason,
+            date: new Date(),
+            causeOfDeath: reason === 'deceased' ? causeOfDeath.trim() : '',
+            destination: destination?.trim() || '',
+            notes: notes?.trim() || '',
+            recordedBy: req.user._id,
+        };
+        // Free up the bed for a new admission.
+        resident.room = '';
+        resident.bed = '';
+
+        await resident.save();
+
+        res.json({
+            success: true,
+            data: shapeResident(resident),
+            message: `${resident.firstName} ${resident.lastName}`.trim() + ` has been marked as ${resident.status}.`
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// LIST DISCHARGED / DECEASED / TRANSFERRED RESIDENTS
+// (records view — not shown in the active residents list)
+// ─────────────────────────────────────────────────────────────
+router.get('/residents/discharged', async (req, res) => {
+    try {
+        const residents = await Resident.find({ status: { $ne: 'active' } })
+            .sort({ 'discharge.date': -1 });
+        res.json({ success: true, data: residents.map(shapeResident) });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
