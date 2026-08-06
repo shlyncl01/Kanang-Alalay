@@ -1699,48 +1699,6 @@ const AdminDashboard = () => {
                             >
                                 <FaBars />
                             </button>
-                            <div className="topbar-search-wrapper" ref={searchRef} style={{ position: 'relative' }}>
-                                <FaSearch className="topbar-search-icon" />
-                                <input
-                                    type="text"
-                                    className="topbar-search-input"
-                                    placeholder={getSearchPlaceholder()}
-                                    value={searchQuery}
-                                    onChange={(e) => { setSearchQuery(e.target.value); setGlobalSearchOpen(true); }}
-                                    onFocus={() => { if (searchQuery.trim()) setGlobalSearchOpen(true); }}
-                                />
-                                {searchQuery && (
-                                    <button className="search-clear-btn" onClick={() => { setSearchQuery(''); setGlobalSearchOpen(false); }}>
-                                        <FaTimes />
-                                    </button>
-                                )}
-
-                                {globalSearchOpen && debouncedSearchQuery && (
-                                    <div className="global-search-dropdown">
-                                        {!globalSearchResults || globalSearchResults.total === 0 ? (
-                                            <div className="global-search-empty">
-                                                No matches for "{debouncedSearchQuery}"
-                                            </div>
-                                        ) : (
-                                            globalSearchResults.groups.map(group => (
-                                                <div key={group.key} className="global-search-group">
-                                                    <div className="global-search-group-label">{group.label}</div>
-                                                    {group.items.map(item => (
-                                                        <div
-                                                            key={`${group.key}-${item.id}`}
-                                                            className="global-search-item"
-                                                            onClick={() => handleGlobalResultClick(item.section)}
-                                                        >
-                                                            <span className="global-search-item-label">{item.label}</span>
-                                                            {item.sub && <span className="global-search-item-sub">{item.sub}</span>}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                )}
-                            </div>
                         </div>
 
                         <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
