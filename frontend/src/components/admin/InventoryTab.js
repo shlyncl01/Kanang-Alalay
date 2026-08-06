@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     FaBox, FaEdit, FaTrash, FaExclamationTriangle,
     FaClock, FaSearch, FaPrint, FaFilter,
     FaChevronLeft, FaChevronRight, FaTimes,
     FaUpload, FaFileAlt, FaCheckCircle, FaTimesCircle,
-    FaDownload, FaCloudUploadAlt,
+    FaDownload, FaCloudUploadAlt, FaBoxOpen, FaSyncAlt,
 } from 'react-icons/fa';
 
 const API_BASE_URL =
@@ -538,6 +538,179 @@ const DeleteInventoryModal = ({ item, onConfirm, onClose }) => {
     );
 };
 
+// ── Stock Requests (submitted by Head Caregivers) ───────────────────────────────
+const STOCK_REQ_STATUS_STYLE = {
+    pending:  { label: 'Pending',  bg: '#fff8e1', color: '#7c5a00' },
+    approved: { label: 'Approved', bg: '#e0faf4', color: '#0d6b4f' },
+    rejected: { label: 'Rejected', bg: '#fdecea', color: '#b71c1c' },
+};
+
+const StockRequestsPanel = ({ onApproved }) => {
+    const [requests, setRequests]   = useState([]);
+    const [loading, setLoading]     = useState(true);
+    const [error, setError]         = useState('');
+    const [processingId, setProcessingId] = useState(null);
+    const [showResolved, setShowResolved] = useState(false);
+
+    const authHeaders = () => {
+        const token = localStorage.getItem('token');
+        return { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) };
+    };
+
+    const fetchRequests = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/stock-requests`, { headers: authHeaders() });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed to load stock requests.');
+            setRequests(data.data || []);
+        } catch (e) {
+            setError(e.message || 'Failed to load stock requests.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchRequests(); }, [fetchRequests]);
+
+    const resolveRequest = async (id, status) => {
+        setProcessingId(id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/stock-requests/${id}`, {
+                method: 'PUT',
+                headers: authHeaders(),
+                body: JSON.stringify({ status }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed to update request.');
+            setRequests(prev => prev.map(r => r._id === id ? data.data : r));
+            if (status === 'approved' && onApproved) onApproved(data.data);
+        } catch (e) {
+            setError(e.message || 'Failed to update request.');
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const pending  = requests.filter(r => r.status === 'pending' || !r.status);
+    const resolved = requests.filter(r => r.status === 'approved' || r.status === 'rejected');
+    const visible  = showResolved ? resolved : pending;
+
+    const requesterName = (r) => {
+        const u = r.requestedBy;
+        if (!u) return '—';
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+        return name || u.email || u.username || '—';
+    };
+
+    return (
+        <div className="card-white" style={{ marginBottom: 20 }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <h5 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                    <FaBoxOpen /> Stock Requests
+                    {pending.length > 0 && (
+                        <span style={{ background: '#dc3545', color: '#fff', fontSize: '.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+                            {pending.length} pending
+                        </span>
+                    )}
+                </h5>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                        className="btn-outline-sm"
+                        onClick={() => setShowResolved(false)}
+                        style={{ fontWeight: showResolved ? 400 : 700, borderColor: showResolved ? '#E8D6CC' : '#b85c2d', color: showResolved ? '#7A5C4E' : '#b85c2d' }}
+                    >
+                        Pending ({pending.length})
+                    </button>
+                    <button
+                        className="btn-outline-sm"
+                        onClick={() => setShowResolved(true)}
+                        style={{ fontWeight: showResolved ? 700 : 400, borderColor: showResolved ? '#b85c2d' : '#E8D6CC', color: showResolved ? '#b85c2d' : '#7A5C4E' }}
+                    >
+                        Resolved ({resolved.length})
+                    </button>
+                    <button className="btn-outline-sm" onClick={fetchRequests} title="Refresh">
+                        <FaSyncAlt size={12} className={loading ? 'spin' : ''} />
+                    </button>
+                </div>
+            </div>
+
+            {error && (
+                <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: '.85rem' }}>
+                    ⚠️ {error}
+                </div>
+            )}
+
+            {loading ? (
+                <p style={{ padding: '1rem', color: '#7A5C4E', textAlign: 'center' }}>Loading stock requests…</p>
+            ) : visible.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#7A5C4E' }}>
+                    <FaBoxOpen style={{ fontSize: '2rem', opacity: .3, display: 'block', margin: '0 auto 10px' }} />
+                    <p style={{ margin: 0 }}>
+                        {showResolved ? 'No resolved stock requests yet.' : 'No pending stock requests.'}
+                    </p>
+                </div>
+            ) : (
+                <table className="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Quantity</th>
+                            <th>Reason</th>
+                            <th>Requested By</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                            {!showResolved && <th>Actions</th>}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {visible.map(r => {
+                            const s = STOCK_REQ_STATUS_STYLE[r.status] || STOCK_REQ_STATUS_STYLE.pending;
+                            return (
+                                <tr key={r._id}>
+                                    <td><strong>{r.itemName}</strong></td>
+                                    <td>{r.quantity}</td>
+                                    <td style={{ maxWidth: 220 }}>{r.reason || <span style={{ color: '#ccc' }}>—</span>}</td>
+                                    <td>{requesterName(r)}</td>
+                                    <td style={{ fontSize: '.82rem', color: '#7A5C4E' }}>
+                                        {r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'}
+                                    </td>
+                                    <td>
+                                        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
+                                            {s.label}
+                                        </span>
+                                    </td>
+                                    {!showResolved && (
+                                        <td className="actions">
+                                            <button
+                                                onClick={() => resolveRequest(r._id, 'approved')}
+                                                disabled={processingId === r._id}
+                                                title="Approve"
+                                                style={{ background: 'none', border: 'none', color: '#0d6b4f', cursor: processingId === r._id ? 'not-allowed' : 'pointer', marginRight: 10 }}
+                                            >
+                                                <FaCheckCircle />
+                                            </button>
+                                            <button
+                                                onClick={() => resolveRequest(r._id, 'rejected')}
+                                                disabled={processingId === r._id}
+                                                title="Reject"
+                                                style={{ background: 'none', border: 'none', color: '#b71c1c', cursor: processingId === r._id ? 'not-allowed' : 'pointer' }}
+                                            >
+                                                <FaTimesCircle />
+                                            </button>
+                                        </td>
+                                    )}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            )}
+        </div>
+    );
+};
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUser }) => {
     const [editItem, setEditItem]           = useState(null);
@@ -695,6 +868,8 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
 
     return (
         <>
+            <StockRequestsPanel onApproved={() => {}} />
+
             <div className="card-white">
                 <div className="card-header">
                     <h5>Inventory &amp; Stock Management</h5>
@@ -789,7 +964,6 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                                     <th>Stock</th>
                                     <th>Min Threshold</th>
                                     <th>Expiration</th>
-                                    <th>QR Code</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -813,14 +987,6 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                                             <td style={{ color: '#7A5C4E', fontSize: '.88rem' }}>{item.minThreshold ?? 10} {item.unit}</td>
                                             <td style={{ fontSize: '.82rem' }}>
                                                 {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : <span style={{ color: '#ccc' }}>—</span>}
-                                            </td>
-                                            <td style={{ textAlign: 'center' }}>
-                                                <img
-                                                    src={`${API_BASE_URL}/inventory/${item._id}/qr`}
-                                                    alt="QR"
-                                                    style={{ width: 60, height: 60, border: '1px solid #E8D6CC', borderRadius: 4 }}
-                                                    onError={e => { e.target.style.display = 'none'; }}
-                                                />
                                             </td>
                                             <td>
                                                 <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>

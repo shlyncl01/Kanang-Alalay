@@ -900,6 +900,10 @@ router.post('/inventory/request', async (req, res) => {
             requestedBy: req.user._id,
         });
         await request.save();
+        await request.populate('requestedBy', 'firstName lastName role');
+
+        const io = req.app.get('io');
+        if (io) io.emit('stock_request', request);
 
         res.json({
             success: true,
