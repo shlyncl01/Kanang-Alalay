@@ -1597,14 +1597,15 @@ const HeadCaregiverDashboard = () => {
                     </div>
                 </div>
 
-                <div className="res-col-header">
-                    <span>Room | Bed</span><span>Name / Age</span><span>Conditions</span><span>Status</span><span>Today's Medication</span><span>Actions</span>
-                </div>
+                <div className="residents-table-scroll">
+                    <div className="res-col-header">
+                        <span>Room | Bed</span><span>Name / Age</span><span>Conditions</span><span>Status</span><span>Today's Medication</span><span>Actions</span>
+                    </div>
 
-                {paged.length === 0 ? (
-                    <div className="res-row-empty">{searchQuery ? `No residents match "${searchQuery}".` : 'No residents yet.'}</div>
-                ) : (
-                    paged.map((r, i) => {
+                    {paged.length === 0 ? (
+                        <div className="res-row-empty">{searchQuery ? `No residents match "${searchQuery}".` : 'No residents yet.'}</div>
+                    ) : (
+                        paged.map((r, i) => {
                         const isLast = i === paged.length - 1;
                         const todayMeds = schedule.filter(l =>
                             l.residentName === getResidentName(r) ||
@@ -1705,6 +1706,7 @@ const HeadCaregiverDashboard = () => {
                         );
                     })
                 )}
+                </div>
 
                 {pages > 1 && (
                     <div className="res-page-footer">

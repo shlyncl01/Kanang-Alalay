@@ -394,7 +394,7 @@ textarea.form-input { resize: vertical; }
 
 .res-col-header {
     display: grid;
-    grid-template-columns: 100px 1.2fr 140px 80px 1fr 220px;
+    grid-template-columns: 100px 1.1fr 130px 80px 0.9fr minmax(210px, 235px);
     background: var(--d-cream);
     border: 1px solid var(--d-border);
     border-bottom: none;
@@ -422,7 +422,7 @@ textarea.form-input { resize: vertical; }
 
 .res-row-grid {
     display: grid;
-    grid-template-columns: 100px 1.2fr 140px 80px 1fr 220px;
+    grid-template-columns: 100px 1.1fr 130px 80px 0.9fr minmax(210px, 235px);
     gap: 0;
     align-items: flex-start;
 }
@@ -617,9 +617,9 @@ textarea.form-input { resize: vertical; }
     .nurse-stat-row   { grid-template-columns: repeat(3, 1fr); }
     .resident-grid    { grid-template-columns: 1fr; }
     .res-col-header,
-    .res-row-grid     { grid-template-columns: 90px 1fr 100px 70px; }
-    .res-col-header > :nth-child(n+5),
-    .res-row-grid   > :nth-child(n+5) { display: none; }
+    .res-row-grid     { grid-template-columns: 80px 1fr 90px 64px minmax(215px, auto); }
+    .res-col-header > :nth-child(5),
+    .res-row-grid   > :nth-child(5) { display: none; }
     .form-grid-2      { grid-template-columns: 1fr; }
     .med-action-btns  { margin-left: 0; flex-wrap: wrap; }
 }
@@ -627,6 +627,16 @@ textarea.form-input { resize: vertical; }
     .med-pills-row,
     .med-filters-row { flex-direction: column; align-items: flex-start; }
     .nurse-stat-row  { grid-template-columns: repeat(2, 1fr); }
+    /* On very narrow phones, let the resident table scroll horizontally
+       instead of squeezing the Actions icons into unreadable sizes. */
+    .residents-table-scroll { overflow-x: auto; }
+    .residents-table-scroll .res-col-header,
+    .residents-table-scroll .res-row-grid {
+        grid-template-columns: 80px 160px 90px 64px 200px;
+        width: max-content;
+        min-width: 100%;
+    }
+    .res-action-icon { width: 28px; height: 28px; font-size: .8rem; }
 }
 
 .ml-auto      { margin-left: auto; }
@@ -878,32 +888,34 @@ textarea.form-input { resize: vertical; }
 .res-action-icons {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     width: 100%;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .res-action-icons-group {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
-    flex: 1;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .res-action-icon {
     background: var(--d-cream);
     border: 1.5px solid var(--d-border);
     border-radius: 8px;
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     color: var(--d-muted);
     transition: all 0.2s ease;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
 }
 
 .res-action-icon:hover {
@@ -1013,60 +1025,6 @@ textarea.form-input { resize: vertical; }
 
 .add-resident-body::-webkit-scrollbar-thumb:hover {
     background: var(--d-orange);
-}
-/* New styles for icon-only action buttons - NO EMOJIS */
-.res-action-icons {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    gap: 10px;
-}
-
-.res-action-icons-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex: 1;
-    gap: 8px;
-}
-
-.res-action-icon {
-    background: var(--d-cream);
-    border: 1.5px solid var(--d-border);
-    border-radius: 8px;
-    width: 34px;
-    height: 34px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--d-muted);
-    transition: all 0.2s ease;
-    font-size: 0.95rem;
-}
-
-.res-action-icon:hover {
-    background: var(--d-orange-lt);
-    border-color: var(--d-orange);
-    color: var(--d-orange-dk);
-    transform: translateY(-2px);
-}
-
-.res-completed-icon {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: #1E7D56;
-    font-size: 0.85rem;
-    font-weight: 600;
-    background: #EEFBF5;
-    padding: 6px 14px;
-    border-radius: 20px;
-}
-
-.res-completed-icon svg {
-    font-size: 0.9rem;
 }
 
 /* Nickname tag */
