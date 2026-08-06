@@ -12,6 +12,10 @@ const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
+// How long a dose can sit "overdue" (i.e. shown as Delayed) before it
+// automatically escalates to "missed". Adjust to match clinical policy.
+const MISSED_GRACE_MINUTES = 60;
+
 function requireHeadCaregiver(req, res) {
     if (req.user?.role !== 'head_caregiver') {
         res.status(403).json({
@@ -163,15 +167,30 @@ async function findAssignableCaregiver(caregiverId) {
 }
 async function autoMarkOverdue(logs) {
     const now = new Date();
-    const toUpdate = logs.filter(l =>
+    const missedCutoff = new Date(now.getTime() - MISSED_GRACE_MINUTES * 60 * 1000);
+
+    // scheduled/pending doses whose time has passed -> overdue (shown as "Delayed")
+    const toOverdue = logs.filter(l =>
         (l.status === 'scheduled' || l.status === 'pending') &&
         l.scheduledTime && new Date(l.scheduledTime) < now
     );
-    if (toUpdate.length) {
-        const ids = toUpdate.map(l => l._id);
+    if (toOverdue.length) {
+        const ids = toOverdue.map(l => l._id);
         await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'overdue' });
-        toUpdate.forEach(l => { l.status = 'overdue'; });
+        toOverdue.forEach(l => { l.status = 'overdue'; });
     }
+
+    // doses that have been overdue for longer than the grace period -> missed
+    const toMissed = logs.filter(l =>
+        l.status === 'overdue' &&
+        l.scheduledTime && new Date(l.scheduledTime) < missedCutoff
+    );
+    if (toMissed.length) {
+        const ids = toMissed.map(l => l._id);
+        await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'missed' });
+        toMissed.forEach(l => { l.status = 'missed'; });
+    }
+
     return logs;
 }
 
@@ -841,12 +860,20 @@ router.get('/stats', async (req, res) => {
             Inventory.find({ category: { $in: ['medication', 'medical_supplies'] } }, { quantity: 1, minThreshold: 1 }),
         ]);
 
+        // Flip any doses that are now past due (or past due long enough to
+        // count as missed) BEFORE tallying the cards below — otherwise a
+        // dose that went overdue after it was last touched by another route
+        // just sits as "scheduled"/"pending" forever.
+        await autoMarkOverdue(todayLogs);
+
         const total = todayLogs.length;
         const onTime = todayLogs.filter(l => l.status === 'administered' || l.status === 'completed').length;
-        const delayed = todayLogs.filter(l => l.status === 'delayed').length;
+        // "overdue" doses are what the dashboard shows as "Delayed" (there is
+        // no separate Overdue card in the UI).
+        const delayed = todayLogs.filter(l => l.status === 'overdue').length;
         const missed = todayLogs.filter(l => l.status === 'missed').length;
         const pending = todayLogs.filter(l => l.status === 'scheduled' || l.status === 'pending').length;
-        const overdue = todayLogs.filter(l => l.status === 'overdue').length;
+        const overdue = delayed; // kept for backward compatibility with any caller still reading `overdue`
         const complianceRate = total > 0 ? Math.round((onTime / total) * 100) : 0;
         const lowMedStock = invItems.filter(i => i.quantity <= (i.minThreshold ?? 10)).length;
 
