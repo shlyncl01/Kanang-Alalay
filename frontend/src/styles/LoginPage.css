@@ -63,7 +63,7 @@
 .logo-mark {
     width: 56px;
     height: 56px;
-    background: linear-gradient(135deg, #F96B38, #7d3a06);
+    object-fit: contain;
     border-radius: 16px;
     box-shadow: 0 8px 24px rgba(249, 107, 56, .35);
 }

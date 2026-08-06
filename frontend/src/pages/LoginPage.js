@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FaUser, FaLock, FaEye, FaEyeSlash, FaSpinner, FaEnvelope, FaKey, FaCheckCircle, FaTimes, FaArrowLeft } from 'react-icons/fa';
 import '../styles/LoginPage.css';
+import mainLogo from '../assets/mainLogo.png';
 
 const getApiBaseUrl = () => {
     const fallback = process.env.NODE_ENV === 'production'
@@ -578,7 +579,7 @@ const LoginPage = () => {
                     <FaArrowLeft /> Back to Home
                 </button>
                 <div className="login-card">
-                    <div className="login-logo"><div className="logo-mark"></div></div>
+                    <div className="login-logo"><img src={mainLogo} alt="Kanang-Alalay logo" className="logo-mark" /></div>
                     <h2 className="login-title">Activate Your Account</h2>
                     <p className="login-sub">Enter the 6-digit OTP sent to your email to activate your account.</p>
                     <div className="otp-input-row">
@@ -615,7 +616,7 @@ const LoginPage = () => {
                     <FaArrowLeft /> Back to Home
                 </button>
                 <div className="login-card">
-                    <div className="login-logo"><div className="logo-mark"></div></div>
+                    <div className="login-logo"><img src={mainLogo} alt="Kanang-Alalay logo" className="logo-mark" /></div>
                     <h2 className="login-title">Kanang-Alalay</h2>
                     <p className="login-sub">Sign in to your account</p>
 
