@@ -74,13 +74,54 @@
 .toast.error   { background: #C0392B; }
 .toast.warn    { background: #E65100; }
 
+/* ============================================================
+   MODAL SYSTEM — shared layout for every modal in this file
+   (Assign Caregiver, Medication History, Log Vitals, Profile,
+   Edit Schedule, Add Resident, Discharge, Add Schedule,
+   Request Stock, Logout Confirm).
+
+   Every modal follows the same skeleton:
+     .modal-overlay              → dims background, centers modal,
+                                    supplies the side/vertical gutter
+                                    so the modal never touches the
+                                    viewport edge on small screens
+       .registration-modal       → flex column, clipped corners,
+                                    height capped to the viewport
+         .modal-header-nurse     → pinned top (doesn't scroll away)
+         .modal-body              → the ONLY part that scrolls
+         .modal-footer            → pinned bottom (buttons always reachable)
+
+   Keeping the header and footer as flex-shrink:0 siblings of a
+   scrolling .modal-body is what fixes the earlier bug where long
+   content (e.g. the resident profile) pushed the close button and
+   action buttons off-screen with no way to reach them.
+   ============================================================ */
+
+.modal-overlay {
+    padding: clamp(12px, 4vw, 28px);
+    box-sizing: border-box;
+}
+
+.modal-overlay .registration-modal {
+    width: 100%;
+    max-height: min(90vh, 780px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    margin: auto;
+}
+
 .modal-header-nurse {
-    padding: 18px 22px;
+    padding: clamp(14px, 4vw, 18px) clamp(16px, 5vw, 22px);
     background: linear-gradient(135deg, #b85c2d, #7d3a06);
     border-radius: 20px 20px 0 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 .modal-header-nurse h4 {
     margin: 0;
@@ -89,7 +130,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 1.05rem;
+    font-size: clamp(.95rem, 3vw, 1.05rem);
+    min-width: 0;
+    overflow-wrap: break-word;
 }
 .modal-close-btn {
     width: 32px;
@@ -104,23 +147,50 @@
     justify-content: center;
     font-size: .9rem;
     transition: background .2s;
+    flex-shrink: 0;
 }
 .modal-close-btn:hover { background: rgba(255,255,255,.32); }
 
-.modal-body   { padding: 22px 24px; }
+.modal-body {
+    padding: clamp(16px, 4vw, 22px) clamp(16px, 5vw, 24px);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+.modal-body::-webkit-scrollbar { width: 6px; }
+.modal-body::-webkit-scrollbar-track { background: var(--d-cream); border-radius: 10px; }
+.modal-body::-webkit-scrollbar-thumb { background: var(--d-border); border-radius: 10px; }
+.modal-body::-webkit-scrollbar-thumb:hover { background: var(--d-orange); }
+
 .modal-footer {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     justify-content: flex-end;
-    padding-top: 14px;
+    padding: 14px clamp(16px, 5vw, 24px) clamp(16px, 4vw, 22px);
     border-top: 1.5px solid var(--d-border);
-    margin-top: 4px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    background: #fff;
 }
 
 .modal-sm  { max-width: 460px; padding: 0; }
 .modal-md  { max-width: 520px; padding: 0; }
 .modal-lg  { max-width: 640px; padding: 0; }
 .modal-xl  { max-width: 560px; padding: 0; }
+
+@media (max-width: 480px) {
+    .modal-footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+    .modal-footer .btn-outline-sm,
+    .modal-footer .btn-modal-save {
+        width: 100%;
+        justify-content: center;
+    }
+}
 
 .form-field { margin-bottom: 13px; }
 .form-field label {
@@ -695,9 +765,10 @@ textarea.form-input { resize: vertical; }
     display: flex;
     align-items: center;
     gap: 18px;
-    padding: 20px 24px;
+    padding: 20px clamp(16px, 5vw, 24px);
     background: linear-gradient(135deg, #FFF8F3, #FDDECA44);
     border-bottom: 1.5px solid var(--d-border);
+    flex-wrap: wrap;
 }
 
 .profile-avatar {
@@ -738,18 +809,30 @@ textarea.form-input { resize: vertical; }
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
-    padding: 16px 24px 0;
+    padding: 16px clamp(16px, 5vw, 24px) 0;
 }
 
 .profile-section {
     padding: 0 12px 16px 0;
     border-bottom: 1px solid var(--d-border);
     margin-bottom: 16px;
+    min-width: 0;
 }
 
 .profile-section:nth-child(even) {
     padding-left: 20px;
     border-left: 1px solid var(--d-border);
+}
+
+/* Below ~560px there isn't room for two columns without the text
+   crowding the divider, so stack sections full-width and drop the
+   vertical rule that separated them. */
+@media (max-width: 560px) {
+    .profile-grid { grid-template-columns: 1fr; }
+    .profile-section:nth-child(even) {
+        padding-left: 0;
+        border-left: none;
+    }
 }
 
 .profile-section-full {
@@ -803,14 +886,12 @@ textarea.form-input { resize: vertical; }
     margin: 0;
 }
 
-.profile-modal-body .modal-footer {
-    margin: 0 24px 20px;
-    padding-top: 14px;
-    border-top: 1.5px solid var(--d-border);
-}
+/* The footer button now lives outside .profile-modal-body (pinned via
+   the shared .modal-footer rules above) so it stays reachable while
+   the profile content scrolls — no extra positioning needed here. */
 
 .profile-meds-section {
-    padding: 0 24px;
+    padding: 0 clamp(16px, 5vw, 24px) 20px;
 }
 
 .validation-banner {

@@ -112,15 +112,26 @@ const SaveBtn = ({ saving, label, onClick, disabled }) => (
 // ─── Shared inline-style system (matches Add Inventory Item exactly) ─────────
 // Used only by AddResidentModal, AddScheduleModal, RequestStockModal — fully
 // self-contained inline styles, independent of any external CSS classes.
-const hcModalStyle = { maxWidth: 560, padding: 0, width: '100%' };
+// NOTE: hcModalStyle is now a flex column (header / scrollable body / footer)
+// so the header + footer stay pinned in place and only the middle content
+// scrolls — this is what keeps the close button and Save/Cancel buttons
+// reachable no matter how tall the form gets. Side padding uses clamp()
+// so every modal automatically tightens its gutters on narrow screens
+// instead of needing separate mobile breakpoints.
+const hcModalStyle = {
+    maxWidth: 560, width: '100%', padding: 0,
+    display: 'flex', flexDirection: 'column',
+    maxHeight: 'min(92vh, 780px)', overflow: 'hidden', boxSizing: 'border-box',
+};
 const hcHeaderStyle = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '22px 28px', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)',
-    borderRadius: '20px 20px 0 0',
+    padding: 'clamp(16px,4vw,22px) clamp(18px,5vw,28px)', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)',
+    borderRadius: '20px 20px 0 0', flexShrink: 0, boxSizing: 'border-box', gap: 12,
 };
 const hcHeaderTitleStyle = {
     margin: 0, color: '#fff', fontFamily: "'Playfair Display', Georgia, serif",
-    display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.2rem',
+    display: 'flex', alignItems: 'center', gap: 10, fontSize: 'clamp(1.02rem, 3vw, 1.2rem)',
+    minWidth: 0, wordBreak: 'break-word',
 };
 const hcCloseBtnStyle = {
     background: 'rgba(255,255,255,.15)', border: '2px solid rgba(255,255,255,.2)',
@@ -128,14 +139,17 @@ const hcCloseBtnStyle = {
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
     transition: 'background .2s', flexShrink: 0,
 };
-const hcBodyStyle = { padding: '26px 28px', maxHeight: '70vh', overflowY: 'auto', boxSizing: 'border-box' };
+const hcBodyStyle = {
+    padding: 'clamp(18px,4vw,26px) clamp(18px,5vw,28px)',
+    flex: '1 1 auto', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box',
+};
 const hcSectionLabel = {
     fontSize: '.78rem', fontWeight: 700, color: '#b85c2d', textTransform: 'uppercase',
     letterSpacing: '.05em', margin: '22px 0 14px', paddingBottom: 8,
     borderBottom: '1.5px solid #F3D9C4', display: 'flex', alignItems: 'center',
 };
 const hcFieldWrap = { marginBottom: 18 };
-const hcGrid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 };
+const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 18 };
 const hcLabelStyle = {
     display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#2c3e50',
     marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em',
@@ -150,15 +164,19 @@ const hcInputStyle = (hasError) => ({
 });
 const hcErrorText = { color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' };
 const hcHintText = { fontSize: '.74rem', color: '#A38070', marginTop: 4, display: 'block' };
-const hcFooter = { display: 'flex', gap: 12, marginTop: 22, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' };
+const hcFooter = {
+    display: 'flex', flexWrap: 'wrap', gap: 12,
+    padding: '18px clamp(18px,5vw,28px)', borderTop: '1.5px solid #E8D6CC',
+    flexShrink: 0, boxSizing: 'border-box', background: '#fff',
+};
 const hcCancelBtn = (disabled) => ({
-    flex: 1, padding: '11px', background: '#fff', color: '#7A5C4E',
+    flex: '1 1 120px', padding: '11px', background: '#fff', color: '#7A5C4E',
     border: '1.5px solid #E8D6CC', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 600, fontSize: '.9rem',
     transition: 'all .2s', opacity: disabled ? 0.6 : 1,
 });
 const hcSaveBtn = (disabled) => ({
-    flex: 2, padding: '11px',
+    flex: '2 1 160px', padding: '11px',
     background: disabled ? '#ccc' : 'linear-gradient(135deg, #F96B38, #D94E1B)',
     color: '#fff', border: 'none', borderRadius: 10, cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, fontSize: '.9rem',
@@ -561,15 +579,14 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                                 ))}
                         </select>
                     </HCField>
-
-                    <div style={hcFooter}>
-                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
-                            Cancel
-                        </button>
-                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
-                            {saving ? 'Saving…' : isEdit ? '✓ Save Changes' : '✓ Add Resident'}
-                        </button>
-                    </div>
+                </div>
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                        Cancel
+                    </button>
+                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                        {saving ? 'Saving…' : isEdit ? '✓ Save Changes' : '✓ Add Resident'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -686,20 +703,19 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
                             placeholder="Optional — any additional details for the record"
                         />
                     </HCField>
-
-                    <div style={hcFooter}>
-                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
-                            Cancel
-                        </button>
-                        <button
-                            onClick={submit}
-                            type="button"
-                            disabled={saving}
-                            style={{ ...hcSaveBtn(saving), background: saving ? undefined : '#C0392B' }}
-                        >
-                            {saving ? 'Removing…' : 'Confirm Removal'}
-                        </button>
-                    </div>
+                </div>
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                        Cancel
+                    </button>
+                    <button
+                        onClick={submit}
+                        type="button"
+                        disabled={saving}
+                        style={{ ...hcSaveBtn(saving), background: saving ? undefined : '#C0392B' }}
+                    >
+                        {saving ? 'Removing…' : 'Confirm Removal'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -782,10 +798,10 @@ const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
                     <Field label="Notes">
                         <textarea rows={3} maxLength="500" className="form-input" value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Observations or remarks…" />
                     </Field>
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="✓ Save Vitals" onClick={submit} />
-                    </div>
+                </div>
+                <div className="modal-footer">
+                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
+                    <SaveBtn saving={saving} label="✓ Save Vitals" onClick={submit} />
                 </div>
             </div>
         </div>
@@ -857,10 +873,10 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
                             </small>
                         )}
                     </Field>
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="Assign Caregiver" onClick={submit} disabled={!caregiverId || availableCaregivers.length === 0} />
-                    </div>
+                </div>
+                <div className="modal-footer">
+                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
+                    <SaveBtn saving={saving} label="Assign Caregiver" onClick={submit} disabled={!caregiverId || availableCaregivers.length === 0} />
                 </div>
             </div>
         </div>
@@ -942,30 +958,33 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
                         </div>
                     </div>
 
-                    <div className="profile-section-title" style={{ marginTop: 16, marginBottom: 10 }}>Today's Medication Schedule</div>
-                    {todayMeds.length === 0 ? (
-                        <p style={{ color: 'var(--d-muted)', fontStyle: 'italic', fontSize: '.88rem', margin: 0 }}>No medications scheduled today.</p>
-                    ) : (
-                        <table className="custom-table">
-                            <thead>
-                                <tr><th>Time</th><th>Medication</th><th>Dosage</th><th>Status</th></tr>
-                            </thead>
-                            <tbody>
-                                {todayMeds.map(m => (
-                                    <tr key={m._id}>
-                                        <td>{m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                                        <td><strong>{m.medicationName || '—'}</strong></td>
-                                        <td>{m.dosage || '—'}</td>
-                                        <td><Badge s={m.status} /></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Close</button>
+                    <div className="profile-meds-section">
+                        <div className="profile-section-title" style={{ marginTop: 16, marginBottom: 10 }}>Today's Medication Schedule</div>
+                        {todayMeds.length === 0 ? (
+                            <p style={{ color: 'var(--d-muted)', fontStyle: 'italic', fontSize: '.88rem', margin: 0 }}>No medications scheduled today.</p>
+                        ) : (
+                            <div className="table-scroll">
+                                <table className="custom-table">
+                                    <thead>
+                                        <tr><th>Time</th><th>Medication</th><th>Dosage</th><th>Status</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {todayMeds.map(m => (
+                                            <tr key={m._id}>
+                                                <td>{m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                                                <td><strong>{m.medicationName || '—'}</strong></td>
+                                                <td>{m.dosage || '—'}</td>
+                                                <td><Badge s={m.status} /></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
+                </div>
+                <div className="modal-footer profile-modal-footer">
+                    <button className="btn-outline-sm" onClick={onClose}>Close</button>
                 </div>
             </div>
         </div>
@@ -1011,9 +1030,9 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
                                     </tbody>
                                 </table>
                             </div>}
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Close</button>
-                    </div>
+                </div>
+                <div className="modal-footer">
+                    <button className="btn-outline-sm" onClick={onClose}>Close</button>
                 </div>
             </div>
         </div>
@@ -1076,14 +1095,14 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                     <HCField label="Notes" style={{ marginBottom: 6 }}>
                         <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Special instructions…" />
                     </HCField>
-                    <div style={hcFooter}>
-                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
-                            Cancel
-                        </button>
-                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
-                            {saving ? 'Saving…' : '✓ Schedule Medication'}
-                        </button>
-                    </div>
+                </div>
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                        Cancel
+                    </button>
+                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                        {saving ? 'Saving…' : '✓ Schedule Medication'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -1127,10 +1146,10 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
                     <Field label="Notes">
                         <textarea rows={3} maxLength="500" className="form-input" value={f.notes} onChange={e => setField('notes', e.target.value)} />
                     </Field>
-                    <div className="modal-footer">
-                        <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                        <SaveBtn saving={saving} label="✓ Save Changes" onClick={submit} />
-                    </div>
+                </div>
+                <div className="modal-footer">
+                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
+                    <SaveBtn saving={saving} label="✓ Save Changes" onClick={submit} />
                 </div>
             </div>
         </div>
@@ -1180,14 +1199,14 @@ const RequestStockModal = ({ items, onClose, doFetch, toast }) => {
                     <HCField label="Reason / Notes" style={{ marginBottom: 6 }}>
                         <textarea rows={3} style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.reason} onChange={e => setField('reason', e.target.value)} placeholder="Why is this stock needed?" />
                     </HCField>
-                    <div style={hcFooter}>
-                        <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
-                            Cancel
-                        </button>
-                        <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
-                            {saving ? 'Saving…' : '✓ Submit Request'}
-                        </button>
-                    </div>
+                </div>
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                        Cancel
+                    </button>
+                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                        {saving ? 'Saving…' : '✓ Submit Request'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -2017,13 +2036,13 @@ const HeadCaregiverDashboard = () => {
             {/* Logout Confirm */}
             {showLogoutConfirm && (
                 <div className="modal-overlay" style={{ zIndex: 10002 }}>
-                    <div className="registration-modal" style={{ maxWidth: 380, padding: 28 }}>
+                    <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
                         <div className="logout-confirm-header">
                             <FaSignOutAlt className="logout-confirm-icon" />
                             <h4>Sign Out</h4>
                         </div>
                         <p className="logout-confirm-msg">Are you sure you want to sign out? Any unsaved changes will be lost.</p>
-                        <div className="modal-footer">
+                        <div className="modal-footer" style={{ padding: '14px 0 0', margin: 0 }}>
                             <button className="btn-outline-sm" onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
                             <button className="btn-logout-confirm" onClick={confirmLogout}>
                                 <FaSignOutAlt /> Yes, Sign Out
