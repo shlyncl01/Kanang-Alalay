@@ -5,6 +5,7 @@ const MedicationLog = require('../models/MedicationLog');
 const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
+const { getManilaDayBounds } = require('../utils/dateHelpers');
 
 // Get all medications
 router.get('/', authMiddleware, async (req, res) => {
@@ -20,10 +21,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // Get today's medication schedule for caregiver
 router.get('/schedule', authMiddleware, async (req, res) => {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        const { today, tomorrow } = getManilaDayBounds();
 
         const logs = await MedicationLog.find({
             caregiverId: req.user._id,

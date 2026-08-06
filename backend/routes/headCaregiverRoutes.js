@@ -9,6 +9,7 @@ const VitalsLog = require('../models/VitalsLog');
 const StockRequest = require('../models/StockRequest');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const { startOfManilaDay } = require('../utils/dateHelpers');
 
 router.use(protect);
 
@@ -642,8 +643,7 @@ router.get('/medications', async (req, res) => {
 router.get('/schedule', async (req, res) => {
     try {
         const { date, residentId } = req.query;
-        const target = date ? new Date(date) : new Date();
-        target.setHours(0, 0, 0, 0);
+        const target = startOfManilaDay(date ? new Date(date) : new Date());
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
@@ -686,8 +686,7 @@ router.get('/schedule', async (req, res) => {
 router.get('/schedule/all', async (req, res) => {
     try {
         const { date } = req.query;
-        const target = date ? new Date(date) : new Date();
-        target.setHours(0, 0, 0, 0);
+        const target = startOfManilaDay(date ? new Date(date) : new Date());
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
@@ -938,9 +937,8 @@ router.post('/voice-note', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
     try {
-        const today = new Date(); 
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today); 
+        const today = startOfManilaDay();
+        const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
         const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)

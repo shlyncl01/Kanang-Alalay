@@ -3,6 +3,7 @@ const router = express.Router();
 const Resident = require('../models/Resident');
 const MedicationLog = require('../models/MedicationLog');
 const { protect } = require('../middleware/authMiddleware');
+const { getManilaDayBounds } = require('../utils/dateHelpers');
 
 const getUserFullName = (user = {}) =>
   `${user.firstName || ''} ${user.lastName || ''}`.trim();
@@ -43,10 +44,7 @@ router.get('/my-assigned', protect, async (req, res) => {
     const residents = await Resident.find(assignedResidentQuery(req.user)).sort({ roomNumber: 1 });
     const residentIds = residents.map((resident) => resident._id);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const { today, tomorrow } = getManilaDayBounds();
 
     const logQuery = {
       residentId: { $in: residentIds },
