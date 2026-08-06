@@ -854,9 +854,13 @@ router.get('/stats', async (req, res) => {
         const tomorrow = new Date(today); 
         tomorrow.setDate(tomorrow.getDate() + 1);
 
+        const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)
+            ? {}
+            : { caregiverId: req.user._id };
+
         const [totalResidents, todayLogs, invItems] = await Promise.all([
             Resident.countDocuments({ status: 'active' }),
-            MedicationLog.find({ caregiverId: req.user._id, scheduledTime: { $gte: today, $lt: tomorrow } }),
+            MedicationLog.find({ ...baseQuery, scheduledTime: { $gte: today, $lt: tomorrow } }),
             Inventory.find({ category: { $in: ['medication', 'medical_supplies'] } }, { quantity: 1, minThreshold: 1 }),
         ]);
 
