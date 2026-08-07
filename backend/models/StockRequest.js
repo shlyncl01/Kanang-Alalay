@@ -4,6 +4,7 @@ const stockRequestSchema = new mongoose.Schema({
     itemId:       { type: String, default: '' },
     itemName:     { type: String, required: true },
     quantity:     { type: Number, required: true, min: 1 },
+    unit:         { type: String, default: 'pcs', trim: true },
     reason:       { type: String, default: '' },
     requestedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     status:       { type: String, enum: ['pending','approved','rejected','fulfilled'], default: 'pending' },

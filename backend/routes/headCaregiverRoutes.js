@@ -9,7 +9,6 @@ const VitalsLog = require('../models/VitalsLog');
 const StockRequest = require('../models/StockRequest');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
-const { startOfManilaDay } = require('../utils/dateHelpers');
 
 router.use(protect);
 
@@ -643,7 +642,8 @@ router.get('/medications', async (req, res) => {
 router.get('/schedule', async (req, res) => {
     try {
         const { date, residentId } = req.query;
-        const target = startOfManilaDay(date ? new Date(date) : new Date());
+        const target = date ? new Date(date) : new Date();
+        target.setHours(0, 0, 0, 0);
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
@@ -686,7 +686,8 @@ router.get('/schedule', async (req, res) => {
 router.get('/schedule/all', async (req, res) => {
     try {
         const { date } = req.query;
-        const target = startOfManilaDay(date ? new Date(date) : new Date());
+        const target = date ? new Date(date) : new Date();
+        target.setHours(0, 0, 0, 0);
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
@@ -883,7 +884,7 @@ router.get('/inventory', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.post('/inventory/request', async (req, res) => {
     try {
-        const { itemId, itemName, quantity, reason } = req.body;
+        const { itemId, itemName, quantity, unit, reason } = req.body;
         if (!itemName || !quantity) {
             return res.status(400).json({ 
                 success: false, 
@@ -895,6 +896,7 @@ router.post('/inventory/request', async (req, res) => {
             itemId: itemId || '',
             itemName: itemName.trim(),
             quantity: +quantity,
+            unit: unit || 'pcs',
             reason: reason || '',
             requestedBy: req.user._id,
         });
@@ -906,7 +908,7 @@ router.post('/inventory/request', async (req, res) => {
 
         res.json({
             success: true,
-            message: `Stock request for ${quantity} units of "${itemName}" submitted.`,
+            message: `Stock request for ${quantity} ${unit || 'pcs'} of "${itemName}" submitted.`,
             data: request
         });
     } catch (err) {
@@ -937,8 +939,9 @@ router.post('/voice-note', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
     try {
-        const today = startOfManilaDay();
-        const tomorrow = new Date(today);
+        const today = new Date(); 
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today); 
         tomorrow.setDate(tomorrow.getDate() + 1);
 
         const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)

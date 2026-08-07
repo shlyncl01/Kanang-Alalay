@@ -670,7 +670,7 @@ const StockRequestsPanel = ({ onApproved }) => {
                             return (
                                 <tr key={r._id}>
                                     <td><strong>{r.itemName}</strong></td>
-                                    <td>{r.quantity}</td>
+                                    <td>{r.quantity} {r.unit || 'pcs'}</td>
                                     <td style={{ maxWidth: 220 }}>{r.reason || <span style={{ color: '#ccc' }}>—</span>}</td>
                                     <td>{requesterName(r)}</td>
                                     <td style={{ fontSize: '.82rem', color: '#7A5C4E' }}>
@@ -773,8 +773,11 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
     };
 
     const handlePrint = () => {
-        const win = window.open('', '_blank');
-        if (!win) return;
+        const win = window.open('', '_blank', 'width=900,height=700');
+        if (!win) {
+            alert('Print was blocked by your browser\'s popup blocker. Please allow popups for this site and try again.');
+            return;
+        }
 
         const now = new Date();
         const generatedByName = currentUser
@@ -861,9 +864,21 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
             </html>
         `);
         win.document.close();
-        win.focus();
-        win.print();
-        win.close();
+
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+
+        win.onload = triggerPrint;
+        // Fallback for browsers where onload doesn't fire reliably after document.write()
+        setTimeout(triggerPrint, 400);
+
+        // Close the report window once the print dialog has been dismissed
+        win.onafterprint = () => win.close();
     };
 
     return (
