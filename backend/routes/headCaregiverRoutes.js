@@ -389,40 +389,67 @@ router.post('/residents', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.put('/residents/:id', async (req, res) => {
     try {
-        const { conditions, primaryCaregiver, ...rest } = req.body;
+        // primaryCaregiver arrives from the client as a display NAME, not an
+        // ID — it must never be used to look up a caregiver. primaryCaregiverId
+        // is the actual reference. Both are pulled out of `rest` so neither
+        // gets written to the update as-is (an empty string '' would fail
+        // ObjectId casting and 500 the whole request).
+        const { conditions, primaryCaregiver, primaryCaregiverId, primaryCaregiverName, ...rest } = req.body;
         const update = { ...rest };
-        
+
+        // Conditions may arrive either as plain strings or as {name} objects
+        // (the Add/Edit Resident form already sends {name} objects) —
+        // normalize instead of re-wrapping an object inside another object,
+        // which fails Mongoose's String cast for medicalConditions.name.
         if (conditions) {
-            update.medicalConditions = conditions.map(c => ({ name: c }));
+            update.medicalConditions = conditions.map(c => ({
+                name: typeof c === 'string' ? c : (c?.name || ''),
+                severity: (typeof c === 'object' && c?.severity) || 'mild',
+            })).filter(c => c.name);
         }
-        
-        // If caregiver changed, update the name and ID
-        if (primaryCaregiver) {
-            const caregiver = await findAssignableCaregiver(primaryCaregiver);
-                if (!caregiver) return res.status(400).json({ success: false, message: 'Selected caregiver was not found.' });
-            if (caregiver) {
-                const caregiverName = getCaregiverName(caregiver);
-                update.primaryCaregiver = caregiverName;
-                update.primaryCaregiverId = caregiver._id;
-                update.primaryCaregiverName = caregiverName;
-                update.assignedCaregiver = caregiverName;
-                update.assignedNurse = caregiverName;
-                update.assignedStaff = {
-                    primaryCaregiver: caregiverName,
-                    primaryCaregiverName: caregiverName,
-                    primaryCaregiverId: caregiver._id,
-                    assignedCaregiver: caregiverName,
-                    assignedNurse: caregiverName,
-                };
-            }
+
+        // Resolve the caregiver by ID first (preferred, matches Add Resident),
+        // falling back to the legacy name/staffId/email lookup only if no ID
+        // was sent. If the field was explicitly cleared, unassign cleanly
+        // instead of trying to cast '' to an ObjectId.
+        const caregiverInput = primaryCaregiverId || primaryCaregiver;
+        if (caregiverInput) {
+            const caregiver = await findAssignableCaregiver(caregiverInput);
+            if (!caregiver) return res.status(400).json({ success: false, message: 'Selected caregiver was not found.' });
+            const caregiverName = getCaregiverName(caregiver);
+            update.primaryCaregiver = caregiverName;
+            update.primaryCaregiverId = caregiver._id;
+            update.primaryCaregiverName = caregiverName;
+            update.assignedCaregiver = caregiverName;
+            update.assignedNurse = caregiverName;
+            update.assignedStaff = {
+                primaryCaregiver: caregiverName,
+                primaryCaregiverName: caregiverName,
+                primaryCaregiverId: caregiver._id,
+                assignedCaregiver: caregiverName,
+                assignedNurse: caregiverName,
+            };
+        } else if (primaryCaregiverId === '' || primaryCaregiver === '') {
+            // Field was explicitly cleared in the form — unassign.
+            update.primaryCaregiver = '';
+            update.primaryCaregiverId = null;
+            update.primaryCaregiverName = '';
+            update.assignedCaregiver = '';
+            update.assignedNurse = '';
+            update.assignedStaff = {
+                primaryCaregiver: '', primaryCaregiverName: '', primaryCaregiverId: null,
+                assignedCaregiver: '', assignedNurse: '',
+            };
         }
-        
-        const resident = await Resident.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+
+        const resident = await Resident.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true })
+            .populate('primaryCaregiverId', 'firstName lastName role');
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
-        
-        res.json({ success: true, data: resident });
+
+        res.json({ success: true, data: shapeResident(resident) });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        console.error('Update resident error:', err);
+        res.status(400).json({ success: false, message: err.message });
     }
 });
 
