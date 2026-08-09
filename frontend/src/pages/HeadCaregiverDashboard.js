@@ -766,7 +766,7 @@ const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-md">
+            <div className="registration-modal modal-md" style={hcModalStyle}>
                 <MHeader icon={<FaHeartbeat />} title={`Log Vital Signs — ${resName}`} onClose={onClose} />
                 <div className="modal-body">
                     {vitalsErr && (
@@ -849,7 +849,7 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-md">
+            <div className="registration-modal modal-md" style={hcModalStyle}>
                 <MHeader icon={<FaUserMd />} title={`Assign Caregiver - ${residentName}`} onClose={onClose} />
                 <div className="modal-body">
                     <Field label="Current Caregiver">
@@ -899,7 +899,7 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-lg">
+            <div className="registration-modal modal-lg" style={hcModalStyle}>
                 <MHeader icon={<FaUserCircle />} title={`Resident Profile — ${resName}`} onClose={onClose} />
                 <div className="modal-body profile-modal-body">
                     <div className="profile-header-card">
@@ -1010,7 +1010,7 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-lg">
+            <div className="registration-modal modal-lg" style={hcModalStyle}>
                 <MHeader icon={<FaEye />} title={`Medication History — ${resName}`} onClose={onClose} />
                 <div className="modal-body">
                     {loading ? <div className="no-data-center"><FaSpinner className="spin" /> Loading…</div>
@@ -1133,7 +1133,7 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-sm">
+            <div className="registration-modal modal-sm" style={hcModalStyle}>
                 <MHeader icon={<FaEdit />} title="Edit Schedule" onClose={onClose} />
                 <div className="modal-body">
                     {editErr && (<div className="validation-banner"><FaExclamationTriangle /> {editErr}</div>)}
