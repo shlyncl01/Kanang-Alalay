@@ -122,12 +122,15 @@ router.post('/lookup', protect, async (req, res) => {
 router.get('/last-results', protect, async (req, res) => {
   try {
     const query = canSeeAllScans(req.user) ? {} : { caregiverId: req.user._id };
-    const results = await ScanHistory.find(query)
-      .populate('medication')
-      .populate('residents')
-      .sort({ createdAt: -1 })
-      .limit(10);
-    res.json({ success: true, results });
+    const [results, totalCount] = await Promise.all([
+      ScanHistory.find(query)
+        .populate('medication')
+        .populate('residents')
+        .sort({ createdAt: -1 })
+        .limit(10),
+      ScanHistory.countDocuments(query),
+    ]);
+    res.json({ success: true, results, totalCount });
   } catch (error) {
     console.error('Last scan results error:', error);
     res.status(500).json({ error: 'Server error while getting last scan results: ' + error.message });
