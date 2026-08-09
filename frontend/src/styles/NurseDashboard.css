@@ -98,7 +98,7 @@
    ============================================================ */
 
 .modal-overlay {
-    padding: clamp(12px, 4vw, 28px);
+    padding: clamp(20px, 5vw, 48px);
     box-sizing: border-box;
 }
 
