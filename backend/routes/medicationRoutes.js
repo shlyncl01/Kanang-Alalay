@@ -123,8 +123,21 @@ router.post('/', authMiddleware, roleMiddleware('admin', 'head_caregiver'), asyn
             storage,
             stock,
             expiryDate,
-            isActive
+            isActive,
+            phAvailability
         } = req.body;
+
+        if (!barcode || !String(barcode).trim()) {
+            return res.status(400).json({ success: false, message: 'Barcode is required.' });
+        }
+
+        const availability = phAvailability || 'available';
+        if (!['available', 'banned', 'discontinued', 'unavailable'].includes(availability)) {
+            return res.status(400).json({ success: false, message: 'Invalid availability status.' });
+        }
+        if (availability !== 'available') {
+            return res.status(400).json({ success: false, message: 'Cannot add medications that are banned, discontinued, or unavailable in the Philippines.' });
+        }
 
         const normalizedNameCode = name ? name.trim().replace(/\s+/g, '_').toUpperCase() : null;
         const safeMedicationId = (medicationId || normalizedNameCode || `MED-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000)}`).toUpperCase();
@@ -134,6 +147,7 @@ router.post('/', authMiddleware, roleMiddleware('admin', 'head_caregiver'), asyn
             medicationId: safeMedicationId,
             uniqueCode: safeUniqueCode,
             barcode,
+            phAvailability: availability,
             name,
             genericName,
             dosage,

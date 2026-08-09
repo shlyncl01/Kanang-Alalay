@@ -374,7 +374,10 @@ router.post('/residents', async (req, res) => {
             .populate('primaryCaregiverId', 'firstName lastName role');
         
         const shaped = shapeResident(savedResident);
-        
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: savedResident._id, reason: 'create' });
+
         res.status(201).json({ success: true, data: shaped });
     } catch (err) {
         console.error('Create resident error:', err);
@@ -446,6 +449,9 @@ router.put('/residents/:id', async (req, res) => {
             .populate('primaryCaregiverId', 'firstName lastName role');
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
 
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'update' });
+
         res.json({ success: true, data: shapeResident(resident) });
     } catch (err) {
         console.error('Update resident error:', err);
@@ -511,6 +517,9 @@ router.put('/residents/:id/discharge', async (req, res) => {
         resident.bed = '';
 
         await resident.save();
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'discharge' });
 
         res.json({
             success: true,
@@ -582,6 +591,9 @@ async function assignCaregiverToResident(req, res) {
             },
             { new: true, runValidators: true }
         ).populate('primaryCaregiverId', 'firstName lastName role');
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: updated._id, reason: 'assign-caregiver' });
 
         res.json({
             success: true,

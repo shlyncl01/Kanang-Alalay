@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../hooks/useSocket';
 import { useNavigate } from 'react-router-dom';
 import {
     FaUserCircle, FaSearch, FaHome, FaUsers, FaPills,
@@ -1343,6 +1344,16 @@ const HeadCaregiverDashboard = () => {
     useEffect(() => {
         (async () => { setLoading(true); await loadAll(); setLoading(false); })();
     }, [loadAll]);
+
+    // Real-time sync: any resident create/update/discharge/assign-caregiver
+    // (from this session, another admin, or the mobile app) refreshes the
+    // residents list and stats immediately instead of requiring a manual reload.
+    const { on, off } = useSocket();
+    useEffect(() => {
+        const handleResidentsUpdated = () => { loadAll(); };
+        on('residentsUpdated', handleResidentsUpdated);
+        return () => off('residentsUpdated', handleResidentsUpdated);
+    }, [on, off, loadAll]);
 
     useEffect(() => {
         setResPage(1);

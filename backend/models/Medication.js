@@ -23,6 +23,13 @@ const medicationSchema = new mongoose.Schema({
     pregnancy: String,
     storage: String,
     ingredients: { type: String, default: '' },
+    // Whether this medicine is legally available in the Philippines. Enforced
+    // at creation time in medicationRoutes.js (new medicines must be 'available').
+    phAvailability: {
+        type: String,
+        enum: ['available', 'banned', 'discontinued', 'unavailable'],
+        default: 'available',
+    },
     dateOfManufacture: Date, // Added field
     dateOfPurchase: Date,    // Added field
     expiryDate: { type: Date, required: true }, // Structured expiration

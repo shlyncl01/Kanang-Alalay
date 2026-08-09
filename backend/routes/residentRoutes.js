@@ -286,6 +286,9 @@ router.post('/', protect, adminOnly, async (req, res) => {
         const resident = new Resident({ residentId, ...req.body });
         await resident.save();
 
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'create' });
+
         res.status(201).json({ success: true, data: resident });
     } catch (error) {
         console.error(error);
@@ -307,6 +310,9 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
 
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
 
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'update' });
+
         res.json({ success: true, data: resident });
     } catch (error) {
         console.error(error);
@@ -319,6 +325,10 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
     try {
         const resident = await Resident.findByIdAndDelete(req.params.id);
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'delete' });
+
         res.json({ success: true, message: 'Resident deleted.' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Server error' });
