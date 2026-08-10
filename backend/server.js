@@ -471,6 +471,7 @@ io.on('connection', (socket) => {
 // Medication reminder — check every minute for meds due in the next 15 minutes
 const MedicationLog = require('./models/MedicationLog');
 const Alert = require('./models/Alert');
+const { sendPushToAll } = require('./services/pushService');
 const _sentReminders = new Set();
 setInterval(async () => {
     try {
@@ -507,6 +508,11 @@ setInterval(async () => {
                     subMessage: alert.details?.subMessage || '',
                     isRead: false,
                 });
+
+                sendPushToAll(alert.title, alert.message, {
+                    alertId: String(alert._id),
+                    type: alert.type,
+                }).catch(() => {});
             } catch (alertErr) {
                 console.error('[Reminder] Failed to create alert:', alertErr.message);
             }

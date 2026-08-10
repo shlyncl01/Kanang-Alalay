@@ -73,6 +73,7 @@ const userSchema = new mongoose.Schema({
     isFirstLogin:        { type: Boolean, default: true },
     needsProfileUpdate:  { type: Boolean, default: true },
     lastOtpSentAt:       { type: Date },
+    pushToken:           { type: String, default: null },
 
 }, { timestamps: true });
 

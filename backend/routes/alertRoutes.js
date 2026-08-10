@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const Alert   = require('../models/Alert');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
+const { sendPushToAll } = require('../services/pushService');
 
 // GET /api/alerts  — fetch all alerts (admin) or unread count (nurse/caregiver)
 router.get('/', protect, async (req, res) => {
@@ -57,6 +58,11 @@ router.post('/', protect, adminOnly, async (req, res) => {
                 isRead: false,
             });
         }
+
+        sendPushToAll(alert.title, alert.message, {
+            alertId: String(alert._id),
+            type: alert.type,
+        }).catch(() => {});
 
         res.status(201).json({ success: true, data: alert });
     } catch (error) {

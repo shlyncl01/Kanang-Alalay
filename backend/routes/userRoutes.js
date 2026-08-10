@@ -129,4 +129,25 @@ router.put('/update-profile', protect, async (req, res) => {
     }
 });
 
+/**
+ * PUT /api/users/push-token
+ *
+ * Saves the caller's Expo push token so the server can send real
+ * background push notifications (in addition to the live socket feed).
+ */
+router.put('/push-token', protect, async (req, res) => {
+    try {
+        const { pushToken } = req.body;
+        if (!pushToken) {
+            return res.status(400).json({ success: false, message: 'pushToken is required.' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { pushToken });
+        res.json({ success: true, message: 'Push token saved.' });
+    } catch (error) {
+        console.error('Save push token error:', error);
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+    }
+});
+
 module.exports = router;
