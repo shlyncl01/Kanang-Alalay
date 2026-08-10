@@ -22,9 +22,12 @@ async function sendPushToAll(title, body, data = {}) {
             data,
         }));
 
+        const invalidTokens = [];
+
+        // Expo accepts up to 100 messages per request.
         for (let i = 0; i < messages.length; i += 100) {
             const chunk = messages.slice(i, i + 100);
-            await fetch(EXPO_PUSH_URL, {
+            const response = await fetch(EXPO_PUSH_URL, {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',
@@ -33,6 +36,23 @@ async function sendPushToAll(title, body, data = {}) {
                 },
                 body: JSON.stringify(chunk),
             });
+
+            const result = await response.json().catch(() => null);
+            const tickets = result?.data || [];
+            tickets.forEach((ticket, idx) => {
+                if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
+                    invalidTokens.push(chunk[idx].to);
+                }
+            });
+        }
+
+        // Expo returns this when a token is expired/uninstalled - safe to drop it
+        // so future broadcasts don't keep retrying a dead device.
+        if (invalidTokens.length) {
+            await User.updateMany(
+                { pushToken: { $in: invalidTokens } },
+                { $set: { pushToken: null } }
+            );
         }
     } catch (error) {
         console.error('[Push] Failed to send push notifications:', error.message);
