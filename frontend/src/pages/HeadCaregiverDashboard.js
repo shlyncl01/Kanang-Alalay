@@ -85,31 +85,6 @@ const Toast = ({ msg, type, onDone }) => {
     );
 };
 
-// ─── Modal header ─────────────────────────────────────────────────────────────
-const MHeader = ({ icon, title, onClose }) => (
-    <div className="modal-header-nurse">
-        <h4>{icon} {title}</h4>
-        <button className="modal-close-btn" onClick={onClose} type="button"><FaTimes /></button>
-    </div>
-);
-
-// ─── Form field ──────────────────────────────────────────────────────────────
-const Field = ({ label, required, error, children }) => (
-    <div className="form-field">
-        <label>{label}{required && <span className="req"> *</span>}</label>
-        {children}
-        {error && <small className="field-error">{error}</small>}
-    </div>
-);
-
-// ─── Modal save button ────────────────────────────────────────────────────────
-const SaveBtn = ({ saving, label, onClick, disabled }) => (
-    <button className="btn-modal-save" onClick={onClick} disabled={disabled || saving}>
-        {saving ? <FaSpinner className="spin" style={{ marginRight: 8 }} /> : null}
-        {saving ? 'Saving…' : label}
-    </button>
-);
-
 // ─── Shared inline-style system (matches Add Inventory Item exactly) ─────────
 // Used only by AddResidentModal, AddScheduleModal, RequestStockModal — fully
 // self-contained inline styles, independent of any external CSS classes.
@@ -766,43 +741,45 @@ const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-md" style={hcModalStyle}>
-                <MHeader icon={<FaHeartbeat />} title={`Log Vital Signs — ${resName}`} onClose={onClose} />
-                <div className="modal-body">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaHeartbeat />} title={`Log Vital Signs — ${resName}`} onClose={onClose} />
+                <div style={hcBodyStyle}>
                     {vitalsErr && (
                         <div className="validation-banner">
                             <FaExclamationTriangle /> {vitalsErr}
                         </div>
                     )}
-                    <div className="form-grid-2">
-                        <Field label="Blood Pressure (mmHg)">
-                            <input className="form-input" value={f.bloodPressure} placeholder="e.g. 120/80" inputMode="numeric" maxLength="7"
+                    <div style={hcGrid2}>
+                        <HCField label="Blood Pressure (mmHg)">
+                            <input style={hcInputStyle(false)} value={f.bloodPressure} placeholder="e.g. 120/80" inputMode="numeric" maxLength="7"
                                 onChange={e => {
                                     let val = e.target.value.replace(/[^0-9/]/g, '');
                                     if (val.length === 3 && !val.includes('/')) { val = val + '/'; }
                                     setField('bloodPressure', val.slice(0, 7));
                                 }} />
-                        </Field>
-                        <Field label="Heart Rate (bpm)">
-                            <input type="number" min="20" max="300" className="form-input" value={f.heartRate} onChange={e => setField('heartRate', e.target.value)} placeholder="e.g. 72" />
-                        </Field>
-                        <Field label="Temperature (°C)">
-                            <input type="number" min="30" max="45" step="0.1" className="form-input" value={f.temperature} onChange={e => setField('temperature', e.target.value)} placeholder="e.g. 36.5" />
-                        </Field>
-                        <Field label="Oxygen Saturation (%)">
-                            <input type="number" min="50" max="100" className="form-input" value={f.oxygenSat} onChange={e => setField('oxygenSat', e.target.value)} placeholder="e.g. 98" />
-                        </Field>
-                        <Field label="Weight (kg)">
-                            <input type="number" min="1" max="300" step="0.1" className="form-input" value={f.weight} onChange={e => setField('weight', e.target.value)} placeholder="e.g. 55" />
-                        </Field>
+                        </HCField>
+                        <HCField label="Heart Rate (bpm)">
+                            <input type="number" min="20" max="300" style={hcInputStyle(false)} value={f.heartRate} onChange={e => setField('heartRate', e.target.value)} placeholder="e.g. 72" />
+                        </HCField>
+                        <HCField label="Temperature (°C)">
+                            <input type="number" min="30" max="45" step="0.1" style={hcInputStyle(false)} value={f.temperature} onChange={e => setField('temperature', e.target.value)} placeholder="e.g. 36.5" />
+                        </HCField>
+                        <HCField label="Oxygen Saturation (%)">
+                            <input type="number" min="50" max="100" style={hcInputStyle(false)} value={f.oxygenSat} onChange={e => setField('oxygenSat', e.target.value)} placeholder="e.g. 98" />
+                        </HCField>
+                        <HCField label="Weight (kg)">
+                            <input type="number" min="1" max="300" step="0.1" style={hcInputStyle(false)} value={f.weight} onChange={e => setField('weight', e.target.value)} placeholder="e.g. 55" />
+                        </HCField>
                     </div>
-                    <Field label="Notes">
-                        <textarea rows={3} maxLength="500" className="form-input" value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Observations or remarks…" />
-                    </Field>
+                    <HCField label="Notes">
+                        <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), minHeight: 70, resize: 'vertical' }} value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Observations or remarks…" />
+                    </HCField>
                 </div>
-                <div className="modal-footer">
-                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                    <SaveBtn saving={saving} label="✓ Save Vitals" onClick={submit} />
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>Cancel</button>
+                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                        {saving ? 'Saving…' : '✓ Save Vitals'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -849,18 +826,19 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-md" style={hcModalStyle}>
-                <MHeader icon={<FaUserMd />} title={`Assign Caregiver - ${residentName}`} onClose={onClose} />
-                <div className="modal-body">
-                    <Field label="Current Caregiver">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaUserMd />} title={`Assign Caregiver - ${residentName}`} onClose={onClose} />
+                <div style={hcBodyStyle}>
+                    <HCField label="Current Caregiver">
                         <input
-                            className="form-input"
+                            style={hcInputStyle(false)}
                             value={resident.primaryCaregiverName || resident.primaryCaregiver || 'Unassigned'}
                             disabled
                         />
-                    </Field>
-                    <Field label="Caregiver" required>
-                        <select className="form-input" value={caregiverId} onChange={e => setCaregiverId(e.target.value)}>
+                    </HCField>
+                    <HCField label="Caregiver" required
+                        hint={availableCaregivers.length === 0 ? 'No caregiver accounts found. Add a caregiver in admin first.' : undefined}>
+                        <select style={hcInputStyle(false)} value={caregiverId} onChange={e => setCaregiverId(e.target.value)}>
                             <option value="">Select a caregiver</option>
                             {availableCaregivers.map(c => (
                                 <option key={c._id} value={c._id}>
@@ -868,16 +846,18 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
                                 </option>
                             ))}
                         </select>
-                        {availableCaregivers.length === 0 && (
-                            <small className="field-hint" style={{ color: 'var(--d-orange-dk)' }}>
-                                No caregiver accounts found. Add a caregiver in admin first.
-                            </small>
-                        )}
-                    </Field>
+                    </HCField>
                 </div>
-                <div className="modal-footer">
-                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                    <SaveBtn saving={saving} label="Assign Caregiver" onClick={submit} disabled={!caregiverId || availableCaregivers.length === 0} />
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>Cancel</button>
+                    <button
+                        onClick={submit}
+                        type="button"
+                        disabled={saving || !caregiverId || availableCaregivers.length === 0}
+                        style={hcSaveBtn(saving || !caregiverId || availableCaregivers.length === 0)}
+                    >
+                        {saving ? 'Saving…' : 'Assign Caregiver'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -899,9 +879,9 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-lg" style={hcModalStyle}>
-                <MHeader icon={<FaUserCircle />} title={`Resident Profile — ${resName}`} onClose={onClose} />
-                <div className="modal-body profile-modal-body">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaUserCircle />} title={`Resident Profile — ${resName}`} onClose={onClose} />
+                <div style={{ ...hcBodyStyle, padding: 0 }}>
                     <div className="profile-header-card">
                         <div className="profile-avatar"><FaUserCircle /></div>
                         <div className="profile-header-info">
@@ -984,8 +964,8 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
                         )}
                     </div>
                 </div>
-                <div className="modal-footer profile-modal-footer">
-                    <button className="btn-outline-sm" onClick={onClose}>Close</button>
+                <div style={{ ...hcFooter, justifyContent: 'flex-end' }}>
+                    <button onClick={onClose} type="button" style={{ ...hcCancelBtn(false), flex: '0 1 140px' }}>Close</button>
                 </div>
             </div>
         </div>
@@ -1010,9 +990,9 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-lg" style={hcModalStyle}>
-                <MHeader icon={<FaEye />} title={`Medication History — ${resName}`} onClose={onClose} />
-                <div className="modal-body">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaEye />} title={`Medication History — ${resName}`} onClose={onClose} />
+                <div style={hcBodyStyle}>
                     {loading ? <div className="no-data-center"><FaSpinner className="spin" /> Loading…</div>
                         : logs.length === 0 ? <div className="no-data-center">No medication history found.</div>
                             : <div className="history-scroll">
@@ -1032,8 +1012,8 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
                                 </table>
                             </div>}
                 </div>
-                <div className="modal-footer">
-                    <button className="btn-outline-sm" onClick={onClose}>Close</button>
+                <div style={{ ...hcFooter, justifyContent: 'flex-end' }}>
+                    <button onClick={onClose} type="button" style={{ ...hcCancelBtn(false), flex: '0 1 140px' }}>Close</button>
                 </div>
             </div>
         </div>
@@ -1133,24 +1113,26 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal modal-sm" style={hcModalStyle}>
-                <MHeader icon={<FaEdit />} title="Edit Schedule" onClose={onClose} />
-                <div className="modal-body">
+            <div className="registration-modal" style={hcModalStyle}>
+                <HCHeader icon={<FaEdit />} title="Edit Schedule" onClose={onClose} />
+                <div style={hcBodyStyle}>
                     {editErr && (<div className="validation-banner"><FaExclamationTriangle /> {editErr}</div>)}
                     <div className="edit-sched-info"><strong>{log.residentName}</strong> — {log.medicationName}</div>
-                    <Field label="Scheduled Date & Time">
-                        <input type="datetime-local" className="form-input" value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
-                    </Field>
-                    <Field label="Dosage">
-                        <input className="form-input" value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
-                    </Field>
-                    <Field label="Notes">
-                        <textarea rows={3} maxLength="500" className="form-input" value={f.notes} onChange={e => setField('notes', e.target.value)} />
-                    </Field>
+                    <HCField label="Scheduled Date & Time">
+                        <input type="datetime-local" style={hcInputStyle(false)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
+                    </HCField>
+                    <HCField label="Dosage">
+                        <input style={hcInputStyle(false)} value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
+                    </HCField>
+                    <HCField label="Notes">
+                        <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), minHeight: 70, resize: 'vertical' }} value={f.notes} onChange={e => setField('notes', e.target.value)} />
+                    </HCField>
                 </div>
-                <div className="modal-footer">
-                    <button className="btn-outline-sm" onClick={onClose}>Cancel</button>
-                    <SaveBtn saving={saving} label="✓ Save Changes" onClick={submit} />
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>Cancel</button>
+                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
+                        {saving ? 'Saving…' : '✓ Save Changes'}
+                    </button>
                 </div>
             </div>
         </div>
