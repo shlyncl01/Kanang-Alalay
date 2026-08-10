@@ -5,7 +5,7 @@ const MedicationLog = require('../models/MedicationLog');
 const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
-const { getManilaDayBounds } = require('../utils/dateHelpers');
+const { getManilaDayBounds, parseManilaDateTime } = require('../utils/dateHelpers');
 
 // Get all medications
 router.get('/', authMiddleware, async (req, res) => {
@@ -299,7 +299,7 @@ router.post('/administer', authMiddleware, async (req, res) => {
         if (resident.medications && resident.medications.id(medicationId)) {
             const embeddedMed = resident.medications.id(medicationId);
             embeddedMed.status = 'administered';
-            embeddedMed.lastAdministered = administeredAt ? new Date(administeredAt) : new Date();
+            embeddedMed.lastAdministered = administeredAt ? parseManilaDateTime(administeredAt) : new Date();
             await resident.save();
         }
 
@@ -314,8 +314,8 @@ router.post('/administer', authMiddleware, async (req, res) => {
             bed: resident.bed || '',
             dosage: typeof dosage === 'string' && dosage.trim() ? dosage : (dosage?.value ? `${dosage.value}${dosage.unit || ''}` : 'N/A'),
             status: status || 'administered',
-            administeredTime: administeredAt ? new Date(administeredAt) : new Date(),
-            scheduledTime: administeredAt ? new Date(administeredAt) : undefined,
+            administeredTime: administeredAt ? parseManilaDateTime(administeredAt) : new Date(),
+            scheduledTime: administeredAt ? parseManilaDateTime(administeredAt) : undefined,
             notes: notes || '',
             verificationMethod: scanId ? 'scan' : 'manual',
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
@@ -361,7 +361,7 @@ router.post('/delay', authMiddleware, async (req, res) => {
             bed: resident.bed || '',
             dosage: duration || '',
             status: 'pending',
-            scheduledTime: delayedUntil ? new Date(delayedUntil) : undefined,
+            scheduledTime: delayedUntil ? parseManilaDateTime(delayedUntil) : undefined,
             notes: `Delayed: ${reason || 'No reason provided'}`,
             verificationMethod: scanId ? 'scan' : 'manual',
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined

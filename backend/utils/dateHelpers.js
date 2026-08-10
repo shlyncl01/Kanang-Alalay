@@ -18,4 +18,17 @@ function getManilaDayBounds(date = new Date()) {
     return { today, tomorrow };
 }
 
-module.exports = { startOfManilaDay, getManilaDayBounds };
+// A timezone-naive "YYYY-MM-DDTHH:mm[:ss]" string (e.g. from an
+// <input type="datetime-local">) has no offset, so `new Date(str)` parses it
+// against the SERVER's local timezone — UTC on Render — instead of the
+// caregiver's actual Asia/Manila wall-clock time, silently shifting every
+// scheduled time 8 hours off from what was picked. This treats any string
+// that doesn't already carry an offset/Z as Manila time before parsing.
+function parseManilaDateTime(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    const hasOffset = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(value);
+    return new Date(hasOffset ? value : `${value}+08:00`);
+}
+
+module.exports = { startOfManilaDay, getManilaDayBounds, parseManilaDateTime };

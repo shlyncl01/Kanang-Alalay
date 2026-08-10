@@ -9,6 +9,7 @@ const VitalsLog = require('../models/VitalsLog');
 const StockRequest = require('../models/StockRequest');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
 
 router.use(protect);
 
@@ -681,8 +682,7 @@ router.get('/medications', async (req, res) => {
 router.get('/schedule', async (req, res) => {
     try {
         const { date, residentId } = req.query;
-        const target = date ? new Date(date) : new Date();
-        target.setHours(0, 0, 0, 0);
+        const target = startOfManilaDay(date ? new Date(date) : new Date());
         const nextDay = new Date(target);
         nextDay.setDate(nextDay.getDate() + 1);
 
@@ -725,10 +725,8 @@ router.get('/schedule', async (req, res) => {
 router.get('/schedule/all', async (req, res) => {
     try {
         const { date } = req.query;
-        const target = date ? new Date(date) : new Date();
-        target.setHours(0, 0, 0, 0);
-        const nextDay = new Date(target);
-        nextDay.setDate(nextDay.getDate() + 1);
+        const target = startOfManilaDay(date ? new Date(date) : new Date());
+        const nextDay = new Date(target.getTime() + 24 * 60 * 60 * 1000);
 
         let logs = await MedicationLog.find({ scheduledTime: { $gte: target, $lt: nextDay } })
             .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
@@ -788,7 +786,7 @@ router.post('/schedule', async (req, res) => {
             dosage: finalDosage,
             frequency: frequency || '',
             nextDose: nextDose || '',
-            scheduledTime: new Date(scheduledTime),
+            scheduledTime: parseManilaDateTime(scheduledTime),
             notes: notes || '',
             status: 'scheduled',
         });
@@ -887,7 +885,7 @@ router.put('/schedule/:id', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dosage is required.' });
         }
         const update = {};
-        if (scheduledTime !== undefined) update.scheduledTime = new Date(scheduledTime);
+        if (scheduledTime !== undefined) update.scheduledTime = parseManilaDateTime(scheduledTime);
         if (dosage !== undefined) update.dosage = dosage;
         if (notes !== undefined) update.notes = notes;
         if (nextDose !== undefined) update.nextDose = nextDose;
@@ -978,10 +976,8 @@ router.post('/voice-note', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
     try {
-        const today = new Date(); 
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today); 
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        const today = startOfManilaDay();
+        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
 
         const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)
             ? {}
