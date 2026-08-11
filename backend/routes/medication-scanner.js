@@ -9,6 +9,25 @@ const { protect } = require('../middleware/authMiddleware');
 
 const canSeeAllScans = (user) => ['admin', 'head_caregiver'].includes(user.role);
 
+// Mirrors the assignment check used by GET /api/residents/assigned, so a
+// caregiver only sees residents actually assigned to them when scanning.
+const isAssignedToCaregiver = (resident, user) => {
+  if (canSeeAllScans(user)) return true;
+  const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  return (
+    String(resident.primaryCaregiverId || '') === String(user._id) ||
+    resident.primaryCaregiverName === userName ||
+    resident.primaryCaregiver === userName ||
+    resident.assignedNurse === userName ||
+    resident.assignedCaregiver === userName ||
+    String(resident.assignedStaff?.primaryCaregiverId || '') === String(user._id) ||
+    resident.assignedStaff?.primaryCaregiverName === userName ||
+    resident.assignedStaff?.primaryCaregiver === userName ||
+    resident.assignedStaff?.assignedNurse === userName ||
+    resident.assignedStaff?.assignedCaregiver === userName
+  );
+};
+
 // POST /api/medication-scanner/lookup
 router.post('/lookup', protect, async (req, res) => {
   try {
@@ -64,7 +83,9 @@ router.post('/lookup', protect, async (req, res) => {
       }
     });
 
-    const matchedResidents = [...residentLogMap.values()].map((entry) => entry.resident);
+    const matchedResidents = [...residentLogMap.values()]
+      .map((entry) => entry.resident)
+      .filter((resident) => isAssignedToCaregiver(resident, req.user));
 
     const scanHistory = await ScanHistory.create({
       barcode: cleanBarcode,
