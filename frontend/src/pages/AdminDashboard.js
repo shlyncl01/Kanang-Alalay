@@ -1737,7 +1737,7 @@ const AdminDashboard = () => {
                     <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />
                 )}
                 <div
-                    className={`sidebar${mobileSidebarOpen ? ' mobile-open' : ''}`}
+                    className={`sidebar admin-sidebar${mobileSidebarOpen ? ' mobile-open' : ''}`}
                     style={{ background: '#1A0A00', color: '#fff', display: 'flex', flexDirection: 'column' }}
                 >
                     <div className="sidebar-header" style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
