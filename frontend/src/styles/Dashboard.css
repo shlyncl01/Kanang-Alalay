@@ -516,6 +516,25 @@ body {
   grid-template-columns: repeat(4, 1fr);
 }
 
+/* Smaller, more compact stat cards for the Inventory tab specifically
+   (scoped to .inventory-stats-grid so no other tab's stat cards change). */
+.inventory-stats-grid .stat-card {
+  padding: 14px 16px;
+  gap: 10px;
+}
+.inventory-stats-grid .stat-icon {
+  width: 40px;
+  height: 40px;
+  font-size: 1rem;
+  border-radius: 10px;
+}
+.inventory-stats-grid .stat-info h3 {
+  font-size: 1.4rem;
+}
+.inventory-stats-grid .stat-info p {
+  font-size: .72rem;
+}
+
 .stat-card {
   background: var(--d-white);
   padding: 22px 20px;
