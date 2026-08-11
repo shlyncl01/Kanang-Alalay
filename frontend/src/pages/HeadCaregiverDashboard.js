@@ -1092,11 +1092,9 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
         if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
             e.scheduledTime = 'Scheduled time cannot be in the past.';
         }
-        // Dosage Override is optional overall, but once either half is used, both are required.
-        if (f.dosageAmount || f.dosageUnit) {
-            if (!f.dosageAmount) e.dosageAmount = 'Enter an amount';
-            if (!f.dosageUnit) e.dosageUnit = 'Select a unit';
-        }
+        // Dosage Override is required
+        if (!f.dosageAmount) e.dosageAmount = 'Enter an amount';
+        if (!f.dosageUnit) e.dosageUnit = 'Select a unit';
         if (Object.keys(e).length) { setErrs(e); return; }
         setSaving(true);
         const payload = {
@@ -1137,7 +1135,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                         <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
                             <input type="datetime-local" style={hcInputStyle(errs.scheduledTime)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
                         </HCField>
-                        <HCField label="Dosage Override" error={errs.dosageAmount || errs.dosageUnit}>
+                        <HCField label="Dosage Override" required error={errs.dosageAmount || errs.dosageUnit}>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 <input
                                     type="number"
