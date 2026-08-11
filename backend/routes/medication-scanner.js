@@ -3,6 +3,7 @@ const router = express.Router();
 
 const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
+const MedicationLog = require('../models/MedicationLog');
 const ScanHistory = require('../models/ScanHistory');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -47,16 +48,23 @@ router.post('/lookup', protect, async (req, res) => {
       });
     }
 
-    const medicationName = medication.name.toLowerCase();
-    const allResidents = await Resident.find();
+    // Residents' actual prescribed medications live in MedicationLog (created when
+    // a schedule is assigned), not the legacy Resident.medications embedded array,
+    // which nothing in the app writes to.
+    const matchingLogs = await MedicationLog.find({ medicationId: medication._id })
+      .populate('residentId')
+      .sort({ scheduledTime: -1 });
 
-    const matchedResidents = allResidents.filter((resident) => {
-      if (!resident.medications || resident.medications.length === 0) return false;
-      return resident.medications.some((med) => {
-        const medName = med.name?.toLowerCase() || '';
-        return medName.includes(medicationName) || medicationName.includes(medName);
-      });
+    const residentLogMap = new Map();
+    matchingLogs.forEach((log) => {
+      if (!log.residentId) return;
+      const key = String(log.residentId._id);
+      if (!residentLogMap.has(key)) {
+        residentLogMap.set(key, { resident: log.residentId, log });
+      }
     });
+
+    const matchedResidents = [...residentLogMap.values()].map((entry) => entry.resident);
 
     const scanHistory = await ScanHistory.create({
       barcode: cleanBarcode,
@@ -88,10 +96,7 @@ router.post('/lookup', protect, async (req, res) => {
         ingredients: medication.ingredients,
       },
       residents: matchedResidents.map((resident) => {
-        const matchingMed = resident.medications.find((med) => {
-          const medName = med.name?.toLowerCase() || '';
-          return medName.includes(medicationName) || medicationName.includes(medName);
-        });
+        const log = residentLogMap.get(String(resident._id))?.log;
         return {
           id: resident._id,
           name: resident.fullName || `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
@@ -99,12 +104,12 @@ router.post('/lookup', protect, async (req, res) => {
           bed: resident.bed || '1',
           age: resident.age,
           ward: resident.ward,
-          medicationDetails: matchingMed
+          medicationDetails: log
             ? {
-                name: matchingMed.name,
-                dosage: matchingMed.dosage,
-                frequency: matchingMed.frequency,
-                scheduleTime: matchingMed.scheduleTime,
+                name: log.medicationName,
+                dosage: log.dosage,
+                frequency: log.frequency,
+                scheduleTime: log.scheduledTime,
               }
             : null,
         };

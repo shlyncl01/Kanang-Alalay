@@ -1,6 +1,8 @@
 const express  = require('express');
 const router   = express.Router();
 const Resident = require('../models/Resident');
+const Medication = require('../models/Medication');
+const MedicationLog = require('../models/MedicationLog');
 const VitalsLog = require('../models/VitalsLog');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
@@ -189,16 +191,44 @@ router.post('/:id/administer/:medId', protect, async (req, res) => {
         const resident = await Resident.findById(req.params.id);
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
 
-        const medication = resident.medications.id(req.params.medId);
-        if (!medication) {
-            return res.status(404).json({ success: false, message: 'Embedded medication not found' });
+        const medication = await Medication.findById(req.params.medId);
+        if (!medication) return res.status(404).json({ success: false, message: 'Medication not found' });
+
+        const administeredAt = req.body.administeredAt ? new Date(req.body.administeredAt) : new Date();
+
+        // Prefer updating an existing scheduled log for this resident/medication;
+        // fall back to logging an off-schedule administration (e.g. scanned but
+        // not part of a pre-set schedule) rather than failing outright.
+        let log = await MedicationLog.findOne({
+            residentId: resident._id,
+            medicationId: medication._id,
+            status: { $in: ['scheduled', 'pending', 'overdue'] },
+        }).sort({ scheduledTime: 1 });
+
+        if (log) {
+            log.status = 'administered';
+            log.administeredTime = administeredAt;
+            log.verificationMethod = 'scan';
+            await log.save();
+        } else {
+            log = await MedicationLog.create({
+                logId: `MEDLOG-${Date.now().toString().slice(-6)}`,
+                residentId: resident._id,
+                medicationId: medication._id,
+                caregiverId: req.user._id,
+                residentName: resident.fullName || `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+                medicationName: medication.name,
+                room: resident.room || resident.roomNumber || '',
+                bed: resident.bed || '',
+                dosage: medication.dosage?.value ? `${medication.dosage.value}${medication.dosage.unit || ''}` : 'N/A',
+                status: 'administered',
+                scheduledTime: administeredAt,
+                administeredTime: administeredAt,
+                verificationMethod: 'scan',
+            });
         }
 
-        medication.status = 'administered';
-        medication.lastAdministered = req.body.administeredAt ? new Date(req.body.administeredAt) : new Date();
-        await resident.save();
-
-        res.json({ success: true, data: medication });
+        res.json({ success: true, data: log });
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: 'Server error administering medication' });
