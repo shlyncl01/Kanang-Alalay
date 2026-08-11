@@ -1263,7 +1263,7 @@ const HeadCaregiverDashboard = () => {
     const [schedPage, setSchedPage] = useState(1);
     const [activeMedsPage, setActiveMedsPage] = useState(1);
     const [invPage, setInvPage] = useState(1);
-    const PER = 10; // rows per page, applied to every paginated table
+    const PER = 5; // rows per page, applied to every paginated table
 
     const shiftLabel = {
         morning: 'Morning (6AM–2PM)',
@@ -1436,6 +1436,27 @@ const HeadCaregiverDashboard = () => {
         return Object.values(g);
     }, [schedule]);
 
+    const filteredGroupedByResident = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return groupedByResident;
+        return groupedByResident
+            .map(grp => ({
+                ...grp,
+                meds: grp.meds.filter(m =>
+                    grp.name?.toLowerCase().includes(q) ||
+                    m.medicationName?.toLowerCase().includes(q) ||
+                    grp.room?.toLowerCase().includes(q)
+                )
+            }))
+            .filter(grp => grp.meds.length > 0);
+    }, [groupedByResident, searchQuery]);
+
+    const filteredInventory = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return inventory;
+        return inventory.filter(item => item.name?.toLowerCase().includes(q));
+    }, [inventory, searchQuery]);
+
     const getMinutesSince = iso => iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60000) : null;
 
     const SchedActionBtn = ({ item }) => {
@@ -1600,14 +1621,6 @@ const HeadCaregiverDashboard = () => {
                 <div className="res-page-header">
                     <span className="res-page-label">MY ASSIGNED RESIDENTS ({residents.length})</span>
                     <div className="res-page-controls">
-                        <div className="topbar-search-wrapper page-search-wrapper">
-                            <FaSearch className="topbar-search-icon" />
-                            <input type="text" className="topbar-search-input"
-                                placeholder="Search residents, rooms, nickname, conditions…"
-                                value={searchQuery}
-                                onChange={e => setSearch(e.target.value)} />
-                            {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
-                        </div>
                         <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
                             <option value="All">Filter: All</option>
                             <option value="alert">Alert</option>
@@ -1751,10 +1764,10 @@ const HeadCaregiverDashboard = () => {
     const renderMedicines = () => {
         const pagedSched = filteredSched.slice((schedPage - 1) * PER, schedPage * PER);
         const schedPages = Math.ceil(filteredSched.length / PER);
-        const pagedActiveMeds = groupedByResident.slice((activeMedsPage - 1) * PER, activeMedsPage * PER);
-        const activeMedsPages = Math.ceil(groupedByResident.length / PER);
-        const pagedInventory = inventory.slice((invPage - 1) * PER, invPage * PER);
-        const invPages = Math.ceil(inventory.length / PER);
+        const pagedActiveMeds = filteredGroupedByResident.slice((activeMedsPage - 1) * PER, activeMedsPage * PER);
+        const activeMedsPages = Math.ceil(filteredGroupedByResident.length / PER);
+        const pagedInventory = filteredInventory.slice((invPage - 1) * PER, invPage * PER);
+        const invPages = Math.ceil(filteredInventory.length / PER);
 
         return (
             <div>
@@ -1766,14 +1779,6 @@ const HeadCaregiverDashboard = () => {
 
                 {/* Filters + Action Row */}
                 <div className="med-filters-row">
-                    <div className="topbar-search-wrapper page-search-wrapper">
-                        <FaSearch className="topbar-search-icon" />
-                        <input type="text" className="topbar-search-input"
-                            placeholder="Search medications, residents…"
-                            value={searchQuery}
-                            onChange={e => setSearch(e.target.value)} />
-                        {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
-                    </div>
                     <span className="filters-label"><FaFilter /> Filters:</span>
                     <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
                         <option value="All">Status: All</option>
@@ -1858,8 +1863,10 @@ const HeadCaregiverDashboard = () => {
                                 <tr><th>Resident</th><th>Medication</th><th>Dosage</th><th>Time</th><th>Next Dose</th><th>Status</th><th>Action</th></tr>
                             </thead>
                             <tbody>
-                                {groupedByResident.length === 0 ? (
-                                    <tr><td colSpan="7" className="text-center no-data-italic">No active medication records yet.</td></tr>
+                                {filteredGroupedByResident.length === 0 ? (
+                                    <tr><td colSpan="7" className="text-center no-data-italic">
+                                        {searchQuery ? `No results for "${searchQuery}".` : 'No active medication records yet.'}
+                                    </td></tr>
                                 ) : (
                                     pagedActiveMeds.map(grp =>
                                         grp.meds.map((m, mi) => (
@@ -1895,7 +1902,7 @@ const HeadCaregiverDashboard = () => {
                     </div>
                     {activeMedsPages > 1 && (
                         <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(activeMedsPage - 1) * PER + 1}–{Math.min(activeMedsPage * PER, groupedByResident.length)} of {groupedByResident.length} residents</span>
+                            <span className="res-page-label">Showing {(activeMedsPage - 1) * PER + 1}–{Math.min(activeMedsPage * PER, filteredGroupedByResident.length)} of {filteredGroupedByResident.length} residents</span>
                             <div className="res-pagination">
                                 {Array.from({ length: activeMedsPages }, (_, i) => i + 1).map(n => (
                                     <button key={n} className={`page-num-btn${activeMedsPage === n ? ' active' : ''}`} onClick={() => setActiveMedsPage(n)}>{n}</button>
@@ -1919,8 +1926,10 @@ const HeadCaregiverDashboard = () => {
                                 <tr><th>Medication</th><th>Ward / Cabinet</th><th>Stock Level</th><th>Expiry</th></tr>
                             </thead>
                             <tbody>
-                                {inventory.length === 0 ? (
-                                    <tr><td colSpan="4" className="text-center no-data-italic">No inventory data available.</td></tr>
+                                {filteredInventory.length === 0 ? (
+                                    <tr><td colSpan="4" className="text-center no-data-italic">
+                                        {searchQuery ? `No results for "${searchQuery}".` : 'No inventory data available.'}
+                                    </td></tr>
                                 ) : (
                                     pagedInventory.map(item => {
                                         const daysLeft = item.expirationDate ? Math.ceil((new Date(item.expirationDate) - Date.now()) / 86400000) : null;
@@ -1945,7 +1954,7 @@ const HeadCaregiverDashboard = () => {
                     </div>
                     {invPages > 1 && (
                         <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(invPage - 1) * PER + 1}–{Math.min(invPage * PER, inventory.length)} of {inventory.length}</span>
+                            <span className="res-page-label">Showing {(invPage - 1) * PER + 1}–{Math.min(invPage * PER, filteredInventory.length)} of {filteredInventory.length}</span>
                             <div className="res-pagination">
                                 {Array.from({ length: invPages }, (_, i) => i + 1).map(n => (
                                     <button key={n} className={`page-num-btn${invPage === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
