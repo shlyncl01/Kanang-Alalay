@@ -507,6 +507,15 @@ body {
   width: 100%;
 }
 
+/* Inventory & Stock Management's 4 stat cards (Low Stock, Out of Stock,
+   Total Items, Expiring Soon): force an even 4-column row on desktop so the
+   auto-fit sizing above doesn't leave uneven gaps between them. Media-query
+   overrides on .stats-grid further down still apply on smaller screens since
+   they're declared later in this file with equal selector specificity. */
+.inventory-stats-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .stat-card {
   background: var(--d-white);
   padding: 22px 20px;
