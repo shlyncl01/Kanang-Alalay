@@ -179,6 +179,7 @@ const StaffManagementTab = ({
                     td { padding: 9px 12px; border-bottom: 1px solid #E8D6CC; vertical-align: top; }
                     tr:nth-child(even) td { background: #FFF8F3; }
                     .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: .76rem; font-weight: 700; }
+                    .no-print { display: none !important; }
                     @media print { body { padding: 10px; } }
                 </style>
             </head>
@@ -190,9 +191,21 @@ const StaffManagementTab = ({
             </html>
         `);
         win.document.close();
-        win.focus();
-        win.print();
-        win.close();
+
+        // Wait for the report to finish loading before printing, and only
+        // auto-close once the print dialog has actually been dismissed —
+        // closing immediately after print() can cause the window to flash
+        // shut before the print dialog renders.
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+        win.onload = triggerPrint;
+        setTimeout(triggerPrint, 300);
+        win.onafterprint = () => win.close();
     };
 
     return (

@@ -72,9 +72,21 @@ const DonationManagementTab = ({ donations, updateDonationStatus, handleViewDeta
             </html>
         `);
         win.document.close();
-        win.focus();
-        win.print();
-        win.close();
+
+        // Wait for the report to finish loading before printing, and only
+        // auto-close once the print dialog has actually been dismissed —
+        // closing immediately after print() can cause the window to flash
+        // shut before the print dialog renders.
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+        win.onload = triggerPrint;
+        setTimeout(triggerPrint, 300);
+        win.onafterprint = () => win.close();
     };
 
     const inp = { padding: '8px 12px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.85rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', fontFamily: "'DM Sans', sans-serif" };

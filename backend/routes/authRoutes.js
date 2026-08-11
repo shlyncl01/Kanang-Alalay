@@ -184,21 +184,26 @@ router.post('/login', async (req, res) => {
             await user.save();
         }
 
+        const BLOCKED_STATUSES = ['restricted', 'suspended', 'deactivated', 'on_leave', 'terminated'];
+        if (BLOCKED_STATUSES.includes(user.status)) {
+            const statusMessages = {
+                deactivated: 'This account has been deactivated.',
+                restricted: 'This account has been blocked.',
+                suspended: 'This account has been blocked.',
+            };
+            return res.status(403).json({
+                success: false,
+                message: (statusMessages[user.status] || `Your account is ${user.status.replace('_', ' ')}.`) + ' Please contact your administrator.',
+                accountStatus: user.status,
+                reason: user.statusReason || ''
+            });
+        }
+
         if (!user.isVerified || !user.isActive || user.status === 'pending') {
             return res.status(401).json({
                 success: false,
                 message: 'Account is not yet activated. Please verify your OTP first.',
                 userId: user._id
-            });
-        }
-
-        const BLOCKED_STATUSES = ['restricted', 'suspended', 'deactivated', 'on_leave', 'terminated'];
-        if (BLOCKED_STATUSES.includes(user.status)) {
-            return res.status(403).json({
-                success: false,
-                message: `Your account is ${user.status.replace('_', ' ')}. Please contact your administrator.`,
-                accountStatus: user.status,
-                reason: user.statusReason || ''
             });
         }
 
@@ -556,6 +561,8 @@ router.post('/verify-otp', async (req, res) => {
         user.otpExpires = undefined;
         user.isVerified = true;
         user.isActive = true;
+        user.isFirstLogin = false;
+        if (user.status === 'pending') user.status = 'active';
         await user.save();
 
         res.json({ success: true, message: 'Account activated successfully. You can now log in.' });

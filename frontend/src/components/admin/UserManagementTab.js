@@ -618,7 +618,22 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
     const handlePrint = () => {
         const win = window.open('', '_blank');
         win.document.write(`<html><head><title>Personnel Report</title><style>body{font-family:sans-serif;padding:24px;color:#1A0A00}h2{color:#b85c2d}table{width:100%;border-collapse:collapse;font-size:.85rem}th{background:#b85c2d;color:#fff;padding:10px 12px;text-align:left}td{padding:9px 12px;border-bottom:1px solid #E8D6CC}tr:nth-child(even) td{background:#FFF8F3}</style></head><body><h2>Kanang-Alalay — Personnel Report</h2><p>Generated: ${new Date().toLocaleString('en-PH')} | ${filteredUsers.length} shown</p><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Username</th></tr></thead><tbody>${filteredUsers.map(u=>`<tr><td>${u.firstName||''} ${u.lastName||''}</td><td>${u.email||'—'}</td><td>${ROLE_LABEL[u.role]||u.role||'—'}</td><td>${getAccountStatus(u)}</td><td>@${u.username||'—'}</td></tr>`).join('')}</tbody></table></body></html>`);
-        win.document.close(); win.focus(); win.print(); win.close();
+        win.document.close();
+
+        // Wait for the report to finish loading before printing, and only
+        // auto-close once the print dialog has actually been dismissed —
+        // closing immediately after print() can cause the window to flash
+        // shut before the print dialog renders.
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+        win.onload = triggerPrint;
+        setTimeout(triggerPrint, 300);
+        win.onafterprint = () => win.close();
     };
 
     const filteredUsers = users.filter(u => {
