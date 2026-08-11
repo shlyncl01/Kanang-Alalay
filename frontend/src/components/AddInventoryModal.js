@@ -4,6 +4,21 @@ import { FaTimes, FaBox } from 'react-icons/fa';
 const CATEGORIES = ['Medicine', 'Food & Nutrition', 'Linens & Bedding', 'Hygiene', 'Medical Supplies', 'Cleaning', 'Equipment', 'General'];
 const UNITS      = ['pcs', 'box', 'bottle', 'pack', 'bag', 'kg', 'liters', 'set', 'roll', 'pair'];
 
+// Maps the UI-friendly category labels above to the values accepted by the
+// backend Inventory model's enum (models/Inventory.js). Without this mapping,
+// categories like "Medicine" or "Food & Nutrition" fail Mongoose enum validation
+// (e.g. "'Linens & Bedding' is not a valid enum value for path 'category'").
+const CATEGORY_TO_BACKEND_VALUE = {
+    'Medicine': 'medication',
+    'Food & Nutrition': 'food',
+    'Linens & Bedding': 'Linens & Bedding',
+    'Hygiene': 'hygiene',
+    'Medical Supplies': 'medical_supplies',
+    'Cleaning': 'Cleaning',
+    'Equipment': 'Equipment',
+    'General': 'General',
+};
+
 const EMPTY_FORM = {
     name: '', category: '', quantity: '', unit: 'pcs',
     minThreshold: '', expirationDate: '', supplier: '', notes: '',
@@ -69,7 +84,7 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
         try {
             const result = await onSave({
                 name: form.name.trim(),
-                category: form.category,
+                category: CATEGORY_TO_BACKEND_VALUE[form.category] || form.category,
                 quantity: Number(form.quantity),
                 unit: form.unit,
                 minThreshold: form.minThreshold !== '' ? Number(form.minThreshold) : undefined,
