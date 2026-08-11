@@ -2001,6 +2001,20 @@ const HeadCaregiverDashboard = () => {
                             <button className="mobile-menu-toggle" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Toggle menu">
                                 <FaBars />
                             </button>
+                            {activeSection !== 'home' && (
+                                <div className="topbar-search-wrapper">
+                                    <FaSearch className="topbar-search-icon" />
+                                    <input type="text" className="topbar-search-input"
+                                        placeholder={
+                                            activeSection === 'residents' ? 'Search residents, rooms, nickname, conditions…' :
+                                                activeSection === 'medicines' ? 'Search medications, residents…' :
+                                                    'Search…'
+                                        }
+                                        value={searchQuery}
+                                        onChange={e => setSearch(e.target.value)} />
+                                    {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
+                                </div>
+                            )}
                         </div>
                         <div className="topbar-right">
                             <div className="topbar-user-menu">
