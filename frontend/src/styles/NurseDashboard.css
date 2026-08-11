@@ -244,6 +244,9 @@ textarea.form-input { resize: vertical; }
 .btn-modal-save:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(249,107,56,.4); }
 .btn-modal-save:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; transform: none; }
 
+.action-menu-item-danger { color: #C0392B; }
+.action-menu-item-danger:hover { background: #FDECEA; }
+
 .action-menu-wrapper   { position: relative; display: inline-block; }
 .action-menu-trigger {
     background: none;

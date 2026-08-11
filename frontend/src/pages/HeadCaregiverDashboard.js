@@ -7,7 +7,7 @@ import {
     FaQrcode, FaSignOutAlt, FaChevronDown,
     FaPlus, FaCheckCircle, FaExclamationTriangle,
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
-    FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV,
+    FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV, FaTrashAlt,
     FaExclamationCircle, FaHeartbeat, FaFileAlt,
     FaBoxOpen, FaClock, FaFilter, FaBars,
     FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
@@ -704,6 +704,55 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
     );
 };
 
+// ════════════════════════════════════════════════════════════
+//  DELETE MEDICATION (schedule/log entry) CONFIRM MODAL
+// ════════════════════════════════════════════════════════════
+const DeleteMedicationModal = ({ log, onClose, onSaved, doFetch, toast }) => {
+    const [saving, setSaving] = useState(false);
+    const medName = log?.medicationName || 'this medication';
+    const resName = log?.residentName || 'this resident';
+
+    const submit = async () => {
+        setSaving(true);
+        const r = await doFetch(`/head-caregiver/schedule/${log._id}`, { method: 'DELETE' });
+        setSaving(false);
+        if (r.success) {
+            toast(r.message || `${medName} removed for ${resName}.`);
+            onSaved(log._id);
+            onClose();
+        } else {
+            toast(r.message || 'Failed to delete medication.', 'error');
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="registration-modal" style={{ ...hcModalStyle, maxWidth: 440 }}>
+                <HCHeader icon={<FaTrashAlt />} title="Delete Medication" onClose={onClose} />
+                <div style={hcBodyStyle}>
+                    <p style={{ color: 'var(--d-muted)', fontSize: '.88rem', marginTop: 0 }}>
+                        Are you sure you want to delete <strong>{medName}</strong> for <strong>{resName}</strong>?
+                        This removes it from the schedule and medication history and cannot be undone.
+                    </p>
+                </div>
+                <div style={hcFooter}>
+                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>
+                        Cancel
+                    </button>
+                    <button
+                        onClick={submit}
+                        type="button"
+                        disabled={saving}
+                        style={{ ...hcSaveBtn(saving), background: saving ? undefined : '#C0392B' }}
+                    >
+                        {saving ? 'Deleting…' : 'Confirm Delete'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
     const [f, setF] = useState({ bloodPressure: '', heartRate: '', temperature: '', oxygenSat: '', weight: '', notes: '' });
     const [saving, setSaving] = useState(false);
@@ -1235,7 +1284,7 @@ const RequestStockModal = ({ items, onClose, doFetch, toast }) => {
 // ════════════════════════════════════════════════════════════
 //  ACTION DROPDOWN (⋮) - UPDATED to icon-only buttons
 // ════════════════════════════════════════════════════════════
-const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule }) => {
+const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule, onDelete }) => {
     const [open, setOpen] = useState(false);
     const ref = useRef(null);
     useEffect(() => {
@@ -1258,6 +1307,11 @@ const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule }) => {
                     <button className="action-menu-item" onClick={() => { onEditSchedule?.(); setOpen(false); }}>
                         <FaEdit /> Edit Schedule
                     </button>
+                    {onDelete && (
+                        <button className="action-menu-item action-menu-item-danger" onClick={() => { onDelete(); setOpen(false); }}>
+                            <FaTrashAlt /> Delete Medication
+                        </button>
+                    )}
                 </div>
             )}
         </div>
@@ -1927,6 +1981,7 @@ const HeadCaregiverDashboard = () => {
                                                         onViewHistory={() => setModal({ type: 'history', data: residents.find(r => r.name === grp.name) || { _id: m.residentId, name: grp.name } })}
                                                         onAddMedication={() => setModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
                                                         onEditSchedule={() => setModal({ type: 'editSchedule', data: m })}
+                                                        onDelete={() => setModal({ type: 'deleteMedication', data: m })}
                                                     />
                                                 </td>
                                             </tr>
@@ -2125,6 +2180,7 @@ const HeadCaregiverDashboard = () => {
             {modal?.type === 'history' && <HistoryModal onClose={() => setModal(null)} resident={modal.data} doFetch={doFetch} />}
             {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => setSchedule(p => [...p, l])} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l))} doFetch={doFetch} toast={toast} />}
+            {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => setSchedule(p => p.filter(l => l._id !== id))} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={inventory} doFetch={doFetch} toast={toast} />}
 
             {/* Logout Confirm */}

@@ -168,6 +168,14 @@ async function findAssignableCaregiver(caregiverId) {
         ]
     });
 }
+// Discharged/deceased/transferred residents keep their MedicationLog history
+// for audit purposes (see Resident.discharge comment), but they must never
+// show up again in the live schedule, Medicines tab, or overdue counts.
+// Any route that lists/counts MedicationLog entries should scope to this set.
+async function getActiveResidentIds() {
+    return Resident.find({ status: 'active' }).distinct('_id');
+}
+
 async function autoMarkOverdue(logs) {
     const now = new Date();
     const missedCutoff = new Date(now.getTime() - MISSED_GRACE_MINUTES * 60 * 1000);
@@ -693,7 +701,10 @@ router.get('/schedule', async (req, res) => {
         const baseQuery = ['admin', 'head_caregiver'].includes(req.user.role)
             ? {}
             : { caregiverId: req.user._id };
-        if (residentId) baseQuery.residentId = residentId;
+        // Exclude discharged/deceased/transferred residents' logs from the live schedule.
+        baseQuery.residentId = residentId
+            ? residentId
+            : { $in: await getActiveResidentIds() };
 
         // Today's full schedule + past unresolved (overdue/scheduled/pending)
         const [todayLogs, pastLogs] = await Promise.all([
@@ -728,7 +739,10 @@ router.get('/schedule/all', async (req, res) => {
         const target = startOfManilaDay(date ? new Date(date) : new Date());
         const nextDay = new Date(target.getTime() + 24 * 60 * 60 * 1000);
 
-        let logs = await MedicationLog.find({ scheduledTime: { $gte: target, $lt: nextDay } })
+        let logs = await MedicationLog.find({
+            scheduledTime: { $gte: target, $lt: nextDay },
+            residentId: { $in: await getActiveResidentIds() },
+        })
             .populate('residentId', 'firstName lastName roomNumber floor bed nickname')
             .populate('medicationId', 'name dosage form purpose')
             .sort({ scheduledTime: 1 });
@@ -903,6 +917,25 @@ router.put('/schedule/:id', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// DELETE SCHEDULE / MEDICATION LOG ENTRY
+// ─────────────────────────────────────────────────────────────
+router.delete('/schedule/:id', async (req, res) => {
+    try {
+        const log = await MedicationLog.findById(req.params.id);
+        if (!log) return res.status(404).json({ success: false, message: 'Medication log not found.' });
+
+        await MedicationLog.deleteOne({ _id: req.params.id });
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: log.residentId, reason: 'medication-deleted' });
+
+        res.json({ success: true, message: 'Medication removed.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
 // GET INVENTORY
 // ─────────────────────────────────────────────────────────────
 router.get('/inventory', async (req, res) => {
@@ -983,9 +1016,10 @@ router.get('/stats', async (req, res) => {
             ? {}
             : { caregiverId: req.user._id };
 
+        const activeResidentIds = await getActiveResidentIds();
         const [totalResidents, todayLogs, invItems] = await Promise.all([
             Resident.countDocuments({ status: 'active' }),
-            MedicationLog.find({ ...baseQuery, scheduledTime: { $gte: today, $lt: tomorrow } }),
+            MedicationLog.find({ ...baseQuery, residentId: { $in: activeResidentIds }, scheduledTime: { $gte: today, $lt: tomorrow } }),
             Inventory.find({ category: { $in: ['medication', 'medical_supplies'] } }, { quantity: 1, minThreshold: 1 }),
         ]);
 
