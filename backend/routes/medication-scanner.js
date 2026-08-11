@@ -69,10 +69,15 @@ router.post('/lookup', protect, async (req, res) => {
 
     // Residents' actual prescribed medications live in MedicationLog (created when
     // a schedule is assigned), not the legacy Resident.medications embedded array,
-    // which nothing in the app writes to.
-    const matchingLogs = await MedicationLog.find({ medicationId: medication._id })
+    // which nothing in the app writes to. Only doses still awaiting administration
+    // count as a "match" — an already-administered/skipped/missed log shouldn't
+    // make the scanner think there's still something to give.
+    const matchingLogs = await MedicationLog.find({
+      medicationId: medication._id,
+      status: { $in: ['scheduled', 'pending', 'overdue'] },
+    })
       .populate('residentId')
-      .sort({ scheduledTime: -1 });
+      .sort({ scheduledTime: 1 });
 
     const residentLogMap = new Map();
     matchingLogs.forEach((log) => {
