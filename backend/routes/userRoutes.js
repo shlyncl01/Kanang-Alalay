@@ -68,6 +68,12 @@ router.put('/update-profile', protect, async (req, res) => {
                     message: 'Password must be at least 8 characters.',
                 });
             }
+            if (newPassword.length > 12) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Password must not exceed 12 characters.',
+                });
+            }
             if (!/[A-Z]/.test(newPassword)) {
                 return res.status(400).json({
                     success: false,

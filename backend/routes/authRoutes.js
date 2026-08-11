@@ -132,6 +132,9 @@ router.post('/login', async (req, res) => {
         if (!username || !password) {
             return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
         }
+        if (password.length > 12) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        }
 
         const user = await User.findOne({ $or: [{ email: username }, { username }] });
 
@@ -686,6 +689,9 @@ router.post('/reset-password', async (req, res) => {
         if (newPassword.length < 6) {
             return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
         }
+        if (newPassword.length > 12) {
+            return res.status(400).json({ success: false, message: 'Password must not exceed 12 characters.' });
+        }
 
         let decoded;
         try {
@@ -721,6 +727,9 @@ router.post('/reset-password-with-otp', async (req, res) => {
         }
         if (password.length < 6) {
             return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+        }
+        if (password.length > 12) {
+            return res.status(400).json({ success: false, message: 'Password must not exceed 12 characters.' });
         }
 
         const user = await User.findOne({ email: email.trim() });
@@ -866,6 +875,8 @@ router.put('/change-password', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Both current and new password are required.' });
         if (newPassword.length < 8)
             return res.status(400).json({ success: false, message: 'New password must be at least 8 characters.' });
+        if (newPassword.length > 12)
+            return res.status(400).json({ success: false, message: 'New password must not exceed 12 characters.' });
 
         const user = await User.findById(req.user._id);
         const match = await user.comparePassword(currentPassword);
