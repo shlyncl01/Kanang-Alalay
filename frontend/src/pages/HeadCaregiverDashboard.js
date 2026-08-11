@@ -9,7 +9,7 @@ import {
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
     FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV,
     FaExclamationCircle, FaHeartbeat, FaFileAlt,
-    FaBoxOpen, FaClock, FaFilter,
+    FaBoxOpen, FaClock, FaFilter, FaBars,
     FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
 } from 'react-icons/fa';
 import '../styles/Dashboard.css';
@@ -1239,6 +1239,7 @@ const HeadCaregiverDashboard = () => {
     const [activeSection, setSection] = useState('home');
     const [searchQuery, setSearch] = useState('');
     const [accountMenuOpen, setAcctMenu] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [filterStatus, setFStatus] = useState('All');
     const [filterResident, setFRes] = useState('All');
     const [sortTime, setSort] = useState('Asc');
@@ -1260,7 +1261,9 @@ const HeadCaregiverDashboard = () => {
     const [toasts, setToasts] = useState([]);
     const [resPage, setResPage] = useState(1);
     const [schedPage, setSchedPage] = useState(1);
-    const PER = 5;
+    const [activeMedsPage, setActiveMedsPage] = useState(1);
+    const [invPage, setInvPage] = useState(1);
+    const PER = 10; // rows per page, applied to every paginated table
 
     const shiftLabel = {
         morning: 'Morning (6AM–2PM)',
@@ -1340,6 +1343,8 @@ const HeadCaregiverDashboard = () => {
     useEffect(() => {
         setResPage(1);
         setSchedPage(1);
+        setActiveMedsPage(1);
+        setInvPage(1);
     }, [searchQuery, filterStatus, filterResident, activeSection]);
 
     const handleRefresh = async () => {
@@ -1595,6 +1600,14 @@ const HeadCaregiverDashboard = () => {
                 <div className="res-page-header">
                     <span className="res-page-label">MY ASSIGNED RESIDENTS ({residents.length})</span>
                     <div className="res-page-controls">
+                        <div className="topbar-search-wrapper page-search-wrapper">
+                            <FaSearch className="topbar-search-icon" />
+                            <input type="text" className="topbar-search-input"
+                                placeholder="Search residents, rooms, nickname, conditions…"
+                                value={searchQuery}
+                                onChange={e => setSearch(e.target.value)} />
+                            {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
+                        </div>
                         <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
                             <option value="All">Filter: All</option>
                             <option value="alert">Alert</option>
@@ -1737,7 +1750,11 @@ const HeadCaregiverDashboard = () => {
     // ── SCREEN 3: MEDICATION MANAGEMENT ─────────────────────────────────
     const renderMedicines = () => {
         const pagedSched = filteredSched.slice((schedPage - 1) * PER, schedPage * PER);
-        const remaining = filteredSched.length - schedPage * PER;
+        const schedPages = Math.ceil(filteredSched.length / PER);
+        const pagedActiveMeds = groupedByResident.slice((activeMedsPage - 1) * PER, activeMedsPage * PER);
+        const activeMedsPages = Math.ceil(groupedByResident.length / PER);
+        const pagedInventory = inventory.slice((invPage - 1) * PER, invPage * PER);
+        const invPages = Math.ceil(inventory.length / PER);
 
         return (
             <div>
@@ -1749,6 +1766,14 @@ const HeadCaregiverDashboard = () => {
 
                 {/* Filters + Action Row */}
                 <div className="med-filters-row">
+                    <div className="topbar-search-wrapper page-search-wrapper">
+                        <FaSearch className="topbar-search-icon" />
+                        <input type="text" className="topbar-search-input"
+                            placeholder="Search medications, residents…"
+                            value={searchQuery}
+                            onChange={e => setSearch(e.target.value)} />
+                        {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
+                    </div>
                     <span className="filters-label"><FaFilter /> Filters:</span>
                     <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
                         <option value="All">Status: All</option>
@@ -1812,9 +1837,14 @@ const HeadCaregiverDashboard = () => {
                             </tbody>
                         </table>
                     </div>
-                    {remaining > 0 && (
-                        <div className="sched-show-more">
-                            <button onClick={() => setSchedPage(p => p + 1)}>Show {remaining} more…</button>
+                    {schedPages > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(schedPage - 1) * PER + 1}–{Math.min(schedPage * PER, filteredSched.length)} of {filteredSched.length}</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: schedPages }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${schedPage === n ? ' active' : ''}`} onClick={() => setSchedPage(n)}>{n}</button>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1831,7 +1861,7 @@ const HeadCaregiverDashboard = () => {
                                 {groupedByResident.length === 0 ? (
                                     <tr><td colSpan="7" className="text-center no-data-italic">No active medication records yet.</td></tr>
                                 ) : (
-                                    groupedByResident.map(grp =>
+                                    pagedActiveMeds.map(grp =>
                                         grp.meds.map((m, mi) => (
                                             <tr key={m._id}>
                                                 {mi === 0 && (
@@ -1863,6 +1893,16 @@ const HeadCaregiverDashboard = () => {
                             </tbody>
                         </table>
                     </div>
+                    {activeMedsPages > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(activeMedsPage - 1) * PER + 1}–{Math.min(activeMedsPage * PER, groupedByResident.length)} of {groupedByResident.length} residents</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: activeMedsPages }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${activeMedsPage === n ? ' active' : ''}`} onClick={() => setActiveMedsPage(n)}>{n}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Medication Inventory Status */}
@@ -1882,7 +1922,7 @@ const HeadCaregiverDashboard = () => {
                                 {inventory.length === 0 ? (
                                     <tr><td colSpan="4" className="text-center no-data-italic">No inventory data available.</td></tr>
                                 ) : (
-                                    inventory.slice(0, 10).map(item => {
+                                    pagedInventory.map(item => {
                                         const daysLeft = item.expirationDate ? Math.ceil((new Date(item.expirationDate) - Date.now()) / 86400000) : null;
                                         const isOut = item.quantity === 0;
                                         const isLow = !isOut && item.quantity <= (item.minThreshold ?? 10);
@@ -1903,6 +1943,16 @@ const HeadCaregiverDashboard = () => {
                             </tbody>
                         </table>
                     </div>
+                    {invPages > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(invPage - 1) * PER + 1}–{Math.min(invPage * PER, inventory.length)} of {inventory.length}</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: invPages }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${invPage === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -1922,7 +1972,7 @@ const HeadCaregiverDashboard = () => {
         <div className="dashboard-layout">
             <div className="dashboard-body">
 
-                <div className="sidebar nurse-sidebar">
+                <div className={`sidebar nurse-sidebar${mobileMenuOpen ? ' mobile-open' : ''}`}>
                     <div className="sidebar-header">
                         <div className="brand-section">
                             <img src={mainLogo} alt="Kanang-Alalay logo" className="logo-circle" />
@@ -1935,7 +1985,7 @@ const HeadCaregiverDashboard = () => {
                             { key: 'residents', icon: <FaUsers />, label: 'Residents' },
                             { key: 'medicines', icon: <FaPills />, label: 'Medicines', badge: stats.overdue },
                         ].map(({ key, icon, label, badge }) => (
-                            <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => setSection(key)}>
+                            <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => { setSection(key); setMobileMenuOpen(false); }}>
                                 {icon} {label}
                                 {badge > 0 && <span className="sidebar-badge">{badge}</span>}
                             </li>
@@ -1943,22 +1993,14 @@ const HeadCaregiverDashboard = () => {
                     </ul>
                     <div className="sidebar-footer" onClick={handleLogout}><FaSignOutAlt /> <span>LOGOUT</span></div>
                 </div>
+                {mobileMenuOpen && <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)} />}
 
                 <div className="main-content-wrapper">
                     <div className="admin-topbar nurse-topbar">
                         <div className="topbar-left">
-                            <div className="topbar-search-wrapper">
-                                <FaSearch className="topbar-search-icon" />
-                                <input type="text" className="topbar-search-input"
-                                    placeholder={
-                                        activeSection === 'residents' ? 'Search residents, rooms, nickname, conditions…' :
-                                            activeSection === 'medicines' ? 'Search medications, residents…' :
-                                                'Search…'
-                                    }
-                                    value={searchQuery}
-                                    onChange={e => setSearch(e.target.value)} />
-                                {searchQuery && <button className="search-clear-btn" onClick={() => setSearch('')}><FaTimes /> Clear</button>}
-                            </div>
+                            <button className="mobile-menu-toggle" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Toggle menu">
+                                <FaBars />
+                            </button>
                         </div>
                         <div className="topbar-right">
                             <div className="topbar-user-menu">

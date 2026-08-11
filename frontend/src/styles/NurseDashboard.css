@@ -547,6 +547,17 @@ textarea.form-input { resize: vertical; }
 .filters-label   { font-size: .76rem; font-weight: 700; color: var(--d-muted); text-transform: uppercase; letter-spacing: .05em; }
 .med-action-btns { margin-left: auto; display: flex; gap: 8px; }
 
+/* Search box moved from the topbar into the Residents / Medicines filter
+   rows — reuses .topbar-search-wrapper styling but sized to sit inline
+   with .filter-select controls instead of stretching to 380px. */
+.page-search-wrapper {
+    max-width: 280px;
+    min-width: 200px;
+    flex: 1 1 220px;
+    padding: 0 10px;
+}
+.page-search-wrapper .topbar-search-input { padding: 7px 0; font-size: .82rem; }
+
 .filter-select {
     padding: 7px 11px;
     border: 1.5px solid var(--d-border);
