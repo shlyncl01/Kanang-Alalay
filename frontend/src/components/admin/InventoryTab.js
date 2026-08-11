@@ -717,18 +717,21 @@ const StockRequestsPanel = ({ onApproved }) => {
                 </table>
             )}
 
-            {/* Pagination (max 10 requests per page) */}
-            {!loading && visible.length > STOCK_REQ_PER_PAGE && (
+            {/* Pagination (max 10 requests per page) — same style as Inventory & Stock Management's table pagination */}
+            {!loading && reqTotalPages > 1 && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 4px', borderTop: '1.5px solid #E8D6CC', marginTop: 8, background: '#FFF8F3' }}>
                     <small style={{ color: '#7A5C4E', fontSize: '.8rem' }}>
                         Showing {(reqPage - 1) * STOCK_REQ_PER_PAGE + 1}–{Math.min(reqPage * STOCK_REQ_PER_PAGE, visible.length)} of {visible.length}
                     </small>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <button onClick={() => setReqPage(p => Math.max(1, p - 1))} disabled={reqPage === 1} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E8D6CC', background: reqPage === 1 ? '#f5f5f5' : '#FFF8F3', cursor: reqPage === 1 ? 'not-allowed' : 'pointer', color: '#7A5C4E' }}>
-                            <FaChevronLeft size={11} /> Previous
+                            <FaChevronLeft size={11} />
                         </button>
+                        {Array.from({ length: reqTotalPages }, (_, i) => i + 1).map(n => (
+                            <button key={n} onClick={() => setReqPage(n)} style={{ padding: '5px 11px', borderRadius: 8, fontSize: '.82rem', fontWeight: 600, border: `1.5px solid ${reqPage === n ? '#b85c2d' : '#E8D6CC'}`, background: reqPage === n ? '#b85c2d' : '#FFF8F3', color: reqPage === n ? '#fff' : '#7A5C4E', cursor: 'pointer' }}>{n}</button>
+                        ))}
                         <button onClick={() => setReqPage(p => Math.min(reqTotalPages, p + 1))} disabled={reqPage === reqTotalPages} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E8D6CC', background: reqPage === reqTotalPages ? '#f5f5f5' : '#FFF8F3', cursor: reqPage === reqTotalPages ? 'not-allowed' : 'pointer', color: '#7A5C4E' }}>
-                            Next <FaChevronRight size={11} />
+                            <FaChevronRight size={11} />
                         </button>
                     </div>
                 </div>
@@ -890,9 +893,25 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
             </html>
         `);
         win.document.close();
-        win.focus();
-        win.print();
-        win.close();
+
+        // NOTE: closing the window immediately after print() causes it to
+        // flash open and shut before the print dialog can render, since
+        // print() does not block execution. Instead, wait for the report to
+        // finish loading before printing, and only auto-close once the user
+        // has actually dismissed the print dialog (onafterprint).
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+
+        win.onload = triggerPrint;
+        // Fallback in case onload doesn't fire reliably after document.write()
+        setTimeout(triggerPrint, 300);
+
+        win.onafterprint = () => win.close();
     };
 
     return (

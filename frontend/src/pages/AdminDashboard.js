@@ -1626,9 +1626,25 @@ const AdminDashboard = () => {
             </html>
         `);
         win.document.close();
-        win.focus();
-        win.print();
-        win.close();
+
+        // NOTE: closing the window immediately after print() causes it to
+        // flash open and shut before the print dialog can render, since
+        // print() does not block execution. Instead, wait for the report to
+        // finish loading before printing, and only auto-close once the user
+        // has actually dismissed the print dialog (onafterprint).
+        let printed = false;
+        const triggerPrint = () => {
+            if (printed) return;
+            printed = true;
+            win.focus();
+            win.print();
+        };
+
+        win.onload = triggerPrint;
+        // Fallback in case onload doesn't fire reliably after document.write()
+        setTimeout(triggerPrint, 300);
+
+        win.onafterprint = () => win.close();
     };
 
     const renderCompliance = () => (
