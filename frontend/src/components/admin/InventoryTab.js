@@ -545,12 +545,15 @@ const STOCK_REQ_STATUS_STYLE = {
     rejected: { label: 'Rejected', bg: '#fdecea', color: '#b71c1c' },
 };
 
+const STOCK_REQ_PER_PAGE = 10;
+
 const StockRequestsPanel = ({ onApproved }) => {
     const [requests, setRequests]   = useState([]);
     const [loading, setLoading]     = useState(true);
     const [error, setError]         = useState('');
     const [processingId, setProcessingId] = useState(null);
     const [showResolved, setShowResolved] = useState(false);
+    const [reqPage, setReqPage]     = useState(1);
 
     const authHeaders = () => {
         const token = localStorage.getItem('token');
@@ -596,6 +599,12 @@ const StockRequestsPanel = ({ onApproved }) => {
     const pending  = requests.filter(r => r.status === 'pending' || !r.status);
     const resolved = requests.filter(r => r.status === 'approved' || r.status === 'rejected');
     const visible  = showResolved ? resolved : pending;
+
+    // Reset to page 1 whenever the visible list changes (toggle or new data)
+    useEffect(() => { setReqPage(1); }, [showResolved, requests.length]);
+
+    const reqTotalPages = Math.max(1, Math.ceil(visible.length / STOCK_REQ_PER_PAGE));
+    const visiblePaged  = visible.slice((reqPage - 1) * STOCK_REQ_PER_PAGE, reqPage * STOCK_REQ_PER_PAGE);
 
     const requesterName = (r) => {
         const u = r.requestedBy;
@@ -665,7 +674,7 @@ const StockRequestsPanel = ({ onApproved }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {visible.map(r => {
+                        {visiblePaged.map(r => {
                             const s = STOCK_REQ_STATUS_STYLE[r.status] || STOCK_REQ_STATUS_STYLE.pending;
                             return (
                                 <tr key={r._id}>
@@ -706,6 +715,23 @@ const StockRequestsPanel = ({ onApproved }) => {
                         })}
                     </tbody>
                 </table>
+            )}
+
+            {/* Pagination (max 10 requests per page) */}
+            {!loading && visible.length > STOCK_REQ_PER_PAGE && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 4px', borderTop: '1.5px solid #E8D6CC', marginTop: 8, background: '#FFF8F3' }}>
+                    <small style={{ color: '#7A5C4E', fontSize: '.8rem' }}>
+                        Showing {(reqPage - 1) * STOCK_REQ_PER_PAGE + 1}–{Math.min(reqPage * STOCK_REQ_PER_PAGE, visible.length)} of {visible.length}
+                    </small>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <button onClick={() => setReqPage(p => Math.max(1, p - 1))} disabled={reqPage === 1} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E8D6CC', background: reqPage === 1 ? '#f5f5f5' : '#FFF8F3', cursor: reqPage === 1 ? 'not-allowed' : 'pointer', color: '#7A5C4E' }}>
+                            <FaChevronLeft size={11} /> Previous
+                        </button>
+                        <button onClick={() => setReqPage(p => Math.min(reqTotalPages, p + 1))} disabled={reqPage === reqTotalPages} style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E8D6CC', background: reqPage === reqTotalPages ? '#f5f5f5' : '#FFF8F3', cursor: reqPage === reqTotalPages ? 'not-allowed' : 'pointer', color: '#7A5C4E' }}>
+                            Next <FaChevronRight size={11} />
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -864,27 +890,13 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
             </html>
         `);
         win.document.close();
-
-        let printed = false;
-        const triggerPrint = () => {
-            if (printed) return;
-            printed = true;
-            win.focus();
-            win.print();
-        };
-
-        win.onload = triggerPrint;
-        // Fallback for browsers where onload doesn't fire reliably after document.write()
-        setTimeout(triggerPrint, 400);
-
-        // Close the report window once the print dialog has been dismissed
-        win.onafterprint = () => win.close();
+        win.focus();
+        win.print();
+        win.close();
     };
 
     return (
         <>
-            <StockRequestsPanel onApproved={() => {}} />
-
             <div className="card-white">
                 <div className="card-header">
                     <h5>Inventory &amp; Stock Management</h5>
@@ -898,7 +910,7 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                 </div>
 
                 {/* Stats row */}
-                <div className="stats-grid" style={{ marginBottom: 20 }}>
+                <div className="stats-grid inventory-stats-grid" style={{ marginBottom: 20 }}>
                     <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#dc3545' }}><FaExclamationTriangle /></div>
                         <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{lowCount}</h3><p>Low Stock</p></div>
@@ -1040,6 +1052,8 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                     </div>
                 )}
             </div>
+
+            <StockRequestsPanel onApproved={() => {}} />
 
             {editItem && <EditItemModal item={editItem} onSave={handleSaveEdit} onClose={() => setEditItem(null)} />}
             {deleteTarget && <DeleteInventoryModal item={deleteTarget} onConfirm={handleDeleteConfirm} onClose={() => setDeleteTarget(null)} />}
