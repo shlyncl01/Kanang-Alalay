@@ -126,6 +126,12 @@ const hcSectionLabel = {
 };
 const hcFieldWrap = { marginBottom: 18 };
 const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 18 };
+const DOSAGE_UNITS = [
+    'Tablet', 'Capsule', 'Softgel', 'Liquid / Syrup', 'mL (Milliliter)',
+    'Drop', 'Eye Drop', 'Ear Drop', 'Injection', 'Inhalation / Puff',
+    'Topical / Cream', 'Patch', 'Suppository', 'Sachet / Powder',
+    'Nasal Spray', 'Sublingual', 'Other'
+];
 const hcLabelStyle = {
     display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#2c3e50',
     marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em',
@@ -1024,7 +1030,7 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
 //  MODAL: Add Medication to Schedule
 // ════════════════════════════════════════════════════════════
 const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, toast, defaultResident }) => {
-    const [f, setF] = useState({ residentId: defaultResident?._id || '', medicationId: '', scheduledTime: '', dosage: '', notes: '' });
+    const [f, setF] = useState({ residentId: defaultResident?._id || '', medicationId: '', scheduledTime: '', dosageAmount: '', dosageUnit: '', notes: '' });
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
@@ -1037,9 +1043,22 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
         if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
             e.scheduledTime = 'Scheduled time cannot be in the past.';
         }
+        // Dosage Override is optional overall, but once either half is used, both are required.
+        if (f.dosageAmount || f.dosageUnit) {
+            if (!f.dosageAmount) e.dosageAmount = 'Enter an amount';
+            if (!f.dosageUnit) e.dosageUnit = 'Select a unit';
+        }
         if (Object.keys(e).length) { setErrs(e); return; }
         setSaving(true);
-        const r = await doFetch('/head-caregiver/schedule', { method: 'POST', body: JSON.stringify(f) });
+        const payload = {
+            ...f,
+            dosageAmount: f.dosageAmount ? Number(f.dosageAmount) : undefined,
+            dosageUnit: f.dosageUnit || undefined,
+            // Combined string kept for backward compatibility with tables/views
+            // that still read a single `dosage` field (e.g. "1 Tablet").
+            dosage: f.dosageAmount && f.dosageUnit ? `${f.dosageAmount} ${f.dosageUnit}` : ''
+        };
+        const r = await doFetch('/head-caregiver/schedule', { method: 'POST', body: JSON.stringify(payload) });
         setSaving(false);
         if (r.success) { toast('Medication scheduled.'); onSaved(r.data); onClose(); }
         else toast(r.message || 'Failed.', 'error');
@@ -1069,8 +1088,25 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                         <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
                             <input type="datetime-local" style={hcInputStyle(errs.scheduledTime)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
                         </HCField>
-                        <HCField label="Dosage Override">
-                            <input style={hcInputStyle(false)} value={f.dosage} onChange={e => setField('dosage', e.target.value)} placeholder="e.g. 1 tablet" />
+                        <HCField label="Dosage Override" error={errs.dosageAmount || errs.dosageUnit}>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="any"
+                                    style={{ ...hcInputStyle(errs.dosageAmount), flex: '0 0 35%' }}
+                                    value={f.dosageAmount}
+                                    onChange={e => setField('dosageAmount', e.target.value)}
+                                    placeholder="1" />
+                                <select
+                                    style={{ ...hcInputStyle(errs.dosageUnit), flex: '1 1 65%' }}
+                                    value={f.dosageUnit}
+                                    onChange={e => setField('dosageUnit', e.target.value)}>
+                                    <option value="">Select unit…</option>
+                                    {DOSAGE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                            </div>
                         </HCField>
                     </div>
                     <HCField label="Notes" style={{ marginBottom: 6 }}>
