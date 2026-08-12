@@ -713,6 +713,10 @@ router.post('/reset-password', async (req, res) => {
         const user = await User.findById(decoded.userId);
         if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
+        if (await user.comparePassword(newPassword)) {
+            return res.status(400).json({ success: false, message: 'New password must be different from your current password.' });
+        }
+
         user.password = newPassword;
         user.resetPasswordOtp = undefined;
         user.resetPasswordOtpExpires = undefined;
@@ -750,6 +754,9 @@ router.post('/reset-password-with-otp', async (req, res) => {
         }
         if (user.resetPasswordOtpExpires < new Date()) {
             return res.status(400).json({ success: false, message: 'Verification code has expired.' });
+        }
+        if (await user.comparePassword(password)) {
+            return res.status(400).json({ success: false, message: 'New password must be different from your current password.' });
         }
 
         user.password = password; // hashed automatically by the User pre-save hook (bcrypt)
