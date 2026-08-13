@@ -497,7 +497,10 @@ setInterval(async () => {
                     type: 'upcoming-medication',
                     title: 'Upcoming Medication',
                     message: `${log.medicationName || 'Medication'} for ${residentName}`,
-                    details: { subMessage: `Scheduled at ${scheduleTime} (${minutesLeft} min from now)` },
+                    details: {
+                        subMessage: `Scheduled at ${scheduleTime} (${minutesLeft} min from now)`,
+                        residentId: r?._id || null,
+                    },
                     relatedUser: log.caregiverId,
                 });
 
@@ -506,6 +509,7 @@ setInterval(async () => {
                     type: alert.type,
                     message: alert.message,
                     subMessage: alert.details?.subMessage || '',
+                    details: alert.details,
                     isRead: false,
                 });
 
