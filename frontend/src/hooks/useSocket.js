@@ -17,7 +17,19 @@ export const useSocket = () => {
                     reconnectionAttempts: 5,
                     reconnectionDelay: 2000,
                 });
-                socketRef.current.on('connect', () => console.log('[Socket] Connected'));
+                socketRef.current.on('connect', () => {
+                    console.log('[Socket] Connected');
+                    // Join a per-user room so targeted alerts (e.g. medication
+                    // reminders) reach this session — re-sent on every
+                    // (re)connect, since a new connection has no rooms yet.
+                    try {
+                        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+                        const userId = stored?.id || stored?._id;
+                        if (userId) socketRef.current.emit('identify', userId);
+                    } catch {
+                        // ignore — worst case this session just won't get targeted alerts
+                    }
+                });
                 socketRef.current.on('disconnect', () => console.log('[Socket] Disconnected'));
                 Object.entries(listenersRef.current).forEach(([event, handlers]) => {
                     handlers.forEach(h => socketRef.current.on(event, h));

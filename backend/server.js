@@ -466,12 +466,17 @@ io.on('connection', (socket) => {
     socket.on('message', (data) => {
         io.emit('message', data);
     });
+    // Joins a per-user room so alerts can be targeted at specific caregivers
+    // instead of always broadcasting to every connected client.
+    socket.on('identify', (userId) => {
+        if (userId) socket.join(String(userId));
+    });
 });
 
 // Medication reminder — check every minute for meds due in the next 15 minutes
 const MedicationLog = require('./models/MedicationLog');
 const Alert = require('./models/Alert');
-const { sendPushToAll } = require('./services/pushService');
+const { sendPushToUsers } = require('./services/pushService');
 const _sentReminders = new Set();
 setInterval(async () => {
     try {
@@ -481,6 +486,15 @@ setInterval(async () => {
             status: { $in: ['scheduled', 'pending'] },
             scheduledTime: { $gte: now, $lte: in15 },
         }).populate('residentId', 'firstName lastName fullName room roomNumber');
+
+        // Admins/head caregivers oversee everyone, so they still get every
+        // reminder; a regular caregiver should only get reminders for their
+        // own assigned residents, not the whole facility's.
+        const overseers = await User.find(
+            { role: { $in: ['admin', 'head_caregiver'] } },
+            { _id: 1 }
+        );
+        const overseerIds = overseers.map((u) => String(u._id));
 
         for (const log of logs) {
             const key = String(log._id);
@@ -504,7 +518,12 @@ setInterval(async () => {
                     relatedUser: log.caregiverId,
                 });
 
-                io.emit('newAlert', {
+                const recipientIds = [...new Set([
+                    log.caregiverId ? String(log.caregiverId) : null,
+                    ...overseerIds,
+                ].filter(Boolean))];
+
+                io.to(recipientIds).emit('newAlert', {
                     _id: alert._id,
                     type: alert.type,
                     message: alert.message,
@@ -513,7 +532,7 @@ setInterval(async () => {
                     isRead: false,
                 });
 
-                sendPushToAll(alert.title, alert.message, {
+                sendPushToUsers(recipientIds, alert.title, alert.message, {
                     alertId: String(alert._id),
                     type: alert.type,
                 }).catch(() => {});
