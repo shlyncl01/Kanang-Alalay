@@ -462,6 +462,7 @@ const AdminDashboard = () => {
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false, title: '', message: '', onConfirm: null, danger: false, confirmLabel: 'Confirm'
     });
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     
     const [stats, setStats] = useState({
         totalResidents: 0, activeStaff: 0, pendingBookings: 0,
@@ -807,15 +808,8 @@ const AdminDashboard = () => {
         toast('All data refreshed successfully');
     };
 
-    const handleLogout = () => {
-        showConfirm(
-            'Sign Out',
-            'Are you sure you want to sign out of the dashboard?',
-            () => { closeConfirm(); logout(); navigate('/login'); },
-            false,
-            'Sign Out'
-        );
-    };
+    const handleLogout = () => setShowLogoutConfirm(true);
+    const confirmLogout = () => { logout(); navigate('/login'); };
 
     const renderPagination = (total, page, setPage, perPage = itemsPerPage) => {
         const pages = Math.ceil(total / perPage);
@@ -1990,6 +1984,25 @@ const AdminDashboard = () => {
                 confirmLabel={confirmModal.confirmLabel}
                 danger={confirmModal.danger}
             />
+
+            {/* Logout Confirm */}
+            {showLogoutConfirm && (
+                <div className="modal-overlay" style={{ zIndex: 10002 }}>
+                    <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
+                        <div className="logout-confirm-header">
+                            <FaSignOutAlt className="logout-confirm-icon" />
+                            <h4>Sign Out</h4>
+                        </div>
+                        <p className="logout-confirm-msg">Are you sure you want to sign out? Any unsaved changes will be lost.</p>
+                        <div className="modal-footer" style={{ padding: '14px 0 0', margin: 0 }}>
+                            <button className="btn-outline-sm" onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
+                            <button className="btn-logout-confirm" onClick={confirmLogout}>
+                                <FaSignOutAlt /> Yes, Sign Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <ReasonModal
                 isOpen={reasonModal.isOpen}
