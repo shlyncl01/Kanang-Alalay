@@ -30,7 +30,8 @@ import {
   FaDove,
   FaBullseye,
   FaFlag,
-  FaQuoteLeft
+  FaQuoteLeft,
+  FaArrowUp
 } from 'react-icons/fa';
 import '../styles/HomePage.css';
 import theSistersImg from '../assets/TheSisters.png';
@@ -41,10 +42,29 @@ import lifeAtLSAE2Img from '../assets/LifeAtLSAE2.png';
 const HomePage = () => {
   const [showStaffLogin, setShowStaffLogin] = useState(false);
   const [keySequence, setKeySequence] = useState([]);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   //Staff secret code keyboard
   const secretCode = ['s', 't', 'a', 'f', 'f'];
   const [keyPressed, setKeyPressed] = useState({});
+
+  // Handle back to top button visibility on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Smooth scroll to top
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   useEffect(() => {
     const handleKeySequence = (e) => {
@@ -196,11 +216,11 @@ const HomePage = () => {
       <section className="hero-section text-center text-white">
         <Container>
           <p className="hero-subtitle">
-            Little Sisters of the Abandoned Elderly
+            “Caring for the Elderly with Love and Dignity”
           </p>
 
           <h1 className="hero-title mb-4">
-            “Caring for the Elderly with <br /> Love and Dignity”
+            Little Sisters of the <br /> Abandoned Elderly
           </h1>
 
           <p className="hero-description mb-4">
@@ -546,11 +566,6 @@ const HomePage = () => {
               <div className="support-detail">
                 <strong>GCash:</strong> 0977 694 2464 - Nelcy M.
               </div>
-              <Link to="/donation">
-                <Button variant="light" size="lg" className="mt-3">
-                  Make a Donation
-                </Button>
-              </Link>
             </Col>
             <Col md={5}>
               <div className="support-quote">
@@ -621,6 +636,18 @@ const HomePage = () => {
           </Row>
         </Container>
       </footer>
+
+      {/* BACK TO TOP BUTTON */}
+      {showBackToTop && (
+        <button 
+          className="back-to-top-btn"
+          onClick={scrollToTop}
+          title="Back to top"
+          aria-label="Back to top"
+        >
+          <FaArrowUp />
+        </button>
+      )}
     </div>
   );
 };
