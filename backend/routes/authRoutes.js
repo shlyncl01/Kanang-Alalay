@@ -217,10 +217,12 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        // Mobile stays logged in until the user explicitly logs out; web keeps a
+        // shorter session since it's used on shared/admin machines.
         const token = jwt.sign(
             { userId: user._id, role: user.role, username: user.username, email: user.email },
             process.env.JWT_SECRET || 'fallback_secret',
-            { expiresIn: '24h' }
+            { expiresIn: isMobileLogin ? '365d' : '24h' }
         );
 
         setTokenCookie(res, token);
@@ -300,7 +302,7 @@ router.post('/verify-first-login', async (req, res) => {
                 needsProfileUpdate: user.needsProfileUpdate
             },
             process.env.JWT_SECRET || 'fallback_secret',
-            { expiresIn: '24h' }
+            { expiresIn: isMobileLogin ? '365d' : '24h' }
         );
 
         setTokenCookie(res, token);
