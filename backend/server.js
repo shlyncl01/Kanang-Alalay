@@ -517,6 +517,8 @@ setInterval(async () => {
                     details: {
                         subMessage: `Scheduled at ${scheduleTime} (${minutesLeft} min from now)`,
                         residentId: r?._id || null,
+                        medicationId: log.medicationId || null,
+                        logId: log._id,
                     },
                     relatedUser: log.caregiverId,
                 });
@@ -538,6 +540,7 @@ setInterval(async () => {
                 sendPushToUsers(recipientIds, alert.title, alert.message, {
                     alertId: String(alert._id),
                     type: alert.type,
+                    ...alert.details,
                 }).catch(() => {});
             } catch (alertErr) {
                 console.error('[Reminder] Failed to create alert:', alertErr.message);

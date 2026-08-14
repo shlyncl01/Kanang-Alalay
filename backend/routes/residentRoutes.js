@@ -5,6 +5,7 @@ const Medication = require('../models/Medication');
 const MedicationLog = require('../models/MedicationLog');
 const VitalsLog = require('../models/VitalsLog');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
+const { notifyCaregiverAndOverseers } = require('../services/alertService');
 
 function parseVitalNumber(value, label, min, max, errors) {
     if (value === undefined || value === null) return null;
@@ -229,6 +230,19 @@ router.post('/:id/administer/:medId', protect, async (req, res) => {
                 verificationMethod: 'scan',
             });
         }
+
+        notifyCaregiverAndOverseers(req.app.get('io'), {
+            type: 'medication-administered',
+            title: 'Medication Administered',
+            message: `${log.medicationName || 'Medication'} for ${log.residentName || resident.fullName || 'resident'}`,
+            caregiverId: log.caregiverId,
+            details: {
+                subMessage: `Given by ${[req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.username || 'caregiver'}`,
+                residentId: log.residentId,
+                medicationId: log.medicationId,
+                logId: log._id,
+            },
+        }).catch((err) => console.error('[Alert] Failed to notify administered:', err.message));
 
         res.json({ success: true, data: log });
     } catch (error) {

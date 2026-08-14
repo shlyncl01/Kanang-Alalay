@@ -6,6 +6,7 @@ const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 const { getManilaDayBounds, parseManilaDateTime } = require('../utils/dateHelpers');
+const { notifyCaregiverAndOverseers } = require('../services/alertService');
 
 // Get all medications
 router.get('/', authMiddleware, async (req, res) => {
@@ -484,9 +485,22 @@ router.post('/administer/:logId', authMiddleware, async (req, res) => {
 
         await log.save();
 
-        res.json({ 
+        notifyCaregiverAndOverseers(req.app.get('io'), {
+            type: 'medication-administered',
+            title: 'Medication Administered',
+            message: `${log.medicationName || 'Medication'} for ${log.residentName || 'resident'}`,
+            caregiverId: log.caregiverId,
+            details: {
+                subMessage: `Given by ${[req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.username || 'caregiver'}`,
+                residentId: log.residentId,
+                medicationId: log.medicationId,
+                logId: log._id,
+            },
+        }).catch((err) => console.error('[Alert] Failed to notify administered:', err.message));
+
+        res.json({
             message: 'Medication administered successfully',
-            log 
+            log
         });
 
     } catch (error) {
