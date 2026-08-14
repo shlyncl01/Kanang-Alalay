@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     FaUserCircle, FaSearch, FaHome, FaUsers, FaPills,
     FaQrcode, FaSignOutAlt, FaChevronDown,
-    FaPlus, FaCheckCircle, FaExclamationTriangle,
+    FaPlus, FaExclamationTriangle,
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
     FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV, FaTrashAlt,
     FaExclamationCircle, FaHeartbeat, FaFileAlt,
@@ -1746,7 +1746,6 @@ const HeadCaregiverDashboard = () => {
                             l.residentName === getResidentName(r) ||
                             l.residentId?.toString() === r._id?.toString()
                         );
-                        const allDone = todayMeds.length > 0 && todayMeds.every(l => l.status === 'completed' || l.status === 'administered');
                         const displayName = getResidentName(r);
                         return (
                             <div key={r._id || i} className={`res-row${r.medicationOverdue ? ' overdue-row' : ''}${isLast ? ' last-row' : ''}`}>
@@ -1780,11 +1779,6 @@ const HeadCaregiverDashboard = () => {
                                         )}
                                     </div>
                                     <div className="res-action-icons">
-                                        {allDone && (
-                                            <span className="res-completed-icon" title="All medications completed for today">
-                                                <FaCheckCircle /> Done
-                                            </span>
-                                        )}
                                         <div className="res-action-icons-group">
                                             <button
                                                 className="res-action-icon"
