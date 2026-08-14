@@ -1414,6 +1414,14 @@ const HeadCaregiverDashboard = () => {
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
 
+    // The summary cards (Total Meds/On Time/Delayed/Missed/Pending) are server-
+    // computed, so any local edit to `schedule` (add/edit/delete/mark status)
+    // needs this too, or the cards silently drift out of sync with the list.
+    const refreshStats = useCallback(async () => {
+        const r = await doFetch('/head-caregiver/stats');
+        if (r.success) setStats(s => ({ ...s, ...r.data }));
+    }, [doFetch]);
+
     useEffect(() => {
         (async () => { setLoading(true); await loadAll(); setLoading(false); })();
     }, [loadAll]);
@@ -1473,6 +1481,7 @@ const HeadCaregiverDashboard = () => {
                 status,
                 ...(status === 'completed' || status === 'administered' ? { administeredTime: new Date().toISOString() } : {})
             } : l));
+            refreshStats();
             toast(`${medName} marked as ${status} for ${resName}.`);
         } else {
             toast(r.message || 'Update failed.', 'error');
@@ -2176,9 +2185,9 @@ const HeadCaregiverDashboard = () => {
             />}
             {modal?.type === 'vitals' && <VitalsModal onClose={() => setModal(null)} onSaved={loadAll} resident={modal.data} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'history' && <HistoryModal onClose={() => setModal(null)} resident={modal.data} doFetch={doFetch} />}
-            {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => setSchedule(p => [...p, l])} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
-            {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l))} doFetch={doFetch} toast={toast} />}
-            {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => setSchedule(p => p.filter(l => l._id !== id))} doFetch={doFetch} toast={toast} />}
+            {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, l]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
+            {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
+            {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={inventory} doFetch={doFetch} toast={toast} />}
 
             {/* Logout Confirm */}

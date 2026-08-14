@@ -482,8 +482,11 @@ setInterval(async () => {
     try {
         const now = new Date();
         const in15 = new Date(now.getTime() + 15 * 60 * 1000);
+        // 'scheduled' means the head caregiver hasn't prepared this dose yet —
+        // only 'pending' (prepared) doses should ever reach a caregiver as a
+        // reminder, matching the same rule already used for /my-assigned.
         const logs = await MedicationLog.find({
-            status: { $in: ['scheduled', 'pending'] },
+            status: 'pending',
             scheduledTime: { $gte: now, $lte: in15 },
         }).populate('residentId', 'firstName lastName fullName room roomNumber');
 
