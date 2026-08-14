@@ -196,13 +196,15 @@ router.post('/:id/administer/:medId', protect, async (req, res) => {
 
         const administeredAt = req.body.administeredAt ? new Date(req.body.administeredAt) : new Date();
 
-        // Prefer updating an existing scheduled log for this resident/medication;
+        // Prefer updating an existing prepared log for this resident/medication;
         // fall back to logging an off-schedule administration (e.g. scanned but
-        // not part of a pre-set schedule) rather than failing outright.
+        // not part of a pre-set schedule) rather than failing outright. 'scheduled'
+        // logs are excluded: the head caregiver hasn't prepared them yet, so this
+        // route shouldn't let a caregiver administer them early.
         let log = await MedicationLog.findOne({
             residentId: resident._id,
             medicationId: medication._id,
-            status: { $in: ['scheduled', 'pending', 'overdue'] },
+            status: { $in: ['pending', 'overdue'] },
         }).sort({ scheduledTime: 1 });
 
         if (log) {
