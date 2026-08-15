@@ -187,7 +187,7 @@ router.get('/:id', async (req, res) => {
 // UPDATE booking status with email notification
 router.put('/:id/status', async (req, res) => {
     try {
-        const { status, rejectionReason } = req.body;
+        const { status, rejectionReason, facilityAvailability } = req.body;
         
         // Validate status
         const validStatuses = ['pending', 'approved', 'rejected', 'cancelled', 'completed'];
@@ -232,6 +232,10 @@ router.put('/:id/status', async (req, res) => {
         if (status === 'rejected') {
             booking.rejectionReason = rejectionReason.trim();
         }
+
+        if (status === 'approved' && facilityAvailability) {
+            booking.facilityAvailability = facilityAvailability;
+        }
         
         await booking.save();
         
@@ -244,7 +248,7 @@ router.put('/:id/status', async (req, res) => {
                 await sendEmail(
                     booking.email,
                     '✅ Booking Confirmed - Kanang Alalay',
-                    generateBookingConfirmationTemplate(booking)
+                    generateBookingConfirmationTemplate(booking, facilityAvailability)
                 );
                 emailSent = true;
                 console.log(`✅ Approval email sent to ${booking.email}`);

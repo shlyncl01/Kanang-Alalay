@@ -198,8 +198,53 @@ const generateDonationTemplate = (donation) => `
     </div>
 </div>`;
 
+// Format "HH:MM" (24h) into "h:MM AM/PM"
+const formatTime12h = (time) => {
+    if (!time || typeof time !== 'string' || !time.includes(':')) return time || '';
+    const [hStr, mStr] = time.split(':');
+    let h = parseInt(hStr, 10);
+    const period = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${h}:${mStr} ${period}`;
+};
+
+// Default facility availability info, used as a fallback when the admin
+// didn't set custom hours at approval time (e.g. re-sent emails, or the
+// approval was made through a path that doesn't pass facilityAvailability).
+const DEFAULT_FACILITY_AVAILABILITY = {
+    slots: [
+        { label: 'Morning Slot', start: '09:00', end: '11:00' },
+        { label: 'Afternoon Slot', start: '15:00', end: '17:00' }
+    ],
+    maxPerSlot: 10,
+    arrivalNote: 'Please arrive 10 minutes early',
+    rules: [
+        'Valid ID required upon arrival',
+        'No photography without permission',
+        'Respect resident privacy and dignity',
+        'Follow facility staff instructions'
+    ]
+};
+
 // Booking Confirmation Email Template (for approved bookings)
-const generateBookingConfirmationTemplate = (booking) => `
+const generateBookingConfirmationTemplate = (booking, facilityAvailability) => {
+    const fa = (facilityAvailability && (facilityAvailability.slots?.length || facilityAvailability.rules?.length))
+        ? facilityAvailability
+        : DEFAULT_FACILITY_AVAILABILITY;
+
+    const slots = (fa.slots && fa.slots.length) ? fa.slots : DEFAULT_FACILITY_AVAILABILITY.slots;
+    const maxPerSlot = fa.maxPerSlot || DEFAULT_FACILITY_AVAILABILITY.maxPerSlot;
+    const arrivalNote = fa.arrivalNote || DEFAULT_FACILITY_AVAILABILITY.arrivalNote;
+    const rules = (fa.rules && fa.rules.length) ? fa.rules : DEFAULT_FACILITY_AVAILABILITY.rules;
+
+    const slotsHtml = slots.map(s =>
+        `<li style="margin: 4px 0;"><strong>${s.label}:</strong> ${formatTime12h(s.start)} - ${formatTime12h(s.end)}</li>`
+    ).join('');
+
+    const rulesHtml = rules.map(r => `<li style="margin: 4px 0;">${r}</li>`).join('');
+
+    return `
 <div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #28a745; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
         <h2 style="color: #28a745; margin-top: 0;">✅ Booking Confirmed!</h2>
@@ -221,23 +266,18 @@ const generateBookingConfirmationTemplate = (booking) => `
             
             <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📍 Visiting Hours</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
-                <li style="margin: 4px 0;"><strong>Morning Slot:</strong> 9:00 AM - 11:00 AM</li>
-                <li style="margin: 4px 0;"><strong>Afternoon Slot:</strong> 3:00 PM - 5:00 PM</li>
-                <li style="margin: 4px 0;"><strong>Maximum capacity:</strong> 10 visitors per time slot</li>
+                ${slotsHtml}
+                <li style="margin: 4px 0;"><strong>Maximum capacity:</strong> ${maxPerSlot} visitors per time slot</li>
             </ul>
             
             <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">⏰ Before Your Visit</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
-                <li style="margin: 4px 0;">Please <strong>arrive 10 minutes early</strong></li>
-                <li style="margin: 4px 0;">Bring a <strong>valid ID</strong></li>
-                <li style="margin: 4px 0;"><strong>No photography</strong> without permission from staff</li>
+                <li style="margin: 4px 0;">${arrivalNote}</li>
             </ul>
             
             <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📋 Facility Guidelines</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
-                <li style="margin: 4px 0;">Respect the <strong>privacy and dignity</strong> of our residents</li>
-                <li style="margin: 4px 0;">Follow <strong>facility staff instructions</strong> at all times</li>
-                <li style="margin: 4px 0;">Maintain a <strong>quiet and calm</strong> demeanor</li>
+                ${rulesHtml}
             </ul>
         </div>
         
@@ -256,6 +296,7 @@ const generateBookingConfirmationTemplate = (booking) => `
         <p style="color: #444; font-weight: bold; margin: 0;">Kanang-Alalay Admin Team</p>
     </div>
 </div>`;
+};
 
 // Booking Rejection Email Template
 const generateBookingRejectionTemplate = (booking, reason = '') => `

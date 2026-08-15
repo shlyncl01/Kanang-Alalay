@@ -63,6 +63,16 @@ const bookingSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    facilityAvailability: {
+        slots: [{
+            label: { type: String },
+            start: { type: String },
+            end: { type: String }
+        }],
+        maxPerSlot: { type: Number },
+        arrivalNote: { type: String },
+        rules: [{ type: String }]
+    },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

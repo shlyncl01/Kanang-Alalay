@@ -471,10 +471,27 @@ const AdminDashboard = () => {
         complianceRate: 92, missedMeds: 2, delayedMeds: 1
     });
 
+    const DEFAULT_AVAILABILITY = {
+        morningEnabled: true,
+        morningStart: '09:00',
+        morningEnd: '11:00',
+        afternoonEnabled: true,
+        afternoonStart: '15:00',
+        afternoonEnd: '17:00',
+        maxPerSlot: 10,
+        arrivalNote: 'Please arrive 10 minutes early',
+        rules: [
+            'Valid ID required upon arrival',
+            'No photography without permission',
+            'Respect resident privacy and dignity',
+            'Follow facility staff instructions'
+        ]
+    };
+
     const [editStatusModal, setEditStatusModal] = useState({ isOpen: false, booking: null, newStatus: '' });
     const [stockRequests, setStockRequests] = useState([]);
     const [rejectionModal, setRejectionModal] = useState({ isOpen: false, bookingId: null, reason: '' });
-    const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null });
+    const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY });
     const [openDropdown, setOpenDropdown] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -1055,7 +1072,7 @@ const AdminDashboard = () => {
         );
     };
 
-    const updateBookingStatus = async (id, status, rejectionReason = '') => {
+    const updateBookingStatus = async (id, status, rejectionReason = '', extra = {}) => {
         const booking = bookings.find(b => b._id === id);
         const prevStatus = booking?.status;
         const actionLabel = status === 'approved' ? 'Approve' : status === 'rejected' ? 'Reject' : 'Complete';
@@ -1070,7 +1087,7 @@ const AdminDashboard = () => {
                     setStats(p => ({ ...p, pendingBookings: Math.max(0, p.pendingBookings - 1) }));
                 }
                 const res = await fetchApi(`/bookings/${id}/status`, {
-                    method: 'PUT', body: JSON.stringify({ status, rejectionReason })
+                    method: 'PUT', body: JSON.stringify({ status, rejectionReason, ...extra })
                 });
                 if (!res.success) {
                     setBookings(prev => prev.map(b => b._id === id ? { ...b, status: prevStatus } : b));
@@ -1102,12 +1119,47 @@ const AdminDashboard = () => {
 
     const handleApproveWithDetails = (bookingId) => {
         const booking = bookings.find(b => b._id === bookingId);
-        setApprovalModal({ isOpen: true, bookingId, booking });
+        setApprovalModal({ isOpen: true, bookingId, booking, availability: { ...DEFAULT_AVAILABILITY, rules: [...DEFAULT_AVAILABILITY.rules] } });
     };
 
+    const updateAvailabilityField = (field, value) => {
+        setApprovalModal(prev => ({ ...prev, availability: { ...prev.availability, [field]: value } }));
+    };
+
+    const availInputStyle = (enabled, width) => ({
+        width: width || 130,
+        padding: '7px 10px',
+        borderRadius: 7,
+        border: '1.5px solid #FFB74D',
+        background: enabled ? '#fff' : '#F5EFE8',
+        color: enabled ? '#1A0A00' : '#B3A99C',
+        fontFamily: "'DM Sans', sans-serif",
+        fontSize: '0.85rem',
+        outline: 'none',
+        boxSizing: 'border-box'
+    });
+
     const confirmApproval = async () => {
-        await updateBookingStatus(approvalModal.bookingId, 'approved');
-        setApprovalModal({ isOpen: false, bookingId: null, booking: null });
+        const a = approvalModal.availability;
+
+        if (!a.morningEnabled && !a.afternoonEnabled) {
+            toast('Select at least one available visiting slot.', 'error');
+            return;
+        }
+
+        const slots = [];
+        if (a.morningEnabled) slots.push({ label: 'Morning Slot', start: a.morningStart, end: a.morningEnd });
+        if (a.afternoonEnabled) slots.push({ label: 'Afternoon Slot', start: a.afternoonStart, end: a.afternoonEnd });
+
+        const facilityAvailability = {
+            slots,
+            maxPerSlot: Number(a.maxPerSlot) || 0,
+            arrivalNote: a.arrivalNote.trim(),
+            rules: a.rules.map(r => r.trim()).filter(Boolean)
+        };
+
+        await updateBookingStatus(approvalModal.bookingId, 'approved', '', { facilityAvailability });
+        setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY });
     };
 
     const updateDonationStatus = async (id, paymentStatus) => {
@@ -2106,7 +2158,7 @@ const AdminDashboard = () => {
                                 <FaCheckCircle size={20} color="#28a745" />
                                 Approve Booking
                             </h4>
-                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
+                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
                                 <FaTimes />
                             </button>
                         </div>
@@ -2163,29 +2215,120 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        {/* FACILITY AVAILABILITY */}
+                        {/* FACILITY AVAILABILITY - EDITABLE, GOES OUT IN THE APPROVAL EMAIL */}
                         <div style={{ marginBottom: 24 }}>
-                            <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Facility Availability Information</h5>
+                            <h5 style={{ margin: '0 0 4px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visiting Hours for Visitor Email</h5>
+                            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#7A5C4E' }}>
+                                Set the available time slots and rules to include in the approval email sent to the visitor.
+                            </p>
                             <div style={{ background: '#FFF3E0', padding: 16, borderRadius: 12, border: '1.5px solid #FF9800' }}>
                                 <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <FaMapMarkerAlt size={14} /> Available Visiting Hours
                                 </p>
-                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
-                                    <li><strong>Morning Slot:</strong> 9:00 AM - 11:00 AM</li>
-                                    <li><strong>Afternoon Slot:</strong> 3:00 PM - 5:00 PM</li>
-                                    <li><strong>Maximum per slot:</strong> 10 visitors</li>
-                                    <li><strong>Arrival time:</strong> Please arrive 10 minutes early</li>
-                                </ul>
-                                <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #FFB74D' }} />
+
+                                {/* Morning slot row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={approvalModal.availability.morningEnabled}
+                                            onChange={e => updateAvailabilityField('morningEnabled', e.target.checked)}
+                                        />
+                                        Morning Slot
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={approvalModal.availability.morningStart}
+                                        disabled={!approvalModal.availability.morningEnabled}
+                                        onChange={e => updateAvailabilityField('morningStart', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
+                                    <input
+                                        type="time"
+                                        value={approvalModal.availability.morningEnd}
+                                        disabled={!approvalModal.availability.morningEnabled}
+                                        onChange={e => updateAvailabilityField('morningEnd', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                    />
+                                </div>
+
+                                {/* Afternoon slot row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={approvalModal.availability.afternoonEnabled}
+                                            onChange={e => updateAvailabilityField('afternoonEnabled', e.target.checked)}
+                                        />
+                                        Afternoon Slot
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={approvalModal.availability.afternoonStart}
+                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        onChange={e => updateAvailabilityField('afternoonStart', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
+                                    <input
+                                        type="time"
+                                        value={approvalModal.availability.afternoonEnd}
+                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        onChange={e => updateAvailabilityField('afternoonEnd', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                    />
+                                </div>
+
+                                {/* Max per slot + arrival note */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Maximum visitors per slot</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={approvalModal.availability.maxPerSlot}
+                                            onChange={e => updateAvailabilityField('maxPerSlot', e.target.value)}
+                                            style={availInputStyle(true, '100%')}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.78rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Arrival note</label>
+                                        <input
+                                            type="text"
+                                            value={approvalModal.availability.arrivalNote}
+                                            onChange={e => updateAvailabilityField('arrivalNote', e.target.value)}
+                                            placeholder="e.g. Please arrive 10 minutes early"
+                                            style={availInputStyle(true, '100%')}
+                                        />
+                                    </div>
+                                </div>
+
+                                <hr style={{ margin: '16px 0 12px', border: 'none', borderTop: '1px solid #FFB74D' }} />
+
                                 <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <FaLandmark size={14} /> Facility Rules
                                 </p>
-                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
-                                    <li>Valid ID required upon arrival</li>
-                                    <li>No photography without permission</li>
-                                    <li>Respect resident privacy and dignity</li>
-                                    <li>Follow facility staff instructions</li>
-                                </ul>
+                                <p style={{ margin: '0 0 6px 0', fontSize: '0.75rem', color: '#7A5C4E' }}>One rule per line.</p>
+                                <textarea
+                                    value={approvalModal.availability.rules.join('\n')}
+                                    onChange={e => updateAvailabilityField('rules', e.target.value.split('\n'))}
+                                    rows={4}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 12px',
+                                        borderRadius: 8,
+                                        border: '1.5px solid #FFB74D',
+                                        background: '#fff',
+                                        color: '#1A0A00',
+                                        fontFamily: "'DM Sans', sans-serif",
+                                        fontSize: '0.85rem',
+                                        lineHeight: 1.7,
+                                        resize: 'vertical',
+                                        outline: 'none',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
                             </div>
                         </div>
                         </div>
@@ -2193,7 +2336,7 @@ const AdminDashboard = () => {
                         {/* ACTION BUTTONS */}
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexShrink: 0, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' }}>
                             <button
-                                onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })}
+                                onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY })}
                                 style={{
                                     padding: '10px 24px',
                                     borderRadius: 8,
