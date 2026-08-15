@@ -126,12 +126,16 @@ const hcSectionLabel = {
 };
 const hcFieldWrap = { marginBottom: 18 };
 const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 18 };
+// Exactly the medication.form values present in the database — each is its
+// own unit rather than being collapsed into a generic bucket, so the value
+// shown always matches what's on file.
 const DOSAGE_UNITS = [
-    'Tablet', 'Capsule', 'Softgel', 'Liquid / Syrup', 'mL (Milliliter)',
-    'Drop', 'Eye Drop', 'Ear Drop', 'Injection', 'Inhalation / Puff',
-    'Topical / Cream', 'Patch', 'Suppository', 'Sachet / Powder',
-    'Nasal Spray', 'Sublingual', 'Other'
+    'Tablet', 'Film-Coated Tablet', 'Caplet', 'Delayed-Release Tablet',
+    'Delayed-Release Capsule', 'Enteric-Coated Tablet', 'Tablet / Injectable Ampule',
+    'Capsule', 'Syrup', 'Chewable Tablet', 'Liquid Gel Capsule',
+    'Controlled-Release Tablet', 'Oral Solution',
 ];
+const guessDosageUnit = (form) => (DOSAGE_UNITS.includes(form) ? form : '');
 const hcLabelStyle = {
     display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#2c3e50',
     marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em',
@@ -1084,6 +1088,12 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
     const [saving, setSaving] = useState(false);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
 
+    const pickMedication = (medicationId) => {
+        const med = medications.find(m => m._id === medicationId);
+        setF(p => ({ ...p, medicationId, dosageUnit: guessDosageUnit(med?.form) || p.dosageUnit }));
+        setErrs(p => ({ ...p, medicationId: '' }));
+    };
+
     const submit = async () => {
         const e = {};
         if (!f.residentId) e.residentId = 'Select a resident';
@@ -1126,7 +1136,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                         </select>
                     </HCField>
                     <HCField label="Medication" required error={errs.medicationId}>
-                        <select style={hcInputStyle(errs.medicationId)} value={f.medicationId} onChange={e => setField('medicationId', e.target.value)}>
+                        <select style={hcInputStyle(errs.medicationId)} value={f.medicationId} onChange={e => pickMedication(e.target.value)}>
                             <option value="">Select medication…</option>
                             {medications.map(m => <option key={m._id} value={m._id}>{m.name} {m.dosage?.value ? `${m.dosage.value}${m.dosage.unit}` : ''}</option>)}
                         </select>
