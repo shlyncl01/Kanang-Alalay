@@ -1400,6 +1400,7 @@ const AdminDashboard = () => {
         <BookingManagementTab
             bookings={bookings}
             updateBookingStatus={updateBookingStatus}
+            handleRejectWithReason={handleRejectWithReason}
             handleViewDetails={handleViewDetails}
             handleEditBooking={handleEditBooking}
             handleExportPDF={() => handleExportPDF('bookings')}
