@@ -126,6 +126,11 @@ const hcSectionLabel = {
 };
 const hcFieldWrap = { marginBottom: 18 };
 const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 18 };
+// The facility has 3 floors, 6 rooms per floor, 4 beds per room. Room numbers
+// (1-6) repeat per floor, so a room is only unique combined with its floor.
+const FLOORS = ['2nd Floor', '3rd Floor', '4th Floor'];
+const ROOM_NUMBERS = ['1', '2', '3', '4', '5', '6'];
+const BEDS = ['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4'];
 // Exactly the medication.form values present in the database — each is its
 // own unit rather than being collapsed into a generic bucket, so the value
 // shown always matches what's on file.
@@ -328,10 +333,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
     const [saving, setSaving] = useState(false);
     const [occupiedBeds, setOccupiedBeds] = useState([]);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
-
-    const FLOORS = ['2nd Floor', '3rd Floor', '4th Floor'];
-    const ROOM_NUMBERS = ['1', '2', '3', '4', '5', '6'];
-    const BEDS = ['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4'];
 
     // Fetch caregivers when modal opens
     useEffect(() => {
@@ -1350,6 +1351,9 @@ const HeadCaregiverDashboard = () => {
     const [filterStatus, setFStatus] = useState('All');
     const [filterResident, setFRes] = useState('All');
     const [sortTime, setSort] = useState('Asc');
+    const [resSort, setResSort] = useState('AZ');
+    const [resFloor, setResFloor] = useState('All');
+    const [resRoom, setResRoom] = useState('All');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -1537,8 +1541,19 @@ const HeadCaregiverDashboard = () => {
         if (filterStatus !== 'All') {
             arr = arr.filter(r => (r.alertLevel || 'stable').toLowerCase() === filterStatus.toLowerCase());
         }
+        if (resFloor !== 'All') {
+            arr = arr.filter(r => r.floor === resFloor);
+            if (resRoom !== 'All') {
+                arr = arr.filter(r => (r.room || '') === resRoom);
+            }
+        }
+        arr = [...arr].sort((a, b) => {
+            const an = (a.name || `${a.firstName || ''} ${a.lastName || ''}`).trim().toLowerCase();
+            const bn = (b.name || `${b.firstName || ''} ${b.lastName || ''}`).trim().toLowerCase();
+            return resSort === 'AZ' ? an.localeCompare(bn) : bn.localeCompare(an);
+        });
         return arr;
-    }, [residents, searchQuery, filterStatus]);
+    }, [residents, searchQuery, filterStatus, resFloor, resRoom, resSort]);
 
     const residentNames = useMemo(() => ['All', ...new Set(schedule.map(l => l.residentName).filter(Boolean))], [schedule]);
 
@@ -1743,9 +1758,26 @@ const HeadCaregiverDashboard = () => {
                             <option value="stable">Stable</option>
                             <option value="critical">Critical</option>
                         </select>
-                        <select className="filter-select" value={sortTime} onChange={e => setSort(e.target.value)}>
-                            <option value="Asc">Sort: A–Z</option>
-                            <option value="Desc">Sort: Z–A</option>
+                        <select className="filter-select" value={resSort} onChange={e => setResSort(e.target.value)}>
+                            <option value="AZ">Sort: A–Z</option>
+                            <option value="ZA">Sort: Z–A</option>
+                        </select>
+                        <select
+                            className="filter-select"
+                            value={resFloor}
+                            onChange={e => { setResFloor(e.target.value); setResRoom('All'); }}>
+                            <option value="All">Floor: All</option>
+                            {FLOORS.map(fl => <option key={fl} value={fl}>{fl}</option>)}
+                        </select>
+                        <select
+                            className="filter-select"
+                            value={resRoom}
+                            disabled={resFloor === 'All'}
+                            title={resFloor === 'All' ? 'Select a floor first' : undefined}
+                            style={resFloor === 'All' ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            onChange={e => setResRoom(e.target.value)}>
+                            <option value="All">Room: All</option>
+                            {ROOM_NUMBERS.map(rn => <option key={rn} value={rn}>Room {rn}</option>)}
                         </select>
                         <button className="btn-primary-sm" onClick={() => setModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
                     </div>
