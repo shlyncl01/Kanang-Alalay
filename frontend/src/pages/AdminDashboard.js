@@ -10,7 +10,8 @@ import {
     FaPhone, FaEnvelope, FaCalendarAlt, FaUserTag, FaIdCard, FaDownload, FaBox, FaChevronDown,
     FaSearch, FaCog, FaQuestionCircle, FaTimes, FaCheck, FaInfoCircle,
     FaExclamationCircle, FaSpinner, FaTimesCircle, FaHistory, FaFilter,
-    FaPrint, FaChevronLeft, FaChevronRight, FaBars
+    FaPrint, FaChevronLeft, FaChevronRight, FaBars,
+    FaMapMarkerAlt, FaLandmark
 } from 'react-icons/fa';
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
@@ -2084,15 +2085,33 @@ const AdminDashboard = () => {
 
             {/* APPROVAL MODAL */}
             {approvalModal.isOpen && approvalModal.booking && (
-                <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="registration-modal" style={{ maxWidth: 600, padding: 32, background: '#fff', borderRadius: 20, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, borderBottom: '1.5px solid #E8D6CC', paddingBottom: 16 }}>
+                <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                    <div
+                        className="registration-modal"
+                        style={{
+                            maxWidth: 600,
+                            width: '100%',
+                            maxHeight: '85vh',
+                            padding: 32,
+                            background: '#fff',
+                            borderRadius: 20,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, borderBottom: '1.5px solid #E8D6CC', paddingBottom: 16, flexShrink: 0 }}>
                             <h4 style={{ margin: 0, color: '#1A0A00', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={{ fontSize: '1.5rem' }}>✅</span>
+                                <FaCheckCircle size={20} color="#28a745" />
                                 Approve Booking
                             </h4>
-                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: '#999' }}>×</button>
+                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
+                                <FaTimes />
+                            </button>
                         </div>
+
+                        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
 
                         {/* VISITOR DETAILS */}
                         <div style={{ marginBottom: 24 }}>
@@ -2148,7 +2167,9 @@ const AdminDashboard = () => {
                         <div style={{ marginBottom: 24 }}>
                             <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Facility Availability Information</h5>
                             <div style={{ background: '#FFF3E0', padding: 16, borderRadius: 12, border: '1.5px solid #FF9800' }}>
-                                <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600 }}>📍 Available Visiting Hours</p>
+                                <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <FaMapMarkerAlt size={14} /> Available Visiting Hours
+                                </p>
                                 <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
                                     <li><strong>Morning Slot:</strong> 9:00 AM - 11:00 AM</li>
                                     <li><strong>Afternoon Slot:</strong> 3:00 PM - 5:00 PM</li>
@@ -2156,7 +2177,9 @@ const AdminDashboard = () => {
                                     <li><strong>Arrival time:</strong> Please arrive 10 minutes early</li>
                                 </ul>
                                 <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #FFB74D' }} />
-                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600 }}>🏛️ Facility Rules</p>
+                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <FaLandmark size={14} /> Facility Rules
+                                </p>
                                 <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
                                     <li>Valid ID required upon arrival</li>
                                     <li>No photography without permission</li>
@@ -2165,9 +2188,10 @@ const AdminDashboard = () => {
                                 </ul>
                             </div>
                         </div>
+                        </div>
 
                         {/* ACTION BUTTONS */}
-                        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexShrink: 0, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' }}>
                             <button
                                 onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })}
                                 style={{
@@ -2195,10 +2219,13 @@ const AdminDashboard = () => {
                                     cursor: 'pointer',
                                     fontWeight: 600,
                                     fontSize: '0.9rem',
-                                    transition: 'all 0.2s'
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8
                                 }}
                             >
-                                ✓ Approve Booking
+                                <FaCheck size={13} /> Approve Booking
                             </button>
                         </div>
                     </div>
