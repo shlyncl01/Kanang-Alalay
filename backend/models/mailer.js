@@ -247,13 +247,13 @@ const generateBookingConfirmationTemplate = (booking, facilityAvailability) => {
     return `
 <div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #28a745; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-        <h2 style="color: #28a745; margin-top: 0;">✅ Booking Confirmed!</h2>
+        <h2 style="color: #28a745; margin-top: 0;">Booking Confirmed!</h2>
         <p style="color: #444; font-size: 16px;">Hi ${booking.name},</p>
         <p style="color: #444; font-size: 16px;">Great news! Your booking has been <strong>approved and confirmed</strong>. We look forward to welcoming you to Kanang-Alalay.</p>
         
         <!-- YOUR BOOKING DETAILS -->
         <div style="background-color: #e8f5e9; padding: 20px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #28a745;">
-            <h3 style="color: #1e7d56; margin-top: 0; font-size: 16px;">📅 Your Visit Details</h3>
+            <h3 style="color: #1e7d56; margin-top: 0; font-size: 16px;">Your Visit Details</h3>
             <p style="margin: 8px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             <p style="margin: 8px 0;"><strong>Time Slot:</strong> ${booking.visitTime === '09:00' ? '9:00 AM - 11:00 AM' : '3:00 PM - 5:00 PM'}</p>
             <p style="margin: 8px 0;"><strong>Purpose:</strong> ${booking.purpose.charAt(0).toUpperCase() + booking.purpose.slice(1).replace('_', ' ')}</p>
@@ -262,20 +262,20 @@ const generateBookingConfirmationTemplate = (booking, facilityAvailability) => {
         
         <!-- FACILITY INFORMATION -->
         <div style="background-color: #fff3e0; padding: 20px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #ff9800;">
-            <h3 style="color: #e65100; margin-top: 0; font-size: 16px;">🏛️ Facility Information</h3>
+            <h3 style="color: #e65100; margin-top: 0; font-size: 16px;">Facility Information</h3>
             
-            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📍 Visiting Hours</p>
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">Visiting Hours</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
                 ${slotsHtml}
                 <li style="margin: 4px 0;"><strong>Maximum capacity:</strong> ${maxPerSlot} visitors per time slot</li>
             </ul>
             
-            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">⏰ Before Your Visit</p>
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">Before Your Visit</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
                 <li style="margin: 4px 0;">${arrivalNote}</li>
             </ul>
             
-            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📋 Facility Guidelines</p>
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">Facility Guidelines</p>
             <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
                 ${rulesHtml}
             </ul>
