@@ -473,6 +473,7 @@ const AdminDashboard = () => {
     const [editStatusModal, setEditStatusModal] = useState({ isOpen: false, booking: null, newStatus: '' });
     const [stockRequests, setStockRequests] = useState([]);
     const [rejectionModal, setRejectionModal] = useState({ isOpen: false, bookingId: null, reason: '' });
+    const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null });
     const [openDropdown, setOpenDropdown] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -1098,6 +1099,16 @@ const AdminDashboard = () => {
         setRejectionModal({ isOpen: false, bookingId: null, reason: '' });
     };
 
+    const handleApproveWithDetails = (bookingId) => {
+        const booking = bookings.find(b => b._id === bookingId);
+        setApprovalModal({ isOpen: true, bookingId, booking });
+    };
+
+    const confirmApproval = async () => {
+        await updateBookingStatus(approvalModal.bookingId, 'approved');
+        setApprovalModal({ isOpen: false, bookingId: null, booking: null });
+    };
+
     const updateDonationStatus = async (id, paymentStatus) => {
         const donation = donations.find(d => d._id === id);
         showConfirm(
@@ -1401,6 +1412,7 @@ const AdminDashboard = () => {
             bookings={bookings}
             updateBookingStatus={updateBookingStatus}
             handleRejectWithReason={handleRejectWithReason}
+            handleApproveWithDetails={handleApproveWithDetails}
             handleViewDetails={handleViewDetails}
             handleEditBooking={handleEditBooking}
             handleExportPDF={() => handleExportPDF('bookings')}
@@ -2065,6 +2077,129 @@ const AdminDashboard = () => {
                                 }}
                                 style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#F96B38', color: '#fff', cursor: 'pointer' }}
                             >Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* APPROVAL MODAL */}
+            {approvalModal.isOpen && approvalModal.booking && (
+                <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="registration-modal" style={{ maxWidth: 600, padding: 32, background: '#fff', borderRadius: 20, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, borderBottom: '1.5px solid #E8D6CC', paddingBottom: 16 }}>
+                            <h4 style={{ margin: 0, color: '#1A0A00', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <span style={{ fontSize: '1.5rem' }}>✅</span>
+                                Approve Booking
+                            </h4>
+                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: '#999' }}>×</button>
+                        </div>
+
+                        {/* VISITOR DETAILS */}
+                        <div style={{ marginBottom: 24 }}>
+                            <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visitor Details</h5>
+                            <div style={{ background: '#FFF8F3', padding: 16, borderRadius: 12, border: '1.5px solid #E8D6CC' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Full Name</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00', fontWeight: 600 }}>{approvalModal.booking.name}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Email</span>
+                                        <span style={{ display: 'block', fontSize: '0.85rem', color: '#1A0A00', wordBreak: 'break-all' }}>{approvalModal.booking.email}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Phone</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00' }}>{approvalModal.booking.phone}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Purpose</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00', textTransform: 'capitalize' }}>{approvalModal.booking.purpose?.replace('_', ' ')}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* VISIT SCHEDULE */}
+                        <div style={{ marginBottom: 24 }}>
+                            <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visit Schedule</h5>
+                            <div style={{ background: '#E8F5E9', padding: 16, borderRadius: 12, border: '1.5px solid #28a745' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#1E7D56', fontWeight: 600, marginBottom: 4 }}>Date</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1E7D56', fontWeight: 600 }}>
+                                            {new Date(approvalModal.booking.visitDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#1E7D56', fontWeight: 600, marginBottom: 4 }}>Time Slot</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1E7D56', fontWeight: 600 }}>
+                                            {approvalModal.booking.visitTime === '09:00' ? '9:00 AM - 11:00 AM' : '3:00 PM - 5:00 PM'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#1E7D56', fontWeight: 600, marginBottom: 4 }}>Number of Visitors</span>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', color: '#1E7D56', fontWeight: 600 }}>{approvalModal.booking.numberOfVisitors} visitor{approvalModal.booking.numberOfVisitors > 1 ? 's' : ''}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* FACILITY AVAILABILITY */}
+                        <div style={{ marginBottom: 24 }}>
+                            <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Facility Availability Information</h5>
+                            <div style={{ background: '#FFF3E0', padding: 16, borderRadius: 12, border: '1.5px solid #FF9800' }}>
+                                <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600 }}>📍 Available Visiting Hours</p>
+                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
+                                    <li><strong>Morning Slot:</strong> 9:00 AM - 11:00 AM</li>
+                                    <li><strong>Afternoon Slot:</strong> 3:00 PM - 5:00 PM</li>
+                                    <li><strong>Maximum per slot:</strong> 10 visitors</li>
+                                    <li><strong>Arrival time:</strong> Please arrive 10 minutes early</li>
+                                </ul>
+                                <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #FFB74D' }} />
+                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600 }}>🏛️ Facility Rules</p>
+                                <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: '#1A0A00', lineHeight: 1.8 }}>
+                                    <li>Valid ID required upon arrival</li>
+                                    <li>No photography without permission</li>
+                                    <li>Respect resident privacy and dignity</li>
+                                    <li>Follow facility staff instructions</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* ACTION BUTTONS */}
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null })}
+                                style={{
+                                    padding: '10px 24px',
+                                    borderRadius: 8,
+                                    border: '1.5px solid #E8D6CC',
+                                    background: '#fff',
+                                    color: '#1A0A00',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    fontSize: '0.9rem',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmApproval}
+                                style={{
+                                    padding: '10px 24px',
+                                    borderRadius: 8,
+                                    border: 'none',
+                                    background: '#28a745',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    fontSize: '0.9rem',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                ✓ Approve Booking
+                            </button>
                         </div>
                     </div>
                 </div>

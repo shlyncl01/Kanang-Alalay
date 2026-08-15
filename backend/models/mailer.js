@@ -202,20 +202,57 @@ const generateDonationTemplate = (donation) => `
 const generateBookingConfirmationTemplate = (booking) => `
 <div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
     <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #28a745; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-        <h2 style="color: #28a745; margin-top: 0;">Booking Confirmed!</h2>
+        <h2 style="color: #28a745; margin-top: 0;">✅ Booking Confirmed!</h2>
         <p style="color: #444; font-size: 16px;">Hi ${booking.name},</p>
         <p style="color: #444; font-size: 16px;">Great news! Your booking has been <strong>approved and confirmed</strong>. We look forward to welcoming you to Kanang-Alalay.</p>
         
-        <div style="background-color: #fff3ea; padding: 20px; border-radius: 6px; margin: 25px 0;">
-            <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString()}</p>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${booking.visitTime}</p>
-            <p style="margin: 5px 0;"><strong>Purpose:</strong> ${booking.purpose.toUpperCase()}</p>
-            <p style="margin: 5px 0;"><strong>Visitors:</strong> ${booking.numberOfVisitors} pax</p>
+        <!-- YOUR BOOKING DETAILS -->
+        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #28a745;">
+            <h3 style="color: #1e7d56; margin-top: 0; font-size: 16px;">📅 Your Visit Details</h3>
+            <p style="margin: 8px 0;"><strong>Date:</strong> ${new Date(booking.visitDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p style="margin: 8px 0;"><strong>Time Slot:</strong> ${booking.visitTime === '09:00' ? '9:00 AM - 11:00 AM' : '3:00 PM - 5:00 PM'}</p>
+            <p style="margin: 8px 0;"><strong>Purpose:</strong> ${booking.purpose.charAt(0).toUpperCase() + booking.purpose.slice(1).replace('_', ' ')}</p>
+            <p style="margin: 8px 0;"><strong>Number of Visitors:</strong> ${booking.numberOfVisitors} ${booking.numberOfVisitors > 1 ? 'people' : 'person'}</p>
         </div>
         
-        <p style="color: #666; font-size: 14px;">Please arrive on time for your scheduled visit. If you need to reschedule or have any questions, please contact us at least 24 hours in advance.</p>
-        <br/>
-        <p style="color: #444; margin: 0;">Best regards,</p>
+        <!-- FACILITY INFORMATION -->
+        <div style="background-color: #fff3e0; padding: 20px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #ff9800;">
+            <h3 style="color: #e65100; margin-top: 0; font-size: 16px;">🏛️ Facility Information</h3>
+            
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📍 Visiting Hours</p>
+            <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
+                <li style="margin: 4px 0;"><strong>Morning Slot:</strong> 9:00 AM - 11:00 AM</li>
+                <li style="margin: 4px 0;"><strong>Afternoon Slot:</strong> 3:00 PM - 5:00 PM</li>
+                <li style="margin: 4px 0;"><strong>Maximum capacity:</strong> 10 visitors per time slot</li>
+            </ul>
+            
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">⏰ Before Your Visit</p>
+            <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
+                <li style="margin: 4px 0;">Please <strong>arrive 10 minutes early</strong></li>
+                <li style="margin: 4px 0;">Bring a <strong>valid ID</strong></li>
+                <li style="margin: 4px 0;"><strong>No photography</strong> without permission from staff</li>
+            </ul>
+            
+            <p style="color: #1a0a00; font-weight: 600; margin: 15px 0 8px 0; font-size: 14px;">📋 Facility Guidelines</p>
+            <ul style="margin: 8px 0 15px 0; padding-left: 20px; color: #444; font-size: 14px;">
+                <li style="margin: 4px 0;">Respect the <strong>privacy and dignity</strong> of our residents</li>
+                <li style="margin: 4px 0;">Follow <strong>facility staff instructions</strong> at all times</li>
+                <li style="margin: 4px 0;">Maintain a <strong>quiet and calm</strong> demeanor</li>
+            </ul>
+        </div>
+        
+        <!-- IMPORTANT INFORMATION -->
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; margin: 25px 0;">
+            <p style="color: #666; font-size: 14px; margin: 0;">
+                <strong>Important:</strong> If you need to reschedule or cancel your booking, please contact us <strong>at least 24 hours in advance</strong>. This helps us serve other visitors and manage our facility resources efficiently.
+            </p>
+        </div>
+        
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">If you have any questions or concerns, please don't hesitate to reply to this email or contact us directly.</p>
+        
+        <hr style="margin: 30px 0; border-color: #eee;" />
+        
+        <p style="color: #444; margin: 0;">We look forward to seeing you!</p>
         <p style="color: #444; font-weight: bold; margin: 0;">Kanang-Alalay Admin Team</p>
     </div>
 </div>`;

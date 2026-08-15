@@ -217,7 +217,7 @@ const BookingCalendar = ({ bookings, onSelectBooking }) => {
     );
 };
 
-const BookingManagementTab = ({ bookings, updateBookingStatus, handleRejectWithReason, handleViewDetails, handleEditBooking, handleExportPDF }) => {
+const BookingManagementTab = ({ bookings, updateBookingStatus, handleRejectWithReason, handleApproveWithDetails, handleViewDetails, handleEditBooking, handleExportPDF }) => {
     const [search, setSearch]         = useState('');
     const [statusFilter, setStatus]   = useState('all');
     const [purposeFilter, setPurpose] = useState('All');
@@ -370,7 +370,7 @@ const BookingManagementTab = ({ bookings, updateBookingStatus, handleRejectWithR
                                             <td className="actions">
                                                 {booking.status === 'pending' && (
                                                     <>
-                                                        <button className="btn-success-sm" onClick={() => updateBookingStatus(booking._id, 'approved')} style={{ marginRight: '5px' }}>Approve</button>
+                                                        <button className="btn-success-sm" onClick={() => handleApproveWithDetails(booking._id)} style={{ marginRight: '5px' }}>Approve</button>
                                                         <button className="btn-outline-sm" onClick={() => handleRejectWithReason(booking._id)} style={{ color: '#dc3545', borderColor: '#dc3545' }}>Reject</button>
                                                     </>
                                                 )}
