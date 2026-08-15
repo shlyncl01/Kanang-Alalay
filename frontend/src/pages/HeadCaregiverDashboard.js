@@ -131,7 +131,7 @@ const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax
 // shown always matches what's on file.
 const DOSAGE_UNITS = [
     'Tablet', 'Film-Coated Tablet', 'Caplet', 'Delayed-Release Tablet',
-    'Delayed-Release Capsule', 'Enteric-Coated Tablet', 'Tablet / Injectable Ampule',
+    'Delayed-Release Capsule', 'Enteric-Coated Tablet',
     'Capsule', 'Syrup', 'Chewable Tablet', 'Liquid Gel Capsule',
     'Controlled-Release Tablet', 'Oral Solution',
 ];
@@ -1123,7 +1123,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal" style={hcModalStyle}>
+            <div className="registration-modal" style={{ ...hcModalStyle, maxWidth: 660 }}>
                 <HCHeader icon={<FaPlus />} title="Add Medication to Schedule" onClose={onClose} />
                 <div style={hcBodyStyle}>
                     <HCField label="Resident" required error={errs.residentId}>
@@ -1156,13 +1156,22 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                                     value={f.dosageAmount}
                                     onChange={e => setField('dosageAmount', e.target.value)}
                                     placeholder="1" />
-                                <select
-                                    style={{ ...hcInputStyle(errs.dosageUnit), flex: '1 1 65%' }}
-                                    value={f.dosageUnit}
-                                    onChange={e => setField('dosageUnit', e.target.value)}>
-                                    <option value="">Select unit…</option>
-                                    {DOSAGE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                                </select>
+                                <div
+                                    title="Detected automatically from the selected medication's form — not editable"
+                                    style={{
+                                        ...hcInputStyle(errs.dosageUnit),
+                                        flex: '1 1 65%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        background: '#F0EAE4',
+                                        color: f.dosageUnit ? '#1A0A00' : '#A38070',
+                                        cursor: 'not-allowed',
+                                    }}>
+                                    {f.dosageUnit || (f.medicationId ? 'Form not recognized — contact admin' : 'Select a medication first')}
+                                </div>
                             </div>
                         </HCField>
                     </div>
