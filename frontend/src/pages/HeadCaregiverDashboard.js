@@ -33,14 +33,14 @@ const STATUS_COLOR = {
     pending: '#E65100', scheduled: '#0277BD',
     upcoming: '#0277BD', overdue: '#C0392B',
     delayed: '#856404', missed: '#C0392B',
-    skipped: '#6B7280', alert: '#C0392B',
-    stable: '#1E7D56', active: '#1E7D56',
+    skipped: '#6B7280', alert: '#D94E1B',
+    critical: '#C0392B', stable: '#1E7D56', active: '#1E7D56',
 };
 const STATUS_LABEL = {
     completed: 'Completed', administered: 'Administered', pending: 'Pending',
     scheduled: 'Upcoming', upcoming: 'Upcoming', overdue: 'Overdue',
     delayed: 'Delayed', missed: 'Missed', skipped: 'Skipped',
-    alert: 'Alert', stable: 'Stable', active: 'Active',
+    alert: 'Alert', critical: 'Critical', stable: 'Stable', active: 'Active',
 };
 const getStatus = s => (s || 'pending').toLowerCase();
 

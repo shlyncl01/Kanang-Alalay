@@ -29,8 +29,9 @@
 .status-badge.upcoming     { background: #E8F4FD; color: #0277BD; }
 .status-badge.overdue,
 .status-badge.missed,
-.status-badge.alert        { background: #FFF0F0; color: #C0392B; }
+.status-badge.critical     { background: #FFF0F0; color: #C0392B; }
 .status-badge.delayed      { background: #FFF3CD; color: #856404; }
+.status-badge.alert        { background: var(--d-orange-lt); color: var(--d-orange-dk); }
 .status-badge.skipped      { background: #F3F4F6; color: #6B7280; }
 .status-badge.stable,
 .status-badge.active       { background: #EEFBF5; color: #1E7D56; }
@@ -508,6 +509,7 @@ textarea.form-input { resize: vertical; }
 .res-name-block .secondary   { font-size: .72rem; color: var(--d-muted); }
 
 .conditions-wrap    { display: flex; flex-wrap: wrap; gap: 4px; }
+.res-row-grid .conditions-wrap { padding-right: 14px; }
 .condition-tag      { background: var(--d-orange-lt); color: var(--d-orange-dk); font-size: .72rem; font-weight: 600; padding: 3px 9px; border-radius: 12px; }
 .no-conditions      { color: var(--d-muted); font-size: .8rem; }
 
