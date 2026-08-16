@@ -441,6 +441,22 @@ router.post('/side-effect', authMiddleware, async (req, res) => {
     }
 });
 
+// Get a single medication log's current status — used to check whether a
+// dose is still awaiting administration or already given, e.g. when a
+// caregiver taps an old notification and we need to route them to the right
+// screen (Administer Medication vs. Medication History) based on real state,
+// not just whether the notification itself was read.
+router.get('/log/:logId', authMiddleware, async (req, res) => {
+    try {
+        const log = await MedicationLog.findById(req.params.logId);
+        if (!log) return res.status(404).json({ success: false, message: 'Medication log not found' });
+        res.json({ success: true, data: log });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Server error fetching medication log' });
+    }
+});
+
 // Administer medication (with optional scanning)
 router.post('/administer/:logId', authMiddleware, async (req, res) => {
     try {
