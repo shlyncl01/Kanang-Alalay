@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const { protect } = require('../middleware/authMiddleware');
 const { processVoice, transcribeAudio } = require('../services/OpenAIService');
+const Resident = require('../models/Resident');
+const MedicationLog = require('../models/MedicationLog');
 
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -12,6 +14,52 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const upload = multer({ dest: uploadsDir });
+
+// Matches the same "caregivers only see their own residents" scoping used by
+// GET /api/residents/assigned, then finds the best name match among those
+// candidates — spoken/typed names won't line up with a database ID, and no
+// name-lookup existed anywhere in the backend before this.
+const findResidentByName = async (name, user) => {
+  if (!name) return null;
+  const isOverseer = ['admin', 'head_caregiver'].includes(user.role);
+  const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  const query = isOverseer
+    ? { status: 'active' }
+    : {
+        status: 'active',
+        $or: [
+          { primaryCaregiverId: user._id },
+          { primaryCaregiverName: userName },
+          { primaryCaregiver: userName },
+          { assignedNurse: userName },
+          { assignedCaregiver: userName },
+          { 'assignedStaff.primaryCaregiverId': user._id },
+          { 'assignedStaff.primaryCaregiverName': userName },
+          { 'assignedStaff.primaryCaregiver': userName },
+          { 'assignedStaff.assignedNurse': userName },
+          { 'assignedStaff.assignedCaregiver': userName },
+        ],
+      };
+
+  const residents = await Resident.find(query);
+  const q = name.toLowerCase().trim();
+
+  return (
+    residents.find((r) => {
+      const full = [r.firstName, r.middleName, r.lastName, r.nickname].filter(Boolean).join(' ').toLowerCase();
+      return full === q || full.includes(q) || q.includes(full);
+    }) ||
+    // Fallback: a spoken/typed name won't always line up word-for-word with
+    // firstName + middleName + lastName concatenated in that exact order, so
+    // this just checks the first and last name both appear somewhere in it.
+    residents.find((r) => {
+      const first = (r.firstName || '').toLowerCase();
+      const last = (r.lastName || '').toLowerCase();
+      return first && last && q.includes(first) && q.includes(last);
+    }) ||
+    null
+  );
+};
 
 router.post('/transcribe', protect, upload.single('audio'), async (req, res) => {
   try {
@@ -40,6 +88,60 @@ router.post('/respond', protect, async (req, res) => {
     }
 
     const parsed = await processVoice(message, language);
+
+    // "show" intent asks to look up a resident's info — processVoice only
+    // does NLU (intent + name extraction), it has no DB access, so this is
+    // where the extracted patient name actually gets resolved against real
+    // data and the response is rebuilt from it instead of the model's guess.
+    if (parsed.intent === 'show' && parsed.patient) {
+      const resident = await findResidentByName(parsed.patient, req.user);
+
+      if (!resident) {
+        parsed.response = language === 'Tagalog'
+          ? `Hindi ko mahanap si "${parsed.patient}" sa mga residenteng nakatalaga sa iyo.`
+          : `I couldn't find a resident named "${parsed.patient}" among your assigned residents.`;
+      } else {
+        const residentName = resident.fullName || `${resident.firstName} ${resident.lastName}`.trim();
+        const room = resident.room || resident.roomNumber
+          || (language === 'Tagalog' ? 'walang nakatalagang kuwarto' : 'no assigned room');
+        const conditionNames = (resident.medicalConditions || []).map((c) => c.name).filter(Boolean);
+        const conditions = conditionNames.length > 0
+          ? conditionNames.join(', ')
+          : (resident.conditions || []).join(', ')
+            || (language === 'Tagalog' ? 'walang nakatalang kondisyon' : 'no conditions on file');
+
+        const logs = await MedicationLog.find({
+          residentId: resident._id,
+          status: { $in: ['pending', 'overdue'] },
+        }).sort({ scheduledTime: 1 });
+
+        const formatTime = (log) => log.scheduledTime
+          ? new Date(log.scheduledTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })
+          : (log.nextDose || (language === 'Tagalog' ? 'hindi naka-iskedyul' : 'not scheduled'));
+
+        parsed.room = room;
+        parsed.symptom = conditions;
+
+        if (logs.length === 0) {
+          parsed.medication = null;
+          parsed.dosage = null;
+          parsed.time = null;
+          parsed.response = language === 'Tagalog'
+            ? `Si ${residentName} ay nasa ${room}. Walang kasalukuyang iskedyul ng gamot. Kilalang kondisyon: ${conditions}.`
+            : `${residentName} is in ${room}. No current medication is due. Known conditions: ${conditions}.`;
+        } else {
+          parsed.medication = logs.map((l) => l.medicationName).join(', ');
+          parsed.dosage = logs.map((l) => l.dosage).join(', ');
+          parsed.time = logs.map(formatTime).join(', ');
+
+          const medList = logs.map((l) => `${l.medicationName} (${l.dosage}) at ${formatTime(l)}`).join(', ');
+          parsed.response = language === 'Tagalog'
+            ? `Si ${residentName} ay nasa ${room}. Kasalukuyang gamot: ${medList}. Kilalang kondisyon: ${conditions}.`
+            : `${residentName} is in ${room}. Current medication: ${medList}. Known conditions: ${conditions}.`;
+        }
+      }
+    }
+
     res.json({ success: true, data: parsed });
   } catch (error) {
     console.error('Respond error:', error);
