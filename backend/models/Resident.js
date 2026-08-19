@@ -73,29 +73,6 @@ const residentSchema = new mongoose.Schema({
     },
 
     // ── Admission ─────────────────────────────────────────────────────────────
-    latestVitals: {
-        bloodPressure: { type: String, default: '' },
-        heartRate: { type: Number, default: null },
-        temperature: { type: Number, default: null },
-        oxygenSat: { type: Number, default: null },
-        weight: { type: Number, default: null },
-        notes: { type: String, default: '' },
-        loggedAt: { type: Date, default: null },
-        loggedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
-    },
-    vitalLogs: [
-        {
-            bloodPressure: { type: String, default: '' },
-            heartRate: { type: Number, default: null },
-            temperature: { type: Number, default: null },
-            oxygenSat: { type: Number, default: null },
-            weight: { type: Number, default: null },
-            notes: { type: String, default: '' },
-            loggedAt: { type: Date, default: Date.now },
-            loggedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-        }
-    ],
-
     admissionDate: { type: Date, default: Date.now },
     status: {
         type:    String,

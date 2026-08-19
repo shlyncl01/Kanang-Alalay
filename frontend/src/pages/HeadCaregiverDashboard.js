@@ -8,7 +8,7 @@ import {
     FaPlus, FaExclamationTriangle,
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
     FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV, FaTrashAlt,
-    FaExclamationCircle, FaHeartbeat, FaFileAlt,
+    FaExclamationCircle, FaFileAlt,
     FaBoxOpen, FaClock, FaFilter, FaBars,
     FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
 } from 'react-icons/fa';
@@ -751,94 +751,6 @@ const DeleteMedicationModal = ({ log, onClose, onSaved, doFetch, toast }) => {
                         style={{ ...hcSaveBtn(saving), background: saving ? undefined : '#C0392B' }}
                     >
                         {saving ? 'Deleting…' : 'Confirm Delete'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const VitalsModal = ({ resident, onClose, onSaved, doFetch, toast }) => {
-    const [f, setF] = useState({ bloodPressure: '', heartRate: '', temperature: '', oxygenSat: '', weight: '', notes: '' });
-    const [saving, setSaving] = useState(false);
-    const [vitalsErr, setVitalsErr] = useState('');
-    const setField = (k, v) => setF(p => ({ ...p, [k]: v }));
-
-    const submit = async () => {
-        const hasSome = f.bloodPressure.trim() || f.heartRate.trim() || f.temperature.trim() || f.oxygenSat.trim() || f.weight.trim();
-        if (!hasSome) { setVitalsErr('Please fill in at least one vital sign before saving.'); return; }
-        if (f.bloodPressure && !/^\d{2,3}\/\d{2,3}$/.test(f.bloodPressure.trim())) {
-            setVitalsErr('Blood pressure must be in format 120/80.'); return;
-        }
-        if (f.bloodPressure) {
-            const [systolic, diastolic] = f.bloodPressure.trim().split('/').map(Number);
-            if (systolic < 60 || systolic > 250) { setVitalsErr('Systolic blood pressure must be between 60-250.'); return; }
-            if (diastolic < 30 || diastolic > 150) { setVitalsErr('Diastolic blood pressure must be between 30-150.'); return; }
-            if (systolic <= diastolic) { setVitalsErr('Systolic blood pressure must be higher than diastolic.'); return; }
-        }
-        if (f.heartRate && (+f.heartRate < 20 || +f.heartRate > 300)) { setVitalsErr('Heart rate must be between 20–300 bpm.'); return; }
-        if (f.temperature && (+f.temperature < 30 || +f.temperature > 45)) { setVitalsErr('Temperature must be between 30–45 °C.'); return; }
-        if (f.oxygenSat && (+f.oxygenSat < 50 || +f.oxygenSat > 100)) { setVitalsErr('Oxygen saturation must be between 50–100%.'); return; }
-        if (f.weight && (+f.weight < 1 || +f.weight > 300)) { setVitalsErr('Weight must be between 1-300 kg.'); return; }
-        if (f.notes.length > 500) { setVitalsErr('Notes must be 500 characters or fewer.'); return; }
-        setVitalsErr('');
-        setSaving(true);
-        const payload = {
-            bloodPressure: f.bloodPressure.trim(),
-            heartRate: f.heartRate.trim(),
-            temperature: f.temperature.trim(),
-            oxygenSat: f.oxygenSat.trim(),
-            weight: f.weight.trim(),
-            notes: f.notes.trim(),
-        };
-        const r = await doFetch(`/head-caregiver/residents/${resident._id}/vitals`, { method: 'POST', body: JSON.stringify(payload) });
-        setSaving(false);
-        if (r.success) { toast('Vitals logged for ' + (resident.name || resident.firstName || 'resident') + '.'); if (onSaved) onSaved(r.data); onClose(); }
-        else toast(r.message || 'Failed.', 'error');
-    };
-
-    const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'Resident';
-
-    return (
-        <div className="modal-overlay">
-            <div className="registration-modal" style={hcModalStyle}>
-                <HCHeader icon={<FaHeartbeat />} title={`Log Vital Signs — ${resName}`} onClose={onClose} />
-                <div style={hcBodyStyle}>
-                    {vitalsErr && (
-                        <div className="validation-banner">
-                            <FaExclamationTriangle /> {vitalsErr}
-                        </div>
-                    )}
-                    <div style={hcGrid2}>
-                        <HCField label="Blood Pressure (mmHg)">
-                            <input style={hcInputStyle(false)} value={f.bloodPressure} placeholder="e.g. 120/80" inputMode="numeric" maxLength="7"
-                                onChange={e => {
-                                    let val = e.target.value.replace(/[^0-9/]/g, '');
-                                    if (val.length === 3 && !val.includes('/')) { val = val + '/'; }
-                                    setField('bloodPressure', val.slice(0, 7));
-                                }} />
-                        </HCField>
-                        <HCField label="Heart Rate (bpm)">
-                            <input type="number" min="20" max="300" style={hcInputStyle(false)} value={f.heartRate} onChange={e => setField('heartRate', e.target.value)} placeholder="e.g. 72" />
-                        </HCField>
-                        <HCField label="Temperature (°C)">
-                            <input type="number" min="30" max="45" step="0.1" style={hcInputStyle(false)} value={f.temperature} onChange={e => setField('temperature', e.target.value)} placeholder="e.g. 36.5" />
-                        </HCField>
-                        <HCField label="Oxygen Saturation (%)">
-                            <input type="number" min="50" max="100" style={hcInputStyle(false)} value={f.oxygenSat} onChange={e => setField('oxygenSat', e.target.value)} placeholder="e.g. 98" />
-                        </HCField>
-                        <HCField label="Weight (kg)">
-                            <input type="number" min="1" max="300" step="0.1" style={hcInputStyle(false)} value={f.weight} onChange={e => setField('weight', e.target.value)} placeholder="e.g. 55" />
-                        </HCField>
-                    </div>
-                    <HCField label="Notes">
-                        <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), minHeight: 70, resize: 'vertical' }} value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Observations or remarks…" />
-                    </HCField>
-                </div>
-                <div style={hcFooter}>
-                    <button onClick={onClose} type="button" disabled={saving} style={hcCancelBtn(saving)}>Cancel</button>
-                    <button onClick={submit} type="button" disabled={saving} style={hcSaveBtn(saving)}>
-                        {saving ? 'Saving…' : '✓ Save Vitals'}
                     </button>
                 </div>
             </div>
@@ -1720,7 +1632,6 @@ const HeadCaregiverDashboard = () => {
                         {[
                             { icon: <FaPlus />, label: 'Add Medication', action: () => setModal({ type: 'addSchedule' }) },
                             { icon: <FaUsers />, label: 'Add Resident', action: () => setModal({ type: 'addResident' }) },
-                            { icon: <FaHeartbeat />, label: 'Log Vitals', action: () => setSection('residents') },
                             { icon: <FaBoxOpen />, label: 'Request Stock', action: () => setModal({ type: 'requestStock' }) },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
                             { icon: <FaSync />, label: 'Refresh Data', action: handleRefresh },
@@ -1837,13 +1748,6 @@ const HeadCaregiverDashboard = () => {
                                                 title="View Profile"
                                             >
                                                 <FaEye />
-                                            </button>
-                                            <button
-                                                className="res-action-icon"
-                                                onClick={() => setModal({type:'vitals',data:r})}
-                                                title="Log Vitals"
-                                            >
-                                                <FaHeartbeat />
                                             </button>
                                             <button
                                                 className="res-action-icon"
@@ -2228,7 +2132,6 @@ const HeadCaregiverDashboard = () => {
                 toast={toast}
                 onSaved={updated => { setResidents(p => p.map(r => r._id === updated._id ? updated : r)); loadAll(); }}
             />}
-            {modal?.type === 'vitals' && <VitalsModal onClose={() => setModal(null)} onSaved={loadAll} resident={modal.data} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'history' && <HistoryModal onClose={() => setModal(null)} resident={modal.data} doFetch={doFetch} />}
             {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, l]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}

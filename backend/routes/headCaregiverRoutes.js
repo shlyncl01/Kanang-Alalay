@@ -5,7 +5,6 @@ const Resident = require('../models/Resident');
 const Medication = require('../models/Medication');
 const MedicationLog = require('../models/MedicationLog');
 const Inventory = require('../models/Inventory');
-const VitalsLog = require('../models/VitalsLog');
 const StockRequest = require('../models/StockRequest');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
@@ -52,8 +51,6 @@ function shapeResident(r) {
         primaryCaregiverId: r.primaryCaregiverId,
         assignedCaregiver: r.assignedCaregiver || r.assignedStaff?.assignedCaregiver || '',
         assignedStaff: r.assignedStaff || {},
-        latestVitals: r.latestVitals || null,
-        vitalLogs: r.vitalLogs || [],
         status: r.status,
         admissionDate: r.admissionDate || null,
         discharge: r.discharge || null,
@@ -85,54 +82,6 @@ function shapeLog(l) {
         notes: l.notes || '',
         verificationMethod: l.verificationMethod,
     };
-}
-
-function parseVitalNumber(value, label, min, max, errors) {
-    if (value === undefined || value === null) return null;
-    const normalized = String(value).trim();
-    if (normalized === '') return null;
-    const number = Number(normalized);
-    if (!Number.isFinite(number)) {
-        errors.push(`${label} must be a number.`);
-        return null;
-    }
-    if (number < min || number > max) {
-        errors.push(`${label} must be between ${min} and ${max}.`);
-        return null;
-    }
-    return number;
-}
-
-function validateVitalsInput(body) {
-    const errors = [];
-    const bloodPressure = String(body.bloodPressure || '').trim();
-    const notes = String(body.notes || '').trim();
-
-    if (bloodPressure) {
-        if (!/^\d{2,3}\/\d{2,3}$/.test(bloodPressure)) {
-            errors.push('Blood pressure must be in format 120/80.');
-        } else {
-            const [systolic, diastolic] = bloodPressure.split('/').map(Number);
-            if (systolic < 60 || systolic > 250) errors.push('Systolic blood pressure must be between 60 and 250.');
-            if (diastolic < 30 || diastolic > 150) errors.push('Diastolic blood pressure must be between 30 and 150.');
-            if (systolic <= diastolic) errors.push('Systolic blood pressure must be higher than diastolic.');
-        }
-    }
-
-    const vitals = {
-        bloodPressure,
-        heartRate: parseVitalNumber(body.heartRate, 'Heart rate', 20, 300, errors),
-        temperature: parseVitalNumber(body.temperature, 'Temperature', 30, 45, errors),
-        oxygenSat: parseVitalNumber(body.oxygenSat, 'Oxygen saturation', 50, 100, errors),
-        weight: parseVitalNumber(body.weight, 'Weight', 1, 300, errors),
-        notes,
-    };
-
-    if (notes.length > 500) errors.push('Notes must be 500 characters or fewer.');
-    const hasAnyVital = bloodPressure || vitals.heartRate !== null || vitals.temperature !== null || vitals.oxygenSat !== null || vitals.weight !== null;
-    if (!hasAnyVital) errors.push('Please provide at least one vital sign.');
-
-    return { errors, vitals };
 }
 
 function escapeRegex(value) {
@@ -555,7 +504,7 @@ router.get('/residents/discharged', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// LOG VITAL SIGNS
+// ASSIGN CAREGIVER
 // ─────────────────────────────────────────────────────────────
 async function assignCaregiverToResident(req, res) {
     try {
@@ -616,61 +565,6 @@ async function assignCaregiverToResident(req, res) {
 
 router.patch('/residents/:id/assign-caregiver', assignCaregiverToResident);
 router.put('/residents/:id/assign-caregiver', assignCaregiverToResident);
-
-router.post('/residents/:id/vitals', async (req, res) => {
-    try {
-        const resident = await Resident.findById(req.params.id);
-        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
-
-        const { errors, vitals: cleanVitals } = validateVitalsInput(req.body || {});
-        if (errors.length) {
-            return res.status(400).json({ success: false, message: errors[0], errors });
-        }
-
-        const vitals = new VitalsLog({
-            residentId: req.params.id,
-            loggedBy: req.user._id,
-            ...cleanVitals,
-        });
-        await vitals.save();
-
-        const vitalSnapshot = {
-            ...cleanVitals,
-            loggedAt: vitals.createdAt || new Date(),
-            loggedBy: req.user._id,
-        };
-        resident.latestVitals = vitalSnapshot;
-        resident.vitalLogs = resident.vitalLogs || [];
-        resident.vitalLogs.push(vitalSnapshot);
-
-        let alertLevel = resident.alertLevel || 'stable';
-        const { heartRate, temperature, oxygenSat } = cleanVitals;
-        if ((temperature !== null && temperature > 38.5) || (heartRate !== null && heartRate > 100) || (oxygenSat !== null && oxygenSat < 94)) {
-            alertLevel = 'alert';
-        }
-        if ((temperature !== null && temperature > 39.5) || (heartRate !== null && heartRate > 120) || (oxygenSat !== null && oxygenSat < 90)) {
-            alertLevel = 'critical';
-        }
-        resident.alertLevel = alertLevel;
-        await resident.save();
-
-        res.status(201).json({ success: true, data: vitals });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
-// GET VITALS HISTORY
-// ─────────────────────────────────────────────────────────────
-router.get('/residents/:id/vitals', async (req, res) => {
-    try {
-        const vitals = await VitalsLog.find({ residentId: req.params.id })
-            .sort({ createdAt: -1 })
-            .limit(20);
-        res.json({ success: true, data: vitals });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
 
 // ─────────────────────────────────────────────────────────────
 // GET MEDICATIONS
