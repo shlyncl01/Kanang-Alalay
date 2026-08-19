@@ -104,6 +104,9 @@ router.post('/respond', protect, async (req, res) => {
         const residentName = resident.fullName || `${resident.firstName} ${resident.lastName}`.trim();
         const room = resident.room || resident.roomNumber
           || (language === 'Tagalog' ? 'walang nakatalagang kuwarto' : 'no assigned room');
+        const floor = resident.floor || (language === 'Tagalog' ? 'hindi tiyak' : 'not on file');
+        const bed = resident.bed || (language === 'Tagalog' ? 'hindi tiyak' : 'not on file');
+        const location = `${room}, ${floor}, Bed ${bed}`;
         const conditionNames = (resident.medicalConditions || []).map((c) => c.name).filter(Boolean);
         const conditions = conditionNames.length > 0
           ? conditionNames.join(', ')
@@ -120,6 +123,8 @@ router.post('/respond', protect, async (req, res) => {
           : (log.nextDose || (language === 'Tagalog' ? 'hindi naka-iskedyul' : 'not scheduled'));
 
         parsed.room = room;
+        parsed.floor = floor;
+        parsed.bed = bed;
         parsed.symptom = conditions;
 
         if (logs.length === 0) {
@@ -127,8 +132,8 @@ router.post('/respond', protect, async (req, res) => {
           parsed.dosage = null;
           parsed.time = null;
           parsed.response = language === 'Tagalog'
-            ? `Si ${residentName} ay nasa ${room}. Walang kasalukuyang iskedyul ng gamot. Kilalang kondisyon: ${conditions}.`
-            : `${residentName} is in ${room}. No current medication is due. Known conditions: ${conditions}.`;
+            ? `Si ${residentName} ay nasa ${location}. Walang kasalukuyang iskedyul ng gamot. Kilalang kondisyon: ${conditions}.`
+            : `${residentName} is in ${location}. No current medication is due. Known conditions: ${conditions}.`;
         } else {
           parsed.medication = logs.map((l) => l.medicationName).join(', ');
           parsed.dosage = logs.map((l) => l.dosage).join(', ');
@@ -136,8 +141,8 @@ router.post('/respond', protect, async (req, res) => {
 
           const medList = logs.map((l) => `${l.medicationName} (${l.dosage}) at ${formatTime(l)}`).join(', ');
           parsed.response = language === 'Tagalog'
-            ? `Si ${residentName} ay nasa ${room}. Kasalukuyang gamot: ${medList}. Kilalang kondisyon: ${conditions}.`
-            : `${residentName} is in ${room}. Current medication: ${medList}. Known conditions: ${conditions}.`;
+            ? `Si ${residentName} ay nasa ${location}. Kasalukuyang gamot: ${medList}. Kilalang kondisyon: ${conditions}.`
+            : `${residentName} is in ${location}. Current medication: ${medList}. Known conditions: ${conditions}.`;
         }
       }
     }
