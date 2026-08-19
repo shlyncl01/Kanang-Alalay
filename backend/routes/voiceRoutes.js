@@ -147,6 +147,58 @@ router.post('/respond', protect, async (req, res) => {
       }
     }
 
+    // "administer" (please give this now) and "confirm" (I already gave it)
+    // both end in the same real action — marking a dose administered — so
+    // both go through the same lookup here. Neither writes anything yet:
+    // this only finds the matching scheduled dose and asks the caregiver to
+    // say "confirm" before anything is actually recorded. The mobile app
+    // auto-opens the mic right after speaking this question, listens for the
+    // spoken confirm/cancel, and calls the existing
+    // POST /medications/administer/:logId route itself if confirmed — this
+    // route only ever describes the pending dose, it never marks it given.
+    if ((parsed.intent === 'administer' || parsed.intent === 'confirm') && parsed.patient) {
+      const resident = await findResidentByName(parsed.patient, req.user);
+
+      if (!resident) {
+        parsed.response = language === 'Tagalog'
+          ? `Hindi ko mahanap si "${parsed.patient}" sa mga residenteng nakatalaga sa iyo.`
+          : `I couldn't find a resident named "${parsed.patient}" among your assigned residents.`;
+      } else {
+        const residentName = resident.fullName || `${resident.firstName} ${resident.lastName}`.trim();
+
+        let logs = await MedicationLog.find({
+          residentId: resident._id,
+          status: { $in: ['pending', 'overdue'] },
+        }).sort({ scheduledTime: 1 });
+
+        if (parsed.medication) {
+          const medQuery = parsed.medication.toLowerCase();
+          const filtered = logs.filter((l) => (l.medicationName || '').toLowerCase().includes(medQuery));
+          if (filtered.length > 0) logs = filtered;
+        }
+
+        const log = logs[0];
+
+        if (!log) {
+          parsed.response = language === 'Tagalog'
+            ? `Walang kasalukuyang gamot na hinihintay para kay ${residentName}.`
+            : `There's no medication currently due for ${residentName}.`;
+        } else {
+          const timeStr = log.scheduledTime
+            ? new Date(log.scheduledTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })
+            : (log.nextDose || (language === 'Tagalog' ? 'hindi naka-iskedyul' : 'not scheduled'));
+
+          parsed.medication = log.medicationName;
+          parsed.dosage = log.dosage;
+          parsed.time = timeStr;
+          parsed.pendingLogId = String(log._id);
+          parsed.response = language === 'Tagalog'
+            ? `Nakita ko: ${log.medicationName} (${log.dosage}) para kay ${residentName}, naka-iskedyul ${timeStr}. Sabihin ang "confirm" para itala bilang naibigay.`
+            : `Found ${log.medicationName} (${log.dosage}) for ${residentName}, scheduled ${timeStr}. Say "confirm" to mark it as administered.`;
+        }
+      }
+    }
+
     res.json({ success: true, data: parsed });
   } catch (error) {
     console.error('Respond error:', error);
