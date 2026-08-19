@@ -6,7 +6,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const processVoice = async (text, language = 'English') => {
   const languageInstruction = language === 'Tagalog'
     ? 'Respond in natural, conversational Tagalog (Filipino) appropriate for a Filipino care home setting. Keep medication/drug names and dosage units in their original form (do not translate them).'
-    : 'Respond in English.';
+    : 'Respond in English only. Do not add a Tagalog translation or restate any part of the response in Tagalog, even if the topic feels like it would suit a bilingual Filipino care home audience.';
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4.1-mini',
