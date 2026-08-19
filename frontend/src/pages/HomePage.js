@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { HIDDEN_LOGIN_PATH } from '../config/hiddenRoute';
 import { Container, Row, Col, Button, Card, Carousel } from 'react-bootstrap';
 import {
   FaHome,
@@ -79,9 +80,8 @@ const HomePage = () => {
       setKeySequence(newSequence);
 
       if (newSequence.join('') === secretCode.join('')) {
-        setShowStaffLogin(true);
-        console.log('Staff login revealed!');
         setKeySequence([]);
+        setShowStaffLogin(true);
       }
     };
 
@@ -243,7 +243,7 @@ const HomePage = () => {
             </Link>
 
             {showStaffLogin && (
-              <Link to="/login">
+              <Link to={HIDDEN_LOGIN_PATH}>
                 <Button variant="primary" size="lg">
                   Staff Login
                 </Button>
@@ -619,7 +619,7 @@ const HomePage = () => {
               {/* Staff Login link also hidden */}
               {showStaffLogin && (
                 <>
-                  <Link to="/login">Staff Login</Link><br />
+                  <Link to={HIDDEN_LOGIN_PATH}>Staff Login</Link><br />
                 </>
               )}
             </Col>
