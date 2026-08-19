@@ -29,13 +29,14 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
     // Use isAuthenticated instead of just checking user
     if (!isAuthenticated || !user) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/" replace />;
     }
 
     if (!WEB_ALLOWED_ROLES.includes(user.role)) {
-        // Caregiver or other mobile-only roles — send back to login with a flag
-        // so the login page can display the correct 'web access not available' banner
-        return <Navigate to="/login" state={{ blockedStatus: 'role_blocked' }} replace />;
+        // Caregiver or other mobile-only roles — send back home. (The old
+        // "/login" redirect no longer renders a login form, so there's no
+        // page left to show the 'role_blocked' banner on via this path.)
+        return <Navigate to="/" replace />;
     }
 
     if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {

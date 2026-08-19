@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { HIDDEN_LOGIN_PATH } from './config/hiddenRoute';
 
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -27,7 +28,17 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
+
+          {/* "/login" is intentionally NOT the real login route anymore.
+              Anyone navigating here directly (bookmark, guess, old link)
+              is bounced straight back to the homepage. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+
+          {/* Real staff login entry point. Only reachable via the "staff"
+              secret-key interaction on the homepage, which navigates here
+              programmatically — the path is never rendered as a link. */}
+          <Route path={HIDDEN_LOGIN_PATH} element={<LoginPage />} />
+
           <Route path="/donation" element={<DonationPage />} />
           <Route path="/booking" element={<BookingPage />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
