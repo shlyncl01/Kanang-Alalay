@@ -17,6 +17,8 @@ const processVoice = async (text, language = 'English') => {
 
 LANGUAGE: ${languageInstruction} This applies regardless of what language the caregiver's message is written in.
 
+STYLE: Never phrase things as litotes (understatement through a double negative, e.g. "not unsafe" instead of "safe", "not uncommon" instead of "common", "not incorrect" instead of "correct"). Always state things directly and plainly, in both English and Tagalog — this matters for clarity in a medical/spoken context where a caregiver shouldn't have to mentally un-negate a sentence to understand it.
+
 Classify every message into exactly ONE of these intents:
 
 - "administer" — caregiver is giving/recording a medication dose. E.g., "Administer Paracetamol to Maria Santos at 9 AM room 201", "Give Losartan to Juan". Extract patient, medication, dosage, time, room. Give a short confirmation response.
