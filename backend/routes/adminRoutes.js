@@ -6,6 +6,8 @@ const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Donation = require('../models/Donation');
 const Inventory = require('../models/Inventory');
+const Product = require('../models/Product');
+const { findOrCreateProduct, getNextBatchNumber } = require('../utils/inventoryProductService');
 const RegistrationCode = require('../models/VerificationCode');
 const StockRequest = require('../models/StockRequest');
 const VitalsLog = require('../models/VitalsLog');
@@ -873,30 +875,46 @@ router.get('/inventory', async (req, res) => {
 
 router.post('/inventory', async (req, res) => {
     try {
-        const { name, quantity, unit, category, minThreshold, expirationDate, notes } = req.body;
+        const { name, quantity, unit, category, minThreshold, expirationDate, notes, supplier } = req.body;
 
-        if (!name) {
+        if (!name || !name.trim()) {
             return res.status(400).json({
                 success: false,
                 message: 'Item name is required.'
             });
         }
 
-        const existingItem = await Inventory.findOne({ name: name.trim() });
-        if (existingItem) {
-            return res.status(400).json({
-                success: false,
-                message: 'An item with this name already exists.'
-            });
-        }
-
-        const item = new Inventory({
-            name: name.trim(),
-            quantity: quantity || 0,
-            unit: unit || 'pcs',
+        // ── Product + Batch ──────────────────────────────────────────
+        // Every "Add Inventory" is now a BATCH belonging to a PRODUCT.
+        // Products are never seeded/hardcoded — find-or-create dynamically
+        // here, on whatever name the Admin types. Name matching is done on
+        // a normalized (trimmed, whitespace-collapsed, lowercased) form so
+        // "Skyflakes" / "skyflakes " / "SKYFLAKES" all resolve to the same
+        // product, while "Skyflakes" and "Skyflakes Chocolate" stay separate.
+        const { product } = await findOrCreateProduct(Product, {
+            name,
             category: category || 'General',
-            minThreshold: minThreshold || 10,
+            unit: unit || 'pcs',
+            minimumStockLevel: minThreshold,
+        });
+
+        const batchNumber = await getNextBatchNumber(Inventory, product._id);
+
+        // The batch keeps its own copy of name/category/unit/minThreshold
+        // (mirrored from the product) so every existing query, the
+        // Inventory table, low-stock counts, etc. keep working exactly as
+        // before without needing to know about Product yet. Batch-specific
+        // details (quantity, expiration, supplier) are per-batch.
+        const item = new Inventory({
+            productId: product._id,
+            name: product.name,
+            batchNumber,
+            quantity: quantity || 0,
+            unit: product.unit,
+            category: product.category,
+            minThreshold: product.minimumStockLevel,
             expirationDate: expirationDate || null,
+            supplier: supplier || undefined,
             notes: notes || ''
         });
 
@@ -919,8 +937,22 @@ router.post('/inventory', async (req, res) => {
 
 router.put('/inventory/:id', async (req, res) => {
     try {
-        const updates = req.body;
-        
+        const updates = { ...req.body };
+
+        // If the batch's name is being edited, re-resolve which Product it
+        // belongs to (same normalized-name matching used on create) instead
+        // of leaving it pointed at the old product or left unlinked.
+        if (updates.name && updates.name.trim()) {
+            const { product } = await findOrCreateProduct(Product, {
+                name: updates.name,
+                category: updates.category,
+                unit: updates.unit,
+                minimumStockLevel: updates.minThreshold,
+            });
+            updates.productId = product._id;
+            updates.name = product.name;
+        }
+
         const item = await Inventory.findByIdAndUpdate(
             req.params.id,
             { $set: updates },

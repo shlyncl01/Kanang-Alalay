@@ -2,6 +2,17 @@ const mongoose = require('mongoose');
 
 const inventorySchema = new mongoose.Schema(
   {
+    // ── NEW: links this batch to its Product ─────────────────────────
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      index: true,
+      // Not `required: true` at the schema level on purpose: existing
+      // documents created before this change won't have it until the
+      // migration script (scripts/migrateInventoryToProducts.js) runs.
+      // All NEW documents created through the routes always set it.
+    },
+
     itemId: { 
       type: String, 
       required: true, 
@@ -48,6 +59,14 @@ const inventorySchema = new mongoose.Schema(
 
     dateOfManufacture: { type: Date },
     dateOfPurchase: { type: Date },
+
+    // ── NEW: was already being sent by AddInventoryModal.js but the
+    // schema had nowhere to put it, so it was silently dropped. Adding it
+    // here doesn't change any existing behavior, it just stops losing data.
+    supplier: {
+      type: String,
+      trim: true,
+    },
 
     category: {
       type: String,
