@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -43,19 +43,39 @@ const HelpCenter = () => {
     const { user } = useAuth();
     const navigate  = useNavigate();
     const [openIdx, setOpenIdx] = useState({});
+    const faqRef = useRef(null);
 
     const toggle = (si, qi) => {
         const key = `${si}-${qi}`;
         setOpenIdx(p => ({ ...p, [key]: !p[key] }));
     };
 
+    // "Read Guides" has no dedicated documentation page to route to — the FAQ
+    // section below IS the system's guide content, so this scrolls the user
+    // straight to it instead of pointing at a placeholder external link.
+    const scrollToFaq = () => {
+        faqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setOpenIdx(p => ({ ...p, '0-0': true, '0-1': true, '0-2': true }));
+    };
+
+    // Where each quick-link should land depends on role: admin-only sections live on
+    // the Admin Dashboard, resident/medication sections live on the Head Caregiver
+    // Dashboard. We deep-link with router state ({ section }) and each dashboard
+    // reads it on mount to pre-select the right tab.
+    const isAdmin = user?.role === 'admin';
+    const dashboardPath = isAdmin ? '/admin' : '/head-caregiver';
+
+    const goToSection = (path, section) => {
+        navigate(path, { state: { section } });
+    };
+
     const QUICK_LINKS = [
-        { icon:<FaUserShield />,    label:'Personnel',   action:'Go to Admin → Personnel Management' },
-        { icon:<FaUsers />,         label:'Residents',   action:'Go to Nurse Dashboard → Residents tab' },
-        { icon:<FaPills />,         label:'Medicines',   action:'Go to Nurse Dashboard → Medicines tab' },
-        { icon:<FaCalendarCheck />, label:'Bookings',    action:'Go to Admin Dashboard → Booking Management' },
-        { icon:<FaBoxOpen />,       label:'Inventory',   action:'Go to Admin Dashboard → Inventory' },
-        { icon:<FaChartBar />,      label:'Reports',     action:'Go to Admin Dashboard → Reports' },
+        { icon:<FaUserShield />,    label:'Personnel',   action:'Go to Admin → Personnel Management', onClick:() => goToSection('/admin', 'staff') },
+        { icon:<FaUsers />,         label:'Residents',   action:'Go to Head Caregiver Dashboard → Residents', onClick:() => goToSection('/head-caregiver', 'residents') },
+        { icon:<FaPills />,         label:'Medicines',   action:'Go to Head Caregiver Dashboard → Medicines', onClick:() => goToSection('/head-caregiver', 'medicines') },
+        { icon:<FaCalendarCheck />, label:'Bookings',    action:'Go to Admin Dashboard → Booking Management', onClick:() => goToSection('/admin', 'booking') },
+        { icon:<FaBoxOpen />,       label:'Inventory',   action:'Go to Admin Dashboard → Inventory', onClick:() => goToSection('/admin', 'inventory') },
+        { icon:<FaChartBar />,      label:'Reports',     action:'Go to Admin Dashboard → Reports', onClick:() => goToSection('/admin', 'overview') },
     ];
 
     return (
@@ -78,18 +98,24 @@ const HelpCenter = () => {
                 {/* Quick links */}
                 <div className="help-quick-links">
                     {QUICK_LINKS.map(l => (
-                        <div key={l.label} className="quick-link-chip">
+                        <button
+                            key={l.label}
+                            type="button"
+                            className="quick-link-chip"
+                            onClick={l.onClick}
+                            style={{ cursor: 'pointer', textAlign: 'left', font: 'inherit', width: '100%' }}
+                        >
                             <span className="quick-link-icon">{l.icon}</span>
                             <div>
                                 <div className="quick-link-label">{l.label}</div>
                                 <div className="quick-link-action">{l.action}</div>
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
 
                 {/* FAQ */}
-                <div className="help-faq-section">
+                <div className="help-faq-section" ref={faqRef}>
                     <h3 className="help-section-title">Frequently Asked Questions</h3>
                     {FAQ_DATA.map((section, si) => (
                         <div key={si} className="faq-section">
@@ -116,7 +142,7 @@ const HelpCenter = () => {
                         <div className="support-icon-wrapper"><FaBook /></div>
                         <h3>System Documentation</h3>
                         <p>Learn how to navigate the dashboard, manage residents, and handle bookings.</p>
-                        <button className="outline-btn" onClick={() => window.open('https://docs.google.com', '_blank')}>
+                        <button className="outline-btn" onClick={scrollToFaq}>
                             Read Guides
                         </button>
                     </div>

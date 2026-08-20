@@ -910,11 +910,22 @@ router.put('/change-password', protect, async (req, res) => {
 });
 
 // ── Update phone ──────────────────────────────────────────────────────────────
+const PH_MOBILE_REGEX = /^(?:\+63|0)9\d{9}$/;
+
 router.put('/update-phone', protect, async (req, res) => {
     try {
         const { phone } = req.body;
-        await User.findByIdAndUpdate(req.user._id, { phone: phone || '' });
-        res.json({ success: true, message: 'Contact number updated.' });
+        const trimmed = (phone || '').trim();
+
+        if (!trimmed)
+            return res.status(400).json({ success: false, message: 'Contact number is required.' });
+
+        const normalized = trimmed.replace(/[\s\-()]/g, '');
+        if (!PH_MOBILE_REGEX.test(normalized))
+            return res.status(400).json({ success: false, message: 'Please enter a valid Philippine mobile number.' });
+
+        await User.findByIdAndUpdate(req.user._id, { phone: trimmed });
+        res.json({ success: true, message: 'Contact number updated successfully.' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error: ' + err.message });
     }

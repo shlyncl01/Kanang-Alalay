@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
     FaUserCircle, FaSearch, FaHome, FaUsers, FaPills,
     FaQrcode, FaSignOutAlt, FaChevronDown,
@@ -1254,9 +1254,10 @@ const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule, onDelete }
 const HeadCaregiverDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const doFetch = useFetch();
 
-    const [activeSection, setSection] = useState('home');
+    const [activeSection, setSection] = useState(location.state?.section || 'home');
     const [searchQuery, setSearch] = useState('');
     const [accountMenuOpen, setAcctMenu] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1378,6 +1379,17 @@ const HeadCaregiverDashboard = () => {
         setActiveMedsPage(1);
         setInvPage(1);
     }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort]);
+
+    // Re-apply a deep-linked section if we navigate here again while already mounted
+    // (e.g. clicking a Help Center Quick Navigation card while already on /head-caregiver).
+    useEffect(() => {
+        if (location.state?.section) {
+            setSection(location.state.section);
+            // Clear the state so a manual refresh doesn't keep forcing this tab.
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.state?.section]);
 
     const handleRefresh = async () => {
         setRefreshing(true);

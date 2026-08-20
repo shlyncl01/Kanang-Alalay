@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaShieldAlt, FaEye, FaEyeSlash,
@@ -16,6 +16,15 @@ const API_BASE_URL =
 const AccountSettings = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // If we arrived here via a normal in-app navigation (e.g. Profile → Edit
+    // Settings) there's a history entry to go back to; if this page was
+    // opened directly (e.g. refreshed, or deep link), fall back to Profile.
+    const goBackOrProfile = () => {
+        if (location.key !== 'default') navigate(-1);
+        else navigate('/profile');
+    };
 
     // Password form
     const [pw, setPw]       = useState({ current:'', newPw:'', confirm:'' });
@@ -50,11 +59,13 @@ const AccountSettings = () => {
     const handlePasswordSave = async (e) => {
         e.preventDefault();
         const errs = {};
-        if (!pw.current.trim())    errs.current = 'Current password is required.';
-        if (!pw.newPw.trim())      errs.newPw   = 'New password is required.';
-        else if (pw.newPw.length < 8) errs.newPw = 'Password must be at least 8 characters.';
-        if (pw.newPw !== pw.confirm)  errs.confirm = 'Passwords do not match.';
-        if (pw.newPw === pw.current)  errs.newPw = 'New password must be different from current password.';
+        if (!pw.current.trim())        errs.current = 'Current password is required.';
+        if (!pw.newPw.trim())          errs.newPw   = 'New password is required.';
+        else if (pw.newPw.length < 8)  errs.newPw   = 'Password must be at least 8 characters.';
+        else if (pw.newPw.length > 12) errs.newPw   = 'Password must not exceed 12 characters.';
+        else if (pw.newPw === pw.current) errs.newPw = 'New password must be different from your current password.';
+        if (!pw.confirm.trim())        errs.confirm = 'Please confirm your new password.';
+        else if (pw.newPw !== pw.confirm) errs.confirm = 'Passwords do not match.';
         if (Object.keys(errs).length) { setPwErrors(errs); return; }
 
         setPwLoading(true); setPwErrors({}); setPwSuccess('');
@@ -66,7 +77,7 @@ const AccountSettings = () => {
             });
             const data = await res.json();
             if (data.success) {
-                setPwSuccess('Password updated successfully!');
+                setPwSuccess('Password updated successfully.');
                 setPw({ current:'', newPw:'', confirm:'' });
                 setTimeout(() => setPwSuccess(''), 4000);
             } else {
@@ -79,24 +90,37 @@ const AccountSettings = () => {
         }
     };
 
+    // Accepts local (09XXXXXXXXX) and international (+639XXXXXXXX / 639XXXXXXXX)
+    // Philippine mobile formats, tolerating spaces/dashes as visual separators.
+    const PH_MOBILE_REGEX = /^(?:\+63|0)9\d{9}$/;
+
+    const validatePhone = (value) => {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Contact number is required.';
+        if (/[a-zA-Z]/.test(trimmed)) return 'Please enter a valid Philippine mobile number.';
+        const normalized = trimmed.replace(/[\s\-()]/g, '');
+        if (!PH_MOBILE_REGEX.test(normalized)) return 'Please enter a valid Philippine mobile number.';
+        return '';
+    };
+
     const handlePhoneSave = async (e) => {
         e.preventDefault();
-        if (phone && !/^[0-9+\s\-()]{7,20}$/.test(phone)) {
-            setPhoneErr('Enter a valid phone number.'); return;
-        }
+        const err = validatePhone(phone);
+        if (err) { setPhoneErr(err); return; }
+
         setPhoneLoading(true); setPhoneErr(''); setPhoneSuccess('');
         try {
             const res  = await fetch(`${API_BASE_URL}/auth/update-phone`, {
                 method:  'PUT',
                 headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token()}` },
-                body:    JSON.stringify({ phone }),
+                body:    JSON.stringify({ phone: phone.trim() }),
             });
             const data = await res.json();
             if (data.success) {
                 // Update local storage
                 const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, phone }));
-                setPhoneSuccess('Contact number updated!');
+                localStorage.setItem('user', JSON.stringify({ ...stored, phone: phone.trim() }));
+                setPhoneSuccess('Contact number updated successfully.');
                 setTimeout(() => setPhoneSuccess(''), 4000);
             } else {
                 setPhoneErr(data.message || 'Failed to update phone.');
@@ -120,7 +144,7 @@ const AccountSettings = () => {
         <div className="page-wrapper">
             <div className="content-container">
                 <div className="page-header">
-                    <button className="back-btn" onClick={() => navigate(-1)}>
+                    <button className="back-btn" onClick={() => navigate('/profile')}>
                         <FaArrowLeft /> Back
                     </button>
                     <h2>Account Settings</h2>
@@ -163,8 +187,9 @@ const AccountSettings = () => {
                             <div className="pw-input-wrap">
                                 <input
                                     type={showPw.newPw ? 'text' : 'password'}
-                                    placeholder="Enter new password (min. 8 characters)"
+                                    placeholder="Enter new password (8-12 characters)"
                                     value={pw.newPw}
+                                    maxLength={12}
                                     onChange={e => { setPw(p=>({...p,newPw:e.target.value})); setPwErrors(p=>({...p,newPw:''})); }}
                                     className={pwErrors.newPw ? 'input-error' : ''}
                                 />
@@ -200,7 +225,7 @@ const AccountSettings = () => {
                         </div>
 
                         <div className="form-actions">
-                            <button type="button" className="cancel-btn" onClick={() => { setPw({current:'',newPw:'',confirm:''}); setPwErrors({}); }}>
+                            <button type="button" className="cancel-btn" onClick={() => { setPw({current:'',newPw:'',confirm:''}); setPwErrors({}); setPwSuccess(''); goBackOrProfile(); }}>
                                 Cancel
                             </button>
                             <button type="submit" className="brand-btn" disabled={pwLoading}>
@@ -231,8 +256,9 @@ const AccountSettings = () => {
                             <label>Phone / Mobile Number</label>
                             <input
                                 type="tel"
-                                placeholder="e.g. +63 912 345 6789"
+                                placeholder="e.g. 0912 345 6789"
                                 value={phone}
+                                maxLength={16}
                                 onChange={e => { setPhone(e.target.value); setPhoneErr(''); }}
                                 className={phoneErr ? 'input-error' : ''}
                             />

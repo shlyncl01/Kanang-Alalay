@@ -1,7 +1,7 @@
 // AdminDashboard.js - COMPLETE FIXED VERSION
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
     FaUserCircle, FaHome, FaUsers, FaBell, FaCalendarCheck,
     FaUserMd, FaExclamationTriangle, FaChartBar, FaFileAlt, FaUserPlus,
@@ -410,11 +410,14 @@ const EditUserModal = ({ user, onSave, onClose }) => {
 const AdminDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const notifRef = useRef(null);
     const dropdownRef = useRef(null);
     const searchRef = useRef(null);
 
-    const [activeSection, setActiveSection] = useState('overview');
+    // Support deep-linking into a specific tab, e.g. navigate('/admin', { state: { section: 'staff' } })
+    // from Help Center's Quick Navigation cards, notifications, etc.
+    const [activeSection, setActiveSection] = useState(location.state?.section || 'overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
     const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -753,6 +756,17 @@ const AdminDashboard = () => {
         setDonationPage(1);
         setInventoryPage(1);
     }, [activeSection, debouncedSearchQuery]);
+
+    // Re-apply a deep-linked section if we navigate here again while already mounted
+    // (e.g. clicking a Help Center Quick Navigation card while already on /admin).
+    useEffect(() => {
+        if (location.state?.section) {
+            setActiveSection(location.state.section);
+            // Clear the state so a manual refresh doesn't keep forcing this tab.
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.state?.section]);
 
     const fetchApi = useCallback(async (endpoint, options = {}) => {
         const token = localStorage.getItem('token');
