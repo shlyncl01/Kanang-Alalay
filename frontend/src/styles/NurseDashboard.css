@@ -554,6 +554,7 @@ textarea.form-input { resize: vertical; }
 .preview-label    { font-size: .78rem; color: var(--d-muted); }
 .page-num-btn     { width: 26px; height: 26px; border-radius: 6px; border: 1.5px solid var(--d-border); background: #fff; color: var(--d-muted); font-weight: 700; font-size: .78rem; cursor: pointer; transition: all .18s; }
 .page-num-btn.active { border-color: var(--d-orange); background: var(--d-orange); color: #fff; }
+.page-num-btn:disabled { opacity: .4; cursor: not-allowed; }
 
 .med-pills-row   { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
 .med-filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }

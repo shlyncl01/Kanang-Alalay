@@ -1376,7 +1376,7 @@ const HeadCaregiverDashboard = () => {
         setSchedPage(1);
         setActiveMedsPage(1);
         setInvPage(1);
-    }, [searchQuery, filterStatus, filterResident, activeSection]);
+    }, [searchQuery, filterStatus, filterResident, activeSection, resFloor, resRoom, resSort]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -1646,8 +1646,10 @@ const HeadCaregiverDashboard = () => {
 
     // ── SCREEN 2: RESIDENTS MANAGEMENT (UPDATED with icon-only actions) ──
     const renderResidents = () => {
-        const paged = filteredRes.slice((resPage - 1) * PER, resPage * PER);
-        const pages = Math.ceil(filteredRes.length / PER);
+        const RES_PER = 10;
+        const pages = Math.max(1, Math.ceil(filteredRes.length / RES_PER));
+        const safeResPage = Math.min(resPage, pages);
+        const paged = filteredRes.slice((safeResPage - 1) * RES_PER, safeResPage * RES_PER);
 
         // Helper to get resident's full name for display
         const getResidentName = (r) => {
@@ -1794,11 +1796,21 @@ const HeadCaregiverDashboard = () => {
 
                 {pages > 1 && (
                     <div className="res-page-footer">
-                        <span className="res-page-label">Showing {(resPage - 1) * PER + 1}–{Math.min(resPage * PER, filteredRes.length)} of {filteredRes.length}</span>
+                        <span className="res-page-label">Showing {(safeResPage - 1) * RES_PER + 1}–{Math.min(safeResPage * RES_PER, filteredRes.length)} of {filteredRes.length}</span>
                         <div className="res-pagination">
+                            <button
+                                className="page-num-btn"
+                                disabled={safeResPage === 1}
+                                onClick={() => setResPage(p => Math.max(1, p - 1))}
+                            >‹</button>
                             {Array.from({ length: pages }, (_, i) => i + 1).map(n => (
-                                <button key={n} className={`page-num-btn${resPage === n ? ' active' : ''}`} onClick={() => setResPage(n)}>{n}</button>
+                                <button key={n} className={`page-num-btn${safeResPage === n ? ' active' : ''}`} onClick={() => setResPage(n)}>{n}</button>
                             ))}
+                            <button
+                                className="page-num-btn"
+                                disabled={safeResPage === pages}
+                                onClick={() => setResPage(p => Math.min(pages, p + 1))}
+                            >›</button>
                         </div>
                     </div>
                 )}
@@ -1808,12 +1820,17 @@ const HeadCaregiverDashboard = () => {
 
     // ── SCREEN 3: MEDICATION MANAGEMENT ─────────────────────────────────
     const renderMedicines = () => {
-        const pagedSched = filteredSched.slice((schedPage - 1) * PER, schedPage * PER);
-        const schedPages = Math.ceil(filteredSched.length / PER);
-        const pagedActiveMeds = filteredGroupedByResident.slice((activeMedsPage - 1) * PER, activeMedsPage * PER);
-        const activeMedsPages = Math.ceil(filteredGroupedByResident.length / PER);
-        const pagedInventory = filteredInventory.slice((invPage - 1) * PER, invPage * PER);
-        const invPages = Math.ceil(filteredInventory.length / PER);
+        const schedPages = Math.max(1, Math.ceil(filteredSched.length / PER));
+        const safeSchedPage = Math.min(schedPage, schedPages);
+        const pagedSched = filteredSched.slice((safeSchedPage - 1) * PER, safeSchedPage * PER);
+
+        const activeMedsPages = Math.max(1, Math.ceil(filteredGroupedByResident.length / PER));
+        const safeActiveMedsPage = Math.min(activeMedsPage, activeMedsPages);
+        const pagedActiveMeds = filteredGroupedByResident.slice((safeActiveMedsPage - 1) * PER, safeActiveMedsPage * PER);
+
+        const invPages = Math.max(1, Math.ceil(filteredInventory.length / PER));
+        const safeInvPage = Math.min(invPage, invPages);
+        const pagedInventory = filteredInventory.slice((safeInvPage - 1) * PER, safeInvPage * PER);
 
         return (
             <div>
@@ -1890,10 +1907,10 @@ const HeadCaregiverDashboard = () => {
                     </div>
                     {schedPages > 1 && (
                         <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(schedPage - 1) * PER + 1}–{Math.min(schedPage * PER, filteredSched.length)} of {filteredSched.length}</span>
+                            <span className="res-page-label">Showing {(safeSchedPage - 1) * PER + 1}–{Math.min(safeSchedPage * PER, filteredSched.length)} of {filteredSched.length}</span>
                             <div className="res-pagination">
                                 {Array.from({ length: schedPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${schedPage === n ? ' active' : ''}`} onClick={() => setSchedPage(n)}>{n}</button>
+                                    <button key={n} className={`page-num-btn${safeSchedPage === n ? ' active' : ''}`} onClick={() => setSchedPage(n)}>{n}</button>
                                 ))}
                             </div>
                         </div>
@@ -1949,10 +1966,10 @@ const HeadCaregiverDashboard = () => {
                     </div>
                     {activeMedsPages > 1 && (
                         <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(activeMedsPage - 1) * PER + 1}–{Math.min(activeMedsPage * PER, filteredGroupedByResident.length)} of {filteredGroupedByResident.length} residents</span>
+                            <span className="res-page-label">Showing {(safeActiveMedsPage - 1) * PER + 1}–{Math.min(safeActiveMedsPage * PER, filteredGroupedByResident.length)} of {filteredGroupedByResident.length} residents</span>
                             <div className="res-pagination">
                                 {Array.from({ length: activeMedsPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${activeMedsPage === n ? ' active' : ''}`} onClick={() => setActiveMedsPage(n)}>{n}</button>
+                                    <button key={n} className={`page-num-btn${safeActiveMedsPage === n ? ' active' : ''}`} onClick={() => setActiveMedsPage(n)}>{n}</button>
                                 ))}
                             </div>
                         </div>
@@ -2001,10 +2018,10 @@ const HeadCaregiverDashboard = () => {
                     </div>
                     {invPages > 1 && (
                         <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(invPage - 1) * PER + 1}–{Math.min(invPage * PER, filteredInventory.length)} of {filteredInventory.length}</span>
+                            <span className="res-page-label">Showing {(safeInvPage - 1) * PER + 1}–{Math.min(safeInvPage * PER, filteredInventory.length)} of {filteredInventory.length}</span>
                             <div className="res-pagination">
                                 {Array.from({ length: invPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${invPage === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
+                                    <button key={n} className={`page-num-btn${safeInvPage === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
                                 ))}
                             </div>
                         </div>
