@@ -65,6 +65,7 @@ function shapeLog(l) {
     return {
         _id: l._id,
         logId: l.logId,
+        caregiverId: l.caregiverId,
         residentId: isPopulated ? r._id : l.residentId,
         residentName: l.residentName || (isPopulated ? `${r.firstName} ${r.lastName}` : '—'),
         medicationId: isPopulated && m ? m._id : l.medicationId,

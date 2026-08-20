@@ -1262,6 +1262,7 @@ const HeadCaregiverDashboard = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [filterStatus, setFStatus] = useState('All');
     const [filterResident, setFRes] = useState('All');
+    const [filterCaregiver, setFCaregiver] = useState('All');
     const [sortTime, setSort] = useState('Asc');
     const [resSort, setResSort] = useState('AZ');
     const [resFloor, setResFloor] = useState('All');
@@ -1376,7 +1377,7 @@ const HeadCaregiverDashboard = () => {
         setSchedPage(1);
         setActiveMedsPage(1);
         setInvPage(1);
-    }, [searchQuery, filterStatus, filterResident, activeSection, resFloor, resRoom, resSort]);
+    }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -1429,14 +1430,15 @@ const HeadCaregiverDashboard = () => {
             const mQ = !q || l.residentName?.toLowerCase().includes(q) || l.medicationName?.toLowerCase().includes(q) || l.room?.toLowerCase().includes(q);
             const mSt = filterStatus === 'All' || l.status === filterStatus.toLowerCase();
             const mR = filterResident === 'All' || l.residentName === filterResident;
-            return mQ && mSt && mR;
+            const mC = filterCaregiver === 'All' || String(l.caregiverId || '') === filterCaregiver;
+            return mQ && mSt && mR && mC;
         });
         return [...arr].sort((a, b) => {
             const ta = new Date(a.scheduledTime || a.createdAt).getTime();
             const tb = new Date(b.scheduledTime || b.createdAt).getTime();
             return sortTime === 'Asc' ? ta - tb : tb - ta;
         });
-    }, [schedule, searchQuery, filterStatus, filterResident, sortTime]);
+    }, [schedule, searchQuery, filterStatus, filterResident, filterCaregiver, sortTime]);
 
     const filteredRes = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
@@ -1453,6 +1455,9 @@ const HeadCaregiverDashboard = () => {
         if (filterStatus !== 'All') {
             arr = arr.filter(r => (r.alertLevel || 'stable').toLowerCase() === filterStatus.toLowerCase());
         }
+        if (filterCaregiver !== 'All') {
+            arr = arr.filter(r => String(r.primaryCaregiverId?._id || r.primaryCaregiverId || '') === filterCaregiver);
+        }
         if (resFloor !== 'All') {
             arr = arr.filter(r => r.floor === resFloor);
             if (resRoom !== 'All') {
@@ -1465,7 +1470,7 @@ const HeadCaregiverDashboard = () => {
             return resSort === 'AZ' ? an.localeCompare(bn) : bn.localeCompare(an);
         });
         return arr;
-    }, [residents, searchQuery, filterStatus, resFloor, resRoom, resSort]);
+    }, [residents, searchQuery, filterStatus, filterCaregiver, resFloor, resRoom, resSort]);
 
     const residentNames = useMemo(() => ['All', ...new Set(schedule.map(l => l.residentName).filter(Boolean))], [schedule]);
 
@@ -1692,6 +1697,10 @@ const HeadCaregiverDashboard = () => {
                             <option value="All">Room: All</option>
                             {ROOM_NUMBERS.map(rn => <option key={rn} value={rn}>Room {rn}</option>)}
                         </select>
+                        <select className="filter-select" value={filterCaregiver} onChange={e => setFCaregiver(e.target.value)}>
+                            <option value="All">Caregiver: All</option>
+                            {caregivers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                        </select>
                         <button className="btn-primary-sm" onClick={() => setModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
                     </div>
                 </div>
@@ -1853,6 +1862,10 @@ const HeadCaregiverDashboard = () => {
                     </select>
                     <select className="filter-select" value={filterResident} onChange={e => setFRes(e.target.value)}>
                         {residentNames.map(r => <option key={r} value={r}>{r === 'All' ? 'Residents: All' : r}</option>)}
+                    </select>
+                    <select className="filter-select" value={filterCaregiver} onChange={e => setFCaregiver(e.target.value)}>
+                        <option value="All">Caregiver: All</option>
+                        {caregivers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                     </select>
                     <select className="filter-select" value={sortTime} onChange={e => setSort(e.target.value)}>
                         <option value="Asc">Sort: Time ↑</option>
