@@ -443,9 +443,12 @@ const AdminDashboard = () => {
     const [donations, setDonations] = useState([]);
     const [staff, setStaff] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const [residentStats, setResidentStats] = useState({ totalResidents: 0, averageAge: 0, conditionStats: [] });
     const [dbAlerts, setDbAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState(null);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
 
     const [showRegistrationModal, setShowRegistrationModal] = useState(false);
     const [showAddInventory, setShowAddInventory] = useState(false);
@@ -471,7 +474,7 @@ const AdminDashboard = () => {
     const [stats, setStats] = useState({
         totalResidents: 0, activeStaff: 0, pendingBookings: 0,
         totalDonations: 0, totalDonationAmount: 0, lowStockItems: 0,
-        complianceRate: 92, missedMeds: 2, delayedMeds: 1
+        complianceRate: null, missedMeds: null, delayedMeds: null
     });
 
     const DEFAULT_AVAILABILITY = {
@@ -573,6 +576,11 @@ const AdminDashboard = () => {
             setStats(p => ({ ...p, ...data }));
         };
 
+        // Backend emits this from residentRoutes.js on create/update/delete
+        // so the Total Residents card updates instantly instead of waiting
+        // for the next 30s poll.
+        const handleResidentsUpdated = () => { fetchResidentStats(); };
+
         on('new_booking',          handleNewBooking);
         on('update_booking',       handleUpdateBooking);
         on('delete_booking',       handleDeleteBooking);
@@ -581,6 +589,7 @@ const AdminDashboard = () => {
         on('stock_request',        handleStockRequest);
         on('inventory_update',     handleInventoryUpdate);
         on('stats_updated',        handleStatsUpdated);
+        on('residentsUpdated',     handleResidentsUpdated);
 
         return () => {
             off('new_booking',          handleNewBooking);
@@ -591,6 +600,7 @@ const AdminDashboard = () => {
             off('stock_request',        handleStockRequest);
             off('inventory_update',     handleInventoryUpdate);
             off('stats_updated',        handleStatsUpdated);
+            off('residentsUpdated',     handleResidentsUpdated);
         };
     }, [on, off]);
 
@@ -787,57 +797,107 @@ const AdminDashboard = () => {
         }
     }, []);
 
-    useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            const [bRes, dRes, sRes, iRes] = await Promise.all([
-                fetchApi('/bookings?limit=100'),
-                fetchApi('/donations?limit=100'),
-                fetchApi('/stats'),
-                fetchApi('/inventory?limit=100'),
-            ]);
-            if (bRes.success) setBookings(bRes.data || []);
-            if (dRes.success) setDonations(dRes.data || []);
-            if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
-            if (iRes.success) setInventory(iRes.data || []);
-            setLoading(false);
-        };
-        load();
-        fetchStaffList();
-        fetchDbAlerts();
+    // Fetches the live resident headcount so the "Total Residents" stat card
+    // reflects real data instead of a hardcoded placeholder. Uses the
+    // lightweight /residents/statistics endpoint (a countDocuments-backed
+    // aggregate) rather than pulling every resident's full record — the
+    // dashboard only needs the count, and residents' medical data shouldn't
+    // be loaded into admin state just to render a number. Available to any
+    // authenticated role (protect only, no adminOnly), so this works for
+    // admin same as head caregiver.
+    const fetchResidentStats = useCallback(async () => {
+        const d = await fetchApi('/residents/statistics');
+        if (d.success && d.data) {
+            setResidentStats(d.data);
+            return d.data;
+        }
+        return null;
     }, [fetchApi]);
 
-    const fetchStaffList = async () => {
+    const fetchStaffList = useCallback(async () => {
         const d = await fetchApi('/admin/staff');
         if (d.success) setStaff(d.staff || []);
         return d;
-    };
+    }, [fetchApi]);
 
-    const fetchDbAlerts = async () => {
+    const fetchDbAlerts = useCallback(async () => {
         const d = await fetchApi('/alerts');
         if (d.success) setDbAlerts(d.data || []);
-    };
+    }, [fetchApi]);
+
+    // Core data pull shared by the initial load, the manual "Refresh Data"
+    // button, and the background auto-refresh poller below. `silent` skips
+    // the full-page loading spinner so periodic background refreshes don't
+    // flicker the UI — only the small "Updating…" indicator shows.
+    const loadAllData = useCallback(async (silent = false) => {
+        if (silent) setIsAutoRefreshing(true); else setLoading(true);
+        setApiError(null);
+        const [bRes, dRes, sRes, iRes, complianceRes] = await Promise.all([
+            fetchApi('/bookings?limit=100'),
+            fetchApi('/donations?limit=100'),
+            fetchApi('/stats'),
+            fetchApi('/inventory?limit=100'),
+            fetchApi('/medications/compliance/stats'),  // NEW: Compliance endpoint
+        ]);
+        if (bRes.success) setBookings(bRes.data || []);
+        if (dRes.success) setDonations(dRes.data || []);
+        if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
+        if (iRes.success) setInventory(iRes.data || []);
+        
+        // NEW: Merge compliance data
+        if (complianceRes.success && complianceRes.stats) {
+            setStats(p => ({
+                ...p,
+                complianceRate: complianceRes.stats.complianceRate,
+                missedMeds: complianceRes.stats.missed,
+                delayedMeds: complianceRes.stats.delayed,
+                overdueCount: complianceRes.stats.overdue,
+                administeredCount: complianceRes.stats.administered
+            }));
+        }
+        
+        await Promise.all([fetchResidentStats(), fetchStaffList(), fetchDbAlerts()]);
+        setLastUpdated(new Date());
+        if (silent) setIsAutoRefreshing(false); else setLoading(false);
+    }, [fetchApi, fetchResidentStats, fetchStaffList, fetchDbAlerts]);
+
+    // Initial load on mount.
+    useEffect(() => {
+        loadAllData(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fetchApi]);
+
+    // Background auto-refresh so stat cards (residents, staff, bookings,
+    // donations, inventory) stay live instead of only updating on mount or
+    // when the user clicks "Refresh Data". Also re-syncs immediately when the
+    // admin returns to the tab, so numbers aren't stale after switching away.
+    useEffect(() => {
+        const REFRESH_INTERVAL_MS = 30000; // 30s
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                loadAllData(true);
+            }
+        }, REFRESH_INTERVAL_MS);
+
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                loadAllData(true);
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [loadAllData]);
 
     const realLowStockCount = useMemo(() =>
         inventory.filter(i => i.quantity <= (i.minThreshold || 10)).length,
         [inventory]);
 
     const handleRefresh = async () => {
-        setApiError(null);
-        setLoading(true);
-        const [bRes, dRes, sRes, iRes] = await Promise.all([
-            fetchApi('/bookings?limit=100'),
-            fetchApi('/donations?limit=100'),
-            fetchApi('/stats'),
-            fetchApi('/inventory?limit=100'),
-        ]);
-        if (bRes.success) setBookings(bRes.data || []);
-        if (dRes.success) setDonations(dRes.data || []);
-        if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
-        if (iRes.success) setInventory(iRes.data || []);
-        await fetchStaffList();
-        await fetchDbAlerts();
-        setLoading(false);
+        await loadAllData(false);
         toast('All data refreshed successfully');
     };
 
@@ -1351,6 +1411,10 @@ const AdminDashboard = () => {
             donations={donations}
             staff={staff}
             inventory={inventory}
+            residentStats={residentStats}
+            lastUpdated={lastUpdated}
+            isAutoRefreshing={isAutoRefreshing}
+            onRefresh={handleRefresh}
         />
     );
 
@@ -1634,8 +1698,8 @@ const AdminDashboard = () => {
         const complianceRows = [
             ['Scheduled Today', 24],
             ['Administered', 21],
-            ['Missed', stats.missedMeds || 2],
-            ['Delayed', stats.delayedMeds || 1],
+            ['Missed', stats.missedMeds !== null ? stats.missedMeds : 'N/A'],
+            ['Delayed', stats.delayedMeds !== null ? stats.delayedMeds : 'N/A'],
         ];
 
         win.document.write(`
@@ -1665,7 +1729,7 @@ const AdminDashboard = () => {
                 <p class="sub">Generated: ${now.toLocaleString('en-PH')}</p>
 
                 <div class="summary-grid">
-                    <div class="summary-box"><div class="val" style="color:#F96B38">${stats.complianceRate || 92}%</div><div class="lbl">Overall Compliance Rate</div></div>
+                    <div class="summary-box"><div class="val" style="color:#F96B38">${stats.complianceRate !== null ? stats.complianceRate : 'N/A'}%</div><div class="lbl">Overall Compliance Rate</div></div>
                 </div>
 
                 <h4>Today's Medication Summary</h4>
@@ -1732,15 +1796,15 @@ const AdminDashboard = () => {
             </div>
             <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ textAlign: 'center', padding: '24px', background: '#FFF8F3', borderRadius: 16, minWidth: 180 }}>
-                    <h1 style={{ fontSize: '3rem', color: '#F96B38', margin: 0 }}>{stats.complianceRate || 92}%</h1>
+                    <h1 style={{ fontSize: '3rem', color: '#F96B38', margin: 0 }}>{stats.complianceRate !== null ? `${stats.complianceRate}%` : 'Loading...'}</h1>
                     <p style={{ margin: '8px 0 0', color: '#7A5C4E', fontWeight: 600 }}>Overall Compliance Rate</p>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, flex: 1 }}>
                     {[
                         ['24', 'Scheduled Today', null],
                         ['21', 'Administered', '#28a745'],
-                        [stats.missedMeds || 2, 'Missed', '#dc3545'],
-                        [stats.delayedMeds || 1, 'Delayed', '#ffc107'],
+                        [stats.missedMeds !== null ? stats.missedMeds : '--', 'Missed', '#dc3545'],
+                        [stats.delayedMeds !== null ? stats.delayedMeds : '--', 'Delayed', '#ffc107'],
                     ].map(([v, l, c], i) => (
                         <div key={i} style={{ padding: '16px', background: '#FFF8F3', borderRadius: 12, textAlign: 'center' }}>
                             <h3 style={{ margin: 0, fontSize: '1.5rem', color: c || '#1A0A00' }}>{v}</h3>

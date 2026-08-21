@@ -37,7 +37,7 @@ const getStaffStatus = (s) => {
 };
 
 // ─── Embedded Reports Section ─────────────────────────────────────────────────
-const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [], inventory = [] }) => {
+const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [], inventory = [], residentStats = {} }) => {
     const [dateRange, setDateRange] = useState('month');
     const [exporting, setExporting] = useState('');
 
@@ -52,6 +52,10 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
     const approvedBookings = filteredBookings.filter(b => b.status === 'approved').length;
     const lowStockCount    = inventory.filter(i => i.quantity <= (i.minThreshold ?? 10)).length;
     const activeStaff      = staff.filter(s => getStaffStatus(s) === 'active').length;
+    // Live headcount from GET /residents/statistics — falls back to
+    // stats.totalResidents (e.g. pushed via the stats_updated socket event)
+    // if that call hasn't resolved yet, never to a fixed number.
+    const totalResidents   = residentStats.totalResidents ?? stats.totalResidents ?? 0;
 
     const exportPDF = (type) => {
         setExporting(type);
@@ -99,7 +103,7 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
             autoTable(doc, {
                 head: [['Metric', 'Value']],
                 body: [
-                    ['Total Residents', '71'], ['Active Staff', activeStaff],
+                    ['Total Residents', totalResidents], ['Active Staff', activeStaff],
                     ['Total Bookings', filteredBookings.length], ['Pending Bookings', pendingBookings],
                     ['Approved Bookings', approvedBookings], ['Total Donations', filteredDonations.length],
                     ['Confirmed Donations', `₱${totalDonationAmount.toLocaleString()}`],
@@ -172,7 +176,7 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
             {/* Summary strip */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 22, padding: '14px 18px', background: '#FFF8F3', borderRadius: 12, border: '1.5px solid #E8D6CC' }}>
                 {[
-                    ['Residents',   '71',                                     '#b85c2d'],
+                    ['Residents',   totalResidents,                           '#b85c2d'],
                     ['Active Staff', activeStaff,                             '#28a745'],
                     ['Bookings',    filteredBookings.length,                  '#17a2b8'],
                     ['Donations',   `₱${totalDonationAmount.toLocaleString()}`, '#6f42c1'],
@@ -300,7 +304,10 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
 };
 
 // ─── Main OverviewTab ─────────────────────────────────────────────────────────
-const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donations = [], staff = [], inventory = [] }) => {
+const OverviewTab = ({
+    stats, activities, setActiveSection, bookings = [], donations = [], staff = [], inventory = [],
+    residentStats = {}, lastUpdated = null, isAutoRefreshing = false, onRefresh = null,
+}) => {
     const totalDonationAmount = donations
         .filter(d => d.paymentStatus === 'paid')
         .reduce((s, d) => s + (d.amount || 0), 0);
@@ -310,11 +317,16 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
         return st === 'active';
     }).length;
 
+    // Live headcount from GET /residents/statistics — falls back to
+    // stats.totalResidents (e.g. via the stats_updated socket push) only if
+    // that call hasn't resolved yet.
+    const totalResidentsCount = residentStats.totalResidents ?? stats.totalResidents ?? 0;
+
     const statCards = [
         {
             bg: '#b85c2d',
             icon: <FaUsers />,
-            val: stats.totalResidents || 71,
+            val: totalResidentsCount,
             label: 'Total Residents',
             section: null,
         },
@@ -358,7 +370,35 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
     return (
         <div className="overview-content">
 
-            {/* ── 6 Stat Cards ── */}
+            {/* ── Live-data status row ── */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: '.75rem', color: '#7A5C4E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {isAutoRefreshing ? (
+                        <>
+                            <span style={{
+                                width: 7, height: 7, borderRadius: '50%', background: '#28a745',
+                                display: 'inline-block', animation: 'pulse 1s ease-in-out infinite',
+                            }} />
+                            Updating…
+                        </>
+                    ) : lastUpdated ? (
+                        <>Updated {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</>
+                    ) : null}
+                </span>
+                {onRefresh && (
+                    <button
+                        className="btn-outline-sm"
+                        onClick={onRefresh}
+                        style={{ padding: '4px 10px', fontSize: '.75rem' }}
+                        title="Refresh now"
+                    >
+                        Refresh
+                    </button>
+                )}
+            </div>
+            <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }`}</style>
+
+            {/* ── 6 Stat Cards — auto-refresh every 30s, see AdminDashboard's loadAllData ── */}
             <div className="stats-grid">
                 {statCards.map((s, i) => (
                     <div
@@ -482,6 +522,7 @@ const OverviewTab = ({ stats, activities, setActiveSection, bookings = [], donat
                 donations={donations}
                 staff={staff}
                 inventory={inventory}
+                residentStats={residentStats}
             />
         </div>
     );

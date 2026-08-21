@@ -206,144 +206,75 @@ router.put('/:id', authMiddleware, roleMiddleware('admin', 'head_caregiver'), as
     }
 });
 
-// Adjust stock count for a medication
-router.post('/:id/stock', authMiddleware, roleMiddleware('head_caregiver'), async (req, res) => {
+// Delete medication (archive)
+router.delete('/:id', authMiddleware, roleMiddleware('admin', 'head_caregiver'), async (req, res) => {
     try {
-        const { amount, setTo } = req.body;
-        if (amount === undefined && setTo === undefined) {
-            return res.status(400).json({ success: false, message: 'Stock amount or setTo value is required.' });
-        }
-
-        const update = {};
-        if (typeof amount === 'number') {
-            update.$inc = { 'stock.current': amount };
-        }
-        if (typeof setTo === 'number') {
-            update.$set = { 'stock.current': setTo };
-        }
-
-        const medication = await Medication.findByIdAndUpdate(req.params.id, update, {
-            new: true,
-            runValidators: true
-        });
-
+        const medication = await Medication.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
         if (!medication) return res.status(404).json({ success: false, message: 'Medication not found' });
-        res.json({ success: true, data: medication });
+        res.json({ success: true, message: 'Medication archived', data: medication });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ success: false, message: 'Server error updating stock' });
+        res.status(500).json({ success: false, message: 'Server error deleting medication' });
     }
 });
 
-// Scan a QR code and decrement medication stock directly
-router.post('/scan', authMiddleware, async (req, res) => {
+// Get medication logs
+router.get('/logs/today', authMiddleware, async (req, res) => {
     try {
-        const { code } = req.body;
-        if (!code) return res.status(400).json({ success: false, message: 'Scan code is required.' });
+        const { today, tomorrow } = getManilaDayBounds();
+        const logs = await MedicationLog.find({
+            scheduledTime: { $gte: today, $lt: tomorrow }
+        })
+        .populate('residentId', 'firstName lastName')
+        .populate('medicationId', 'name dosage')
+        .sort({ scheduledTime: -1 });
 
-        const scanCode = code.toUpperCase();
-        const medication = await Medication.findOne({
-            $or: [
-                { medicationId: scanCode },
-                { uniqueCode: scanCode },
-                { barcode: scanCode },
-                { _id: mongoose.Types.ObjectId.isValid(scanCode) ? scanCode : null }
-            ].filter(Boolean)
-        });
-
-        if (!medication) {
-            return res.status(404).json({ success: false, message: 'Medication not found for provided code.' });
-        }
-
-        if (medication.stock.current <= 0) {
-            return res.status(400).json({ success: false, message: 'Medication stock is depleted.' });
-        }
-
-        medication.stock.current -= 1;
-        await medication.save();
-
-        res.json({ success: true, data: medication, message: 'Medication scanned and stock decremented.' });
+        res.json({ success: true, data: logs });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ success: false, message: 'Server error while processing scan.' });
+        res.status(500).json({ success: false, message: 'Server error fetching logs' });
     }
 });
 
-router.post('/administer', authMiddleware, async (req, res) => {
+// Record medication delivery (mark as pending by head caregiver)
+router.post('/prepare/:residentId', authMiddleware, roleMiddleware('head_caregiver'), async (req, res) => {
     try {
-        const {
-            residentId,
-            medicationId,
-            medicationName,
-            dosage,
-            scanId,
-            administeredAt,
-            status,
-            notes
-        } = req.body;
-
+        const { medicationId, medicationName, dosage, scheduledTime, instructions } = req.body;
         if (!residentId || !medicationId || !medicationName) {
-            return res.status(400).json({ success: false, message: 'residentId, medicationId, and medicationName are required.' });
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
         }
 
-        const resident = await Resident.findById(residentId);
-        if (!resident) {
-            return res.status(404).json({ success: false, message: 'Resident not found.' });
-        }
-
-        const medication = await Medication.findById(medicationId);
-        if (medication && medication.stock?.current > 0) {
-            medication.stock.current -= 1;
-            await medication.save();
-        }
-
-        if (resident.medications && resident.medications.id(medicationId)) {
-            const embeddedMed = resident.medications.id(medicationId);
-            embeddedMed.status = 'administered';
-            embeddedMed.lastAdministered = administeredAt ? parseManilaDateTime(administeredAt) : new Date();
-            await resident.save();
-        }
+        const resident = await Resident.findById(req.params.residentId);
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
 
         const log = new MedicationLog({
             logId: `MEDLOG-${Date.now().toString().slice(-6)}`,
-            residentId,
+            residentId: req.params.residentId,
             medicationId,
             caregiverId: req.user._id,
             residentName: resident.name || `${resident.firstName} ${resident.lastName}`.trim(),
             medicationName,
             room: resident.room || resident.roomNumber || '',
             bed: resident.bed || '',
-            dosage: typeof dosage === 'string' && dosage.trim() ? dosage : (dosage?.value ? `${dosage.value}${dosage.unit || ''}` : 'N/A'),
-            status: status || 'administered',
-            administeredTime: administeredAt ? parseManilaDateTime(administeredAt) : new Date(),
-            scheduledTime: administeredAt ? parseManilaDateTime(administeredAt) : undefined,
-            notes: notes || '',
-            verificationMethod: scanId ? 'scan' : 'manual',
-            scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
+            floor: resident.floor || '',
+            dosage,
+            scheduledTime: parseManilaDateTime(scheduledTime),
+            status: 'pending',
+            notes: instructions || ''
         });
 
         await log.save();
-
-        res.json({ success: true, data: log });
+        res.status(201).json({ success: true, data: log });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Failed to administer medication.' });
+        console.error('Prepare medication error:', error);
+        res.status(500).json({ success: false, message: 'Failed to prepare medication' });
     }
 });
 
-router.get('/history/:residentId', authMiddleware, async (req, res) => {
+// Skip/hold medication dose
+router.post('/hold', authMiddleware, async (req, res) => {
     try {
-        const history = await MedicationLog.find({ residentId: req.params.residentId }).sort({ administeredTime: -1 });
-        res.json({ success: true, data: history });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Failed to fetch medication history.' });
-    }
-});
-
-router.post('/delay', authMiddleware, async (req, res) => {
-    try {
-        const { residentId, medicationId, medicationName, reason, duration, scanId, delayedUntil } = req.body;
+        const { residentId, medicationId, medicationName, reason, notes, doctorNotified, scanId } = req.body;
         if (!residentId || !medicationId || !medicationName) {
             return res.status(400).json({ success: false, message: 'residentId, medicationId, and medicationName are required.' });
         }
@@ -360,7 +291,41 @@ router.post('/delay', authMiddleware, async (req, res) => {
             medicationName,
             room: resident.room || resident.roomNumber || '',
             bed: resident.bed || '',
-            dosage: duration || '',
+            dosage: 'N/A',
+            status: 'skipped',
+            notes: `Hold: ${reason || 'No reason provided'}. ${notes || ''} ${doctorNotified ? 'Doctor notified.' : ''}`.trim(),
+            verificationMethod: scanId ? 'scan' : 'manual',
+            scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
+        });
+        await log.save();
+        res.json({ success: true, data: log });
+    } catch (error) {
+        console.error('Hold medication error:', error);
+        res.status(500).json({ success: false, message: 'Failed to record medication hold.' });
+    }
+});
+
+// Delay medication dose
+router.post('/delay', authMiddleware, async (req, res) => {
+    try {
+        const { residentId, medicationId, medicationName, reason, notes, delayedUntil, scanId } = req.body;
+        if (!residentId || !medicationId || !medicationName) {
+            return res.status(400).json({ success: false, message: 'residentId, medicationId, and medicationName are required.' });
+        }
+
+        const resident = await Resident.findById(residentId);
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
+
+        const log = new MedicationLog({
+            logId: `MEDLOG-${Date.now().toString().slice(-6)}`,
+            residentId,
+            medicationId,
+            caregiverId: req.user._id,
+            residentName: resident.name || `${resident.firstName} ${resident.lastName}`.trim(),
+            medicationName,
+            room: resident.room || resident.roomNumber || '',
+            bed: resident.bed || '',
+            dosage: 'N/A',
             status: 'pending',
             scheduledTime: delayedUntil ? parseManilaDateTime(delayedUntil) : undefined,
             notes: `Delayed: ${reason || 'No reason provided'}`,
@@ -441,11 +406,7 @@ router.post('/side-effect', authMiddleware, async (req, res) => {
     }
 });
 
-// Get a single medication log's current status — used to check whether a
-// dose is still awaiting administration or already given, e.g. when a
-// caregiver taps an old notification and we need to route them to the right
-// screen (Administer Medication vs. Medication History) based on real state,
-// not just whether the notification itself was read.
+// Get a single medication log's current status
 router.get('/log/:logId', authMiddleware, async (req, res) => {
     try {
         const log = await MedicationLog.findById(req.params.logId);
@@ -557,6 +518,188 @@ router.post('/voice-prompt/:logId', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── NEW COMPLIANCE STATISTICS ENDPOINTS ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Get compliance statistics for today (or custom date range)
+router.get('/compliance/stats', authMiddleware, async (req, res) => {
+    try {
+        const { startDate, endDate, facilityId } = req.query;
+        
+        // Default to today (Manila time)
+        const { today, tomorrow } = getManilaDayBounds();
+        const start = startDate ? new Date(startDate) : today;
+        const end = endDate ? new Date(endDate) : tomorrow;
+
+        // Match query: all logs in the date range
+        const matchQuery = {
+            scheduledTime: { $gte: start, $lt: end }
+        };
+
+        // Aggregate by status
+        const statusBreakdown = await MedicationLog.aggregate([
+            { $match: matchQuery },
+            {
+                $group: {
+                    _id: '$status',
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        // Convert to object for easier access
+        const statusCounts = {};
+        statusBreakdown.forEach(item => {
+            statusCounts[item._id] = item.count;
+        });
+
+        // Calculate compliance metrics
+        const scheduled = statusCounts['scheduled'] || statusCounts['pending'] || 0;
+        const administered = statusCounts['administered'] || 0;
+        const missed = statusCounts['missed'] || 0;
+        const overdue = statusCounts['overdue'] || 0;
+        const skipped = statusCounts['skipped'] || 0;
+        const delayed = statusCounts['delayed'] || 0;
+
+        // Compliance rate = administered / (scheduled + administered + missed + overdue)
+        // i.e., of doses that had a chance to be given, how many were actually given
+        const totalOpportunities = scheduled + administered + missed + overdue;
+        const complianceRate = totalOpportunities > 0 
+            ? Math.round((administered / totalOpportunities) * 100) 
+            : 0;
+
+        // Daily breakdown for weekly chart (last 7 days)
+        const dailyStats = await MedicationLog.aggregate([
+            { $match: matchQuery },
+            {
+                $group: {
+                    _id: {
+                        $dateToString: { format: '%Y-%m-%d', date: '$scheduledTime' }
+                    },
+                    total: { $sum: 1 },
+                    administered: {
+                        $sum: { $cond: [{ $eq: ['$status', 'administered'] }, 1, 0] }
+                    },
+                    missed: {
+                        $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] }
+                    },
+                    overdue: {
+                        $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] }
+                    }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        // Calculate daily compliance rates
+        const dailyCompliance = dailyStats.map(day => ({
+            date: day._id,
+            total: day.total,
+            administered: day.administered,
+            missed: day.missed,
+            overdue: day.overdue,
+            rate: day.total > 0 
+                ? Math.round((day.administered / (day.administered + day.missed + day.overdue)) * 100)
+                : 0
+        }));
+
+        res.json({
+            success: true,
+            stats: {
+                complianceRate,
+                scheduled,
+                administered,
+                missed,
+                overdue,
+                skipped,
+                delayed,
+                totalOpportunities,
+                dateRange: { start, end }
+            },
+            dailyBreakdown: dailyCompliance
+        });
+
+    } catch (error) {
+        console.error('Compliance stats error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch compliance statistics' 
+        });
+    }
+});
+
+// Get compliance summary by resident
+router.get('/compliance/by-resident', authMiddleware, async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        
+        const { today, tomorrow } = getManilaDayBounds();
+        const start = startDate ? new Date(startDate) : today;
+        const end = endDate ? new Date(endDate) : tomorrow;
+
+        const residentStats = await MedicationLog.aggregate([
+            {
+                $match: {
+                    scheduledTime: { $gte: start, $lt: end }
+                }
+            },
+            {
+                $group: {
+                    _id: '$residentId',
+                    residentName: { $first: '$residentName' },
+                    room: { $first: '$room' },
+                    total: { $sum: 1 },
+                    administered: {
+                        $sum: { $cond: [{ $eq: ['$status', 'administered'] }, 1, 0] }
+                    },
+                    missed: {
+                        $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] }
+                    },
+                    overdue: {
+                        $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] }
+                    }
+                }
+            },
+            {
+                $addFields: {
+                    complianceRate: {
+                        $cond: [
+                            { $gt: ['$total', 0] },
+                            {
+                                $round: [
+                                    {
+                                        $multiply: [
+                                            { $divide: ['$administered', '$total'] },
+                                            100
+                                        ]
+                                    }
+                                ]
+                            },
+                            0
+                        ]
+                    }
+                }
+            },
+            { $sort: { complianceRate: -1 } }
+        ]);
+
+        res.json({
+            success: true,
+            residents: residentStats,
+            dateRange: { start, end }
+        });
+
+    } catch (error) {
+        console.error('Resident compliance error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch resident compliance' 
+        });
     }
 });
 
