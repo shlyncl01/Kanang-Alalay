@@ -309,7 +309,7 @@ router.post('/create-user-enhanced', async (req, res) => {
         console.log('✅ User created successfully:', user._id);
 
         // ── SEND WELCOME EMAIL ──────────────────────────────────────────────
-        const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+        const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/login`;
         const roleLabel = role === 'head_caregiver' ? 'Head Caregiver' : role.charAt(0).toUpperCase() + role.slice(1);
 
         const welcomeHtml = `
@@ -349,11 +349,11 @@ router.post('/create-user-enhanced', async (req, res) => {
                     <td style="padding:10px 14px;border-bottom:1px solid #eee;text-transform:capitalize">${shift}</td>
                 </tr>
             </table>
-            <div style="background:#fff8e1;border:2px solid #f96b38;border-radius:10px;padding:20px;text-align:center;margin-bottom:24px">
-                <p style="margin:0 0 8px;font-weight:700;color:#b85c2d;font-size:.9rem">YOUR ONE-TIME PASSCODE (OTP)</p>
-                <div style="font-size:2.4rem;font-weight:900;font-family:monospace;letter-spacing:10px;color:#d94e1b">${otp}</div>
-                <p style="margin:10px 0 0;font-size:.78rem;color:#999">⏱ Expires in 30 minutes · Do not share this code</p>
-            </div>
+            // <div style="background:#fff8e1;border:2px solid #f96b38;border-radius:10px;padding:20px;text-align:center;margin-bottom:24px">
+            //     <p style="margin:0 0 8px;font-weight:700;color:#b85c2d;font-size:.9rem">YOUR ONE-TIME PASSCODE (OTP)</p>
+            //     <div style="font-size:2.4rem;font-weight:900;font-family:monospace;letter-spacing:10px;color:#d94e1b">${otp}</div>
+            //     <p style="margin:10px 0 0;font-size:.78rem;color:#999">⏱ Expires in 30 minutes · Do not share this code</p>
+            // </div>
             <div style="background:#f0f7ff;border-radius:10px;padding:16px 20px;margin-bottom:24px">
                 <p style="margin:0 0 10px;font-weight:700;color:#1a5276;font-size:.88rem">HOW TO GET STARTED</p>
                 <ol style="margin:0;padding-left:18px;color:#444;font-size:.86rem;line-height:1.8">
