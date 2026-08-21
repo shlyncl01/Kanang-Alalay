@@ -20,7 +20,9 @@ const ViewProfile = () => {
 
     // Back always returns through the user's dashboard (not raw browser
     // history) so it can never leave the app or land on a blank page.
-    const goBack = () => navigate(ctxUser?.role === 'admin' ? '/admin' : '/head-caregiver');
+    // replace:true removes this page from history entirely, so the
+    // browser's forward/back buttons can't bring the user back to it.
+    const goBack = () => navigate(ctxUser?.role === 'admin' ? '/admin' : '/head-caregiver', { replace: true });
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState('');

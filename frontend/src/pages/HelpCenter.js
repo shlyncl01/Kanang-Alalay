@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaLifeRing, FaBook, FaHeadset,
@@ -42,14 +42,15 @@ const FAQ_DATA = [
 const HelpCenter = () => {
     const { user } = useAuth();
     const navigate  = useNavigate();
-    const location  = useLocation();
 
     // Same "back to previous page, or a sensible fallback" logic used on
     // Profile/Settings — avoids a blank page when Help Center is opened
     // directly (deep link, refresh) with no in-app history behind it.
+    // Always uses replace so Help Center itself is dropped from history —
+    // the browser's forward/back buttons can't land the user back on it.
     const goBack = () => {
-        if (location.key !== 'default') navigate(-1);
-        else navigate(user?.role === 'admin' ? '/admin' : '/head-caregiver');
+        const dest = user?.role === 'admin' ? '/admin' : '/head-caregiver';
+        navigate(dest, { replace: true });
     };
     const [openIdx, setOpenIdx] = useState({});
 
