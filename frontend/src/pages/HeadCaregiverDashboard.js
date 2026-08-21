@@ -44,6 +44,14 @@ const STATUS_LABEL = {
 };
 const getStatus = s => (s || 'pending').toLowerCase();
 
+// Part 4: colors for the HC Assigned Stock Status column — same palette
+// already used for the Admin Product Status column (InventoryTab.js).
+const STOCK_STATUS_STYLE = {
+    'In Stock': { bg: '#e0faf4', color: '#0d6b4f' },
+    'Low Stock': { bg: '#fff8e1', color: '#7c5a00' },
+    'Out of Stock': { bg: '#fdecea', color: '#b71c1c' },
+};
+
 const Badge = ({ s }) => (
     <span className={`status-badge ${getStatus(s)}`}>
         {STATUS_LABEL[getStatus(s)] || s}
@@ -1277,6 +1285,9 @@ const HeadCaregiverDashboard = () => {
     const [schedule, setSchedule] = useState([]);
     const [medications, setMedications] = useState([]);
     const [inventory, setInventory] = useState([]);
+    // ── NEW (Part 4): HC Assigned Stock — this HC's own stock balance,
+    // separate from `inventory` above (which is Admin Central Stock).
+    const [assignedStock, setAssignedStock] = useState([]);
     const [caregivers, setCaregivers] = useState([]);
     const [stats, setStats] = useState({
         total: 0, onTime: 0, delayed: 0, missed: 0,
@@ -1290,6 +1301,7 @@ const HeadCaregiverDashboard = () => {
     const [schedPage, setSchedPage] = useState(1);
     const [activeMedsPage, setActiveMedsPage] = useState(1);
     const [invPage, setInvPage] = useState(1);
+    const [stockPage, setStockPage] = useState(1);
     const PER = 5; // rows per page, applied to every paginated table
 
     const shiftLabel = {
@@ -1338,18 +1350,22 @@ const HeadCaregiverDashboard = () => {
     }, [doFetch]);
 
     const loadAll = useCallback(async () => {
-        const [resR, schR, medR, invR, stR] = await Promise.all([
+        const [resR, schR, medR, invR, stR, assignedR] = await Promise.all([
             doFetch('/head-caregiver/residents'),
             doFetch('/head-caregiver/schedule'),
             doFetch('/head-caregiver/medications'),
             doFetch('/head-caregiver/inventory'),
             doFetch('/head-caregiver/stats'),
+            // Part 4: HC Assigned Stock — a separate balance from the
+            // Admin Central Stock fetched into `inventory` above.
+            doFetch('/head-caregiver/assigned-stock'),
         ]);
         if (resR.success) setResidents(resR.data || []);
         if (schR.success) setSchedule(schR.data || []);
         if (medR.success) setMedications(medR.data || []);
         if (invR.success) setInventory(invR.data || []);
         if (stR.success) setStats(s => ({ ...s, ...stR.data }));
+        if (assignedR.success) setAssignedStock(assignedR.data || []);
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
 
@@ -1518,6 +1534,14 @@ const HeadCaregiverDashboard = () => {
         if (!q) return inventory;
         return inventory.filter(item => item.name?.toLowerCase().includes(q));
     }, [inventory, searchQuery]);
+
+    // Part 4: filters HC Assigned Stock only — never mixed with
+    // `filteredInventory` (Admin Central Stock) above.
+    const filteredAssignedStock = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim();
+        if (!q) return assignedStock;
+        return assignedStock.filter(item => item.name?.toLowerCase().includes(q));
+    }, [assignedStock, searchQuery]);
 
     const getMinutesSince = iso => iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60000) : null;
 
@@ -2058,12 +2082,90 @@ const HeadCaregiverDashboard = () => {
         );
     };
 
+    // ── SCREEN 4: HC ASSIGNED STOCK (Part 4) ────────────────────────────
+    // Read-only view of this HC's own stock balance. Deliberately separate
+    // from the "Medication Inventory Status" table in renderMedicines()
+    // above, which shows Admin Central Stock — the same Product can (and
+    // usually will) show a different number here than it does there.
+    const renderMyStock = () => {
+        const stockPages = Math.max(1, Math.ceil(filteredAssignedStock.length / PER));
+        const safeStockPage = Math.min(stockPage, stockPages);
+        const pagedStock = filteredAssignedStock.slice((safeStockPage - 1) * PER, safeStockPage * PER);
+
+        return (
+            <div>
+                <div className="card-white mb-18">
+                    <div className="card-header">
+                        <h5>My Assigned Stock</h5>
+                    </div>
+                    <p style={{ margin: '0 0 14px', padding: '0 2px', color: '#7A5C4E', fontSize: '.85rem' }}>
+                        Your own stock balance, separate from Admin Central Stock. This is
+                        view-only — quantities change automatically once a stock request
+                        you submit is approved.
+                    </p>
+                    <div className="table-scroll">
+                        <table className="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Category</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Minimum Stock Level</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredAssignedStock.length === 0 ? (
+                                    <tr><td colSpan="6" className="text-center no-data-italic">
+                                        {searchQuery
+                                            ? `No results for "${searchQuery}".`
+                                            : 'No stock has been assigned to you yet.'}
+                                    </td></tr>
+                                ) : (
+                                    pagedStock.map(item => {
+                                        const s = STOCK_STATUS_STYLE[item.status] || STOCK_STATUS_STYLE['In Stock'];
+                                        return (
+                                            <tr key={item._id}>
+                                                <td><strong>{item.name}</strong></td>
+                                                <td><span className="badge-custom staff">{item.category}</span></td>
+                                                <td>{item.quantity}</td>
+                                                <td>{item.unit}</td>
+                                                <td>{item.minThreshold}</td>
+                                                <td>
+                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
+                                                        {item.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    {stockPages > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(safeStockPage - 1) * PER + 1}–{Math.min(safeStockPage * PER, filteredAssignedStock.length)} of {filteredAssignedStock.length}</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: stockPages }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${safeStockPage === n ? ' active' : ''}`} onClick={() => setStockPage(n)}>{n}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const renderContent = () => {
         if (loading) return <div className="nurse-loading"><FaSpinner className="spin" /> Loading dashboard…</div>;
         switch (activeSection) {
             case 'home': return renderHome();
             case 'residents': return renderResidents();
             case 'medicines': return renderMedicines();
+            case 'stock': return renderMyStock();
             default: return renderHome();
         }
     };
@@ -2084,6 +2186,7 @@ const HeadCaregiverDashboard = () => {
                             { key: 'home', icon: <FaHome />, label: 'Home' },
                             { key: 'residents', icon: <FaUsers />, label: 'Residents' },
                             { key: 'medicines', icon: <FaPills />, label: 'Medicines', badge: stats.overdue },
+                            { key: 'stock', icon: <FaBoxOpen />, label: 'My Stock' },
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => { setSection(key); setMobileMenuOpen(false); }}>
                                 {icon} {label}
@@ -2108,7 +2211,8 @@ const HeadCaregiverDashboard = () => {
                                         placeholder={
                                             activeSection === 'residents' ? 'Search residents, rooms, nickname, conditions…' :
                                                 activeSection === 'medicines' ? 'Search medications, residents…' :
-                                                    'Search…'
+                                                    activeSection === 'stock' ? 'Search your assigned stock…' :
+                                                        'Search…'
                                         }
                                         value={searchQuery}
                                         onChange={e => setSearch(e.target.value)} />

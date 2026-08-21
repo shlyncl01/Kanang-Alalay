@@ -7,6 +7,12 @@ const MedicationLog = require('../models/MedicationLog');
 const Inventory = require('../models/Inventory');
 const StockRequest = require('../models/StockRequest');
 const User = require('../models/User');
+// ── NEW (Part 4): HC Assigned Stock — a separate stock balance per Head
+// Caregiver, distinct from Admin Central Stock (Inventory above). See the
+// doc comment on the model for the full design rationale.
+const HCAssignedStock = require('../models/HCAssignedStock');
+const Product = require('../models/Product');
+const { getStockStatus } = require('../utils/stockStatus');
 const { protect } = require('../middleware/authMiddleware');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
 
@@ -839,6 +845,59 @@ router.get('/inventory', async (req, res) => {
             category: { $in: ['medication', 'medical_supplies'] }
         }).sort({ name: 1 });
         res.json({ success: true, data: items });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET HC ASSIGNED STOCK  (Part 4)
+// ─────────────────────────────────────────────────────────────
+// This is a DIFFERENT stock location from GET /inventory above.
+// GET /inventory reads Admin Central Stock (Inventory batches) — the same
+// number every HC/Admin sees. This route reads HC Assigned Stock
+// (HCAssignedStock), scoped to ONLY the logged-in HC's own balances, and
+// is a completely separate number per HC for the same Product.
+//
+// Read-only by design: there is no POST/PUT/PATCH/DELETE on
+// /assigned-stock anywhere in this router, so a head_caregiver can never
+// manually change their own quantity from here. Quantities will only ever
+// move automatically once the stock request/approval/transfer workflow
+// (Part 5 and Part 6) is built — that future handler would look like:
+//   await HCAssignedStock.findOneAndUpdate(
+//     { headCaregiverId, productId },
+//     { $inc: { quantity: approvedAmount } },
+//     { upsert: true }
+//   );
+// which is intentionally NOT implemented yet.
+router.get('/assigned-stock', async (req, res) => {
+    try {
+        if (!requireHeadCaregiver(req, res)) return;
+
+        const rows = await HCAssignedStock.find({ headCaregiverId: req.user._id })
+            .populate('productId', 'name category unit minimumStockLevel')
+            .sort({ createdAt: 1 });
+
+        const data = rows
+            // Guard against a balance row whose Product was removed —
+            // nothing to show for it, so it's silently skipped rather
+            // than 500ing the whole dashboard.
+            .filter((r) => r.productId)
+            .map((r) => {
+                const p = r.productId;
+                return {
+                    _id: r._id,
+                    productId: p._id,
+                    name: p.name,
+                    category: p.category,
+                    unit: p.unit,
+                    minThreshold: p.minimumStockLevel,
+                    quantity: r.quantity,
+                    status: getStockStatus(r.quantity, p.minimumStockLevel),
+                };
+            });
+
+        res.json({ success: true, data });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
