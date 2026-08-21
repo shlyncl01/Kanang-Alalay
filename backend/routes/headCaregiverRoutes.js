@@ -837,27 +837,53 @@ router.delete('/schedule/:id', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// GET INVENTORY
+// HC ASSIGNED STOCK — SINGLE SOURCE OF TRUTH  (Part 4, unified)
 // ─────────────────────────────────────────────────────────────
-router.get('/inventory', async (req, res) => {
-    try {
-        const items = await Inventory.find({
-            category: { $in: ['medication', 'medical_supplies'] }
-        }).sort({ name: 1 });
-        res.json({ success: true, data: items });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
+// PART 4 FIX: there used to be two competing numbers for "how much stock
+// does this HC have" — HCAssignedStock (new, Part 4) and a filtered read
+// of Admin Central Stock (Inventory batches) that the old "Medication
+// Inventory Status" table and "Request Stock" dropdown both used. That
+// meant the same real-world quantity could show two different values in
+// the same dashboard, and neither was authoritative.
+//
+// HCAssignedStock is now the ONLY place an HC's own quantity is stored or
+// read from anywhere in this router. shapeAssignedStockRow()/loadAssigned
+// Stock() below are the single code path both /assigned-stock (full
+// balance) and /inventory (medication/medical_supplies subset, same rows)
+// go through — there is no second query, no second stored quantity, and
+// no independent status calculation. Admin Central Stock (Inventory)
+// remains a completely separate concept and is intentionally never read
+// by either of these two routes.
+function shapeAssignedStockRow(row) {
+    const p = row.productId;
+    return {
+        _id: row._id,
+        productId: p._id,
+        name: p.name,
+        category: p.category,
+        unit: p.unit,
+        minThreshold: p.minimumStockLevel,
+        quantity: row.quantity,
+        status: getStockStatus(row.quantity, p.minimumStockLevel),
+    };
+}
 
-// ─────────────────────────────────────────────────────────────
-// GET HC ASSIGNED STOCK  (Part 4)
-// ─────────────────────────────────────────────────────────────
-// This is a DIFFERENT stock location from GET /inventory above.
-// GET /inventory reads Admin Central Stock (Inventory batches) — the same
-// number every HC/Admin sees. This route reads HC Assigned Stock
-// (HCAssignedStock), scoped to ONLY the logged-in HC's own balances, and
-// is a completely separate number per HC for the same Product.
+async function loadAssignedStock(headCaregiverId, categories) {
+    const rows = await HCAssignedStock.find({ headCaregiverId })
+        .populate('productId', 'name category unit minimumStockLevel')
+        .sort({ createdAt: 1 });
+
+    return rows
+        // Guard against a balance row whose Product was removed — nothing
+        // to show for it, so it's silently skipped rather than 500ing.
+        .filter((r) => r.productId)
+        .filter((r) => !categories || categories.includes(r.productId.category))
+        .map(shapeAssignedStockRow);
+}
+
+// GET HC ASSIGNED STOCK — "My Assigned Stock" on the HC dashboard.
+// Every category, scoped to ONLY the logged-in HC's own balances. Never
+// another HC's rows, and never Admin Central Stock.
 //
 // Read-only by design: there is no POST/PUT/PATCH/DELETE on
 // /assigned-stock anywhere in this router, so a head_caregiver can never
@@ -872,32 +898,59 @@ router.get('/inventory', async (req, res) => {
 // which is intentionally NOT implemented yet.
 router.get('/assigned-stock', async (req, res) => {
     try {
-        if (!requireHeadCaregiver(req, res)) return;
-
-        const rows = await HCAssignedStock.find({ headCaregiverId: req.user._id })
-            .populate('productId', 'name category unit minimumStockLevel')
-            .sort({ createdAt: 1 });
-
-        const data = rows
-            // Guard against a balance row whose Product was removed —
-            // nothing to show for it, so it's silently skipped rather
-            // than 500ing the whole dashboard.
-            .filter((r) => r.productId)
-            .map((r) => {
-                const p = r.productId;
-                return {
-                    _id: r._id,
-                    productId: p._id,
-                    name: p.name,
-                    category: p.category,
-                    unit: p.unit,
-                    minThreshold: p.minimumStockLevel,
-                    quantity: r.quantity,
-                    status: getStockStatus(r.quantity, p.minimumStockLevel),
-                };
-            });
-
+        const data = await loadAssignedStock(req.user._id);
         res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET INVENTORY — "Medication Inventory Status" on the HC dashboard.
+// PART 4 FIX: this used to independently query Admin Central Stock
+// (Inventory batches). It now reads the exact same HCAssignedStock rows
+// as /assigned-stock above (via the same loadAssignedStock() call),
+// filtered down to medication/medical_supplies — i.e. this is a VIEW over
+// the single HC Assigned Stock source, not a second stock number. If an
+// item exists in HC Assigned Stock, its quantity here is always identical
+// to its quantity in "My Assigned Stock", because it's the same row.
+router.get('/inventory', async (req, res) => {
+    try {
+        const data = await loadAssignedStock(req.user._id, ['medication', 'medical_supplies']);
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET REQUESTABLE PRODUCTS  (Part 4 fix)
+// ─────────────────────────────────────────────────────────────
+// Backs the "Select Item" dropdown on the Request Stock modal. This reads
+// the existing Product catalog from Parts 1–3 (models/Product.js) — the
+// same catalog Admin manages — instead of a separate hardcoded/legacy
+// medication list. It intentionally returns the FULL catalog (not just
+// products the HC already has some of), because the whole point of a
+// stock request is often to get a product the HC currently has zero of.
+// No quantity is stored or duplicated here: the frontend pairs each
+// product with this HC's current quantity by matching against the
+// already-fetched /assigned-stock data, so the dropdown's "Current: N"
+// figure is still sourced from the one HCAssignedStock table.
+router.get('/products', async (req, res) => {
+    try {
+        const products = await Product.find({
+            category: { $in: ['medication', 'medical_supplies'] }
+        }).sort({ name: 1 });
+
+        res.json({
+            success: true,
+            data: products.map((p) => ({
+                _id: p._id,
+                name: p.name,
+                category: p.category,
+                unit: p.unit,
+                minThreshold: p.minimumStockLevel,
+            })),
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }

@@ -1284,10 +1284,17 @@ const HeadCaregiverDashboard = () => {
     const [residents, setResidents] = useState([]);
     const [schedule, setSchedule] = useState([]);
     const [medications, setMedications] = useState([]);
+    // PART 4 FIX: `inventory` below is no longer Admin Central Stock — it's
+    // the medication/medical_supplies SUBSET of HC Assigned Stock (see the
+    // GET /head-caregiver/inventory route). It and `assignedStock` are two
+    // views of the exact same underlying rows, never two separate numbers.
     const [inventory, setInventory] = useState([]);
-    // ── NEW (Part 4): HC Assigned Stock — this HC's own stock balance,
-    // separate from `inventory` above (which is Admin Central Stock).
+    // HC Assigned Stock — this HC's own stock balance. Single source of
+    // truth for both "My Assigned Stock" and "Medication Inventory Status".
     const [assignedStock, setAssignedStock] = useState([]);
+    // Product catalog (Parts 1–3), used only to populate the Request Stock
+    // "Select Item" dropdown — carries no quantity of its own.
+    const [products, setProducts] = useState([]);
     const [caregivers, setCaregivers] = useState([]);
     const [stats, setStats] = useState({
         total: 0, onTime: 0, delayed: 0, missed: 0,
@@ -1350,15 +1357,18 @@ const HeadCaregiverDashboard = () => {
     }, [doFetch]);
 
     const loadAll = useCallback(async () => {
-        const [resR, schR, medR, invR, stR, assignedR] = await Promise.all([
+        const [resR, schR, medR, invR, stR, assignedR, prodR] = await Promise.all([
             doFetch('/head-caregiver/residents'),
             doFetch('/head-caregiver/schedule'),
             doFetch('/head-caregiver/medications'),
+            // PART 4 FIX: same HC Assigned Stock table as /assigned-stock
+            // below, just filtered to medication/medical_supplies — not a
+            // second stock number.
             doFetch('/head-caregiver/inventory'),
             doFetch('/head-caregiver/stats'),
-            // Part 4: HC Assigned Stock — a separate balance from the
-            // Admin Central Stock fetched into `inventory` above.
             doFetch('/head-caregiver/assigned-stock'),
+            // Product catalog for the Request Stock dropdown (Parts 1–3).
+            doFetch('/head-caregiver/products'),
         ]);
         if (resR.success) setResidents(resR.data || []);
         if (schR.success) setSchedule(schR.data || []);
@@ -1366,6 +1376,7 @@ const HeadCaregiverDashboard = () => {
         if (invR.success) setInventory(invR.data || []);
         if (stR.success) setStats(s => ({ ...s, ...stR.data }));
         if (assignedR.success) setAssignedStock(assignedR.data || []);
+        if (prodR.success) setProducts(prodR.data || []);
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
 
@@ -1535,13 +1546,32 @@ const HeadCaregiverDashboard = () => {
         return inventory.filter(item => item.name?.toLowerCase().includes(q));
     }, [inventory, searchQuery]);
 
-    // Part 4: filters HC Assigned Stock only — never mixed with
-    // `filteredInventory` (Admin Central Stock) above.
+    // Part 4: filters HC Assigned Stock only — `inventory` above is
+    // already the same table (server-filtered), so this and
+    // filteredInventory are two views of one dataset, not two datasets.
     const filteredAssignedStock = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
         if (!q) return assignedStock;
         return assignedStock.filter(item => item.name?.toLowerCase().includes(q));
     }, [assignedStock, searchQuery]);
+
+    // PART 4 FIX: Request Stock dropdown source. Lists the full Product
+    // catalog (Parts 1–3) so an HC can request an item they currently have
+    // zero of, not just items already in their assigned stock. The
+    // "Current: N unit" figure shown per option is looked up from
+    // `assignedStock` (defaulting to 0) rather than stored on `products`
+    // itself — there is still only one place quantity lives.
+    const requestableItems = useMemo(() => {
+        return products.map(p => {
+            const assigned = assignedStock.find(a => String(a.productId) === String(p._id));
+            return {
+                _id: p._id,
+                name: p.name,
+                unit: p.unit,
+                quantity: assigned ? assigned.quantity : 0,
+            };
+        });
+    }, [products, assignedStock]);
 
     const getMinutesSince = iso => iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60000) : null;
 
@@ -2027,7 +2057,15 @@ const HeadCaregiverDashboard = () => {
                     )}
                 </div>
 
-                {/* Medication Inventory Status */}
+                {/* Medication Inventory Status — PART 4 FIX: this is a
+                    medication/medical_supplies VIEW over HC Assigned Stock
+                    (see GET /head-caregiver/inventory), not a second stock
+                    number. Quantity and Status below always match the
+                    same item's row in "My Stock" exactly, because it's the
+                    same row. There is no per-batch expiry at this level
+                    (HC Assigned Stock tracks Product-level quantity, not
+                    individual batches), so the old Expiry column is
+                    replaced with Status, which this data does carry. */}
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>Medication Inventory Status</h5>
@@ -2038,28 +2076,26 @@ const HeadCaregiverDashboard = () => {
                     <div className="table-scroll">
                         <table className="custom-table">
                             <thead>
-                                <tr><th>Medication</th><th>Ward / Cabinet</th><th>Stock Level</th><th>Expiry</th></tr>
+                                <tr><th>Medication</th><th>Ward / Cabinet</th><th>Stock Level</th><th>Status</th></tr>
                             </thead>
                             <tbody>
                                 {filteredInventory.length === 0 ? (
                                     <tr><td colSpan="4" className="text-center no-data-italic">
-                                        {searchQuery ? `No results for "${searchQuery}".` : 'No inventory data available.'}
+                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock assigned to you yet.'}
                                     </td></tr>
                                 ) : (
                                     pagedInventory.map(item => {
-                                        const daysLeft = item.expirationDate ? Math.ceil((new Date(item.expirationDate) - Date.now()) / 86400000) : null;
-                                        const isOut = item.quantity === 0;
-                                        const isLow = !isOut && item.quantity <= (item.minThreshold ?? 10);
-                                        const isExp = daysLeft !== null && daysLeft <= 30;
-                                        const stockTxt = isOut ? 'Out of Stock' : isLow ? `Low — ${item.quantity} ${item.unit}` : `${item.quantity} ${item.unit}`;
-                                        const stockCls = isOut || (daysLeft !== null && daysLeft < 0) ? 'inv-stock-out' : isLow || isExp ? 'inv-stock-low' : 'inv-stock-ok';
-                                        const expiryTxt = daysLeft === null ? '—' : daysLeft < 0 ? 'Expired' : `${daysLeft} days`;
+                                        const s = STOCK_STATUS_STYLE[item.status] || STOCK_STATUS_STYLE['In Stock'];
                                         return (
                                             <tr key={item._id}>
                                                 <td><strong>{item.name}</strong></td>
                                                 <td className="inv-ward-cell">{user?.ward || '—'} Cabinet</td>
-                                                <td className={stockCls}>{stockTxt}</td>
-                                                <td className={daysLeft !== null && daysLeft <= 30 ? 'inv-stock-low' : ''}>{expiryTxt}</td>
+                                                <td>{item.quantity} {item.unit}</td>
+                                                <td>
+                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
+                                                        {item.status}
+                                                    </span>
+                                                </td>
                                             </tr>
                                         );
                                     })
@@ -2284,7 +2320,7 @@ const HeadCaregiverDashboard = () => {
             {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, l]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
-            {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={inventory} doFetch={doFetch} toast={toast} />}
+            {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} />}
 
             {/* Logout Confirm */}
             {showLogoutConfirm && (
