@@ -151,7 +151,7 @@ const HelpCenter = () => {
                         <div className="support-icon-wrapper"><FaHeadset /></div>
                         <h3>IT Support</h3>
                         <p>Experiencing technical difficulties? Contact the master administrator.</p>
-                        <button className="outline-btn" onClick={() => window.location.href = 'mailto:support@kanangalalay.org'}>
+                        <button className="outline-btn" onClick={() => navigate('/help/contact')}>
                             <FaEnvelope style={{marginRight:6}}/> Contact Support
                         </button>
                     </div>

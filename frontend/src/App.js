@@ -16,6 +16,7 @@ import HeadCaregiverDashboard from './pages/HeadCaregiverDashboard';
 
 import ViewProfile from './pages/ViewProfile';
 import HelpCenter from './pages/HelpCenter';
+import ContactSupport from './pages/ContactSupport';
 import AccountSettings from './pages/AccountSettings';
 import DocumentationGuide from './pages/DocumentationGuide';
 
@@ -60,6 +61,7 @@ function App() {
           <Route path="/profile" element={<ProtectedRoute allowedRoles={ALL_ROLES}><ViewProfile /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={ALL_ROLES}><AccountSettings /></ProtectedRoute>} />
           <Route path="/help" element={<ProtectedRoute allowedRoles={ALL_ROLES}><HelpCenter /></ProtectedRoute>} />
+          <Route path="/help/contact" element={<ProtectedRoute allowedRoles={ALL_ROLES}><ContactSupport /></ProtectedRoute>} />
           <Route path="/help/guides" element={<ProtectedRoute allowedRoles={ALL_ROLES}><DocumentationGuide /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

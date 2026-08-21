@@ -1,0 +1,131 @@
+/* Reuses .page-wrapper, .content-container, .page-header, .back-btn,
+   .help-hero-banner, .brand-btn, .outline-btn from the shared/HelpCenter
+   stylesheets, and the --ka-* palette defined in DocumentationGuide.css.
+   Only Contact-Support-specific styles below. */
+
+.contact-card {
+  background: var(--ka-white);
+  border: 1.5px solid var(--ka-border);
+  border-radius: 16px;
+  padding: 30px 32px;
+  margin-top: 24px;
+}
+
+.contact-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.contact-status-banner.success {
+  background: #E7F6EE;
+  color: #1E7D56;
+  border: 1px solid #BEE8D2;
+}
+
+.contact-status-banner.error {
+  background: var(--ka-orange-pale);
+  color: #C0392B;
+  border: 1px solid #F3C6C1;
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.contact-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.contact-field label {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--ka-muted);
+  letter-spacing: .02em;
+}
+
+.contact-field input,
+.contact-field select,
+.contact-field textarea {
+  border: 1.5px solid var(--ka-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: .92rem;
+  font-family: inherit;
+  color: var(--ka-ink);
+  background: var(--ka-white);
+  resize: vertical;
+  transition: border-color .18s;
+}
+
+.contact-field input:focus,
+.contact-field select:focus,
+.contact-field textarea:focus {
+  outline: none;
+  border-color: var(--ka-orange);
+}
+
+.contact-field input:disabled,
+.contact-field select:disabled,
+.contact-field textarea:disabled {
+  background: var(--ka-cream);
+  cursor: not-allowed;
+}
+
+.contact-sender-note {
+  font-size: .82rem;
+  color: var(--ka-muted);
+}
+
+.contact-form .brand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+.contact-form .brand-btn:disabled {
+  opacity: .65;
+  cursor: not-allowed;
+}
+
+.contact-alt-methods {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1.5px solid var(--ka-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contact-alt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ka-muted);
+  font-size: .88rem;
+}
+
+.contact-alt-item svg { color: var(--ka-orange); flex-shrink: 0; }
+
+.contact-alt-item a {
+  color: var(--ka-orange-dk);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.contact-alt-item a:hover { text-decoration: underline; color: var(--ka-orange); }
+
+@media (max-width: 600px) {
+  .contact-card { padding: 22px 20px; }
+}
