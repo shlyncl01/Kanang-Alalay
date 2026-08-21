@@ -52,6 +52,20 @@ const STOCK_STATUS_STYLE = {
     'Out of Stock': { bg: '#fdecea', color: '#b71c1c' },
 };
 
+// Part 5: colors for the "My Stock Requests" Status column. Keys match
+// the lowercase StockRequest.status enum (models/StockRequest.js);
+// display labels are capitalized separately, see requestStatusLabel().
+const STOCK_REQUEST_STATUS_STYLE = {
+    pending: { bg: '#fff8e1', color: '#7c5a00' },
+    approved: { bg: '#e0faf4', color: '#0d6b4f' },
+    rejected: { bg: '#fdecea', color: '#b71c1c' },
+    fulfilled: { bg: '#e0faf4', color: '#0d6b4f' },
+};
+const requestStatusLabel = s => {
+    const v = (s || 'pending');
+    return v.charAt(0).toUpperCase() + v.slice(1);
+};
+
 const Badge = ({ s }) => (
     <span className={`status-badge ${getStatus(s)}`}>
         {STATUS_LABEL[getStatus(s)] || s}
@@ -1163,25 +1177,41 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
 };
 
 // ════════════════════════════════════════════════════════════
-//  MODAL: Request Stock
+//  MODAL: Request Stock  (Part 5)
 // ════════════════════════════════════════════════════════════
-const RequestStockModal = ({ items, onClose, doFetch, toast }) => {
-    const [f, setF] = useState({ itemId: '', itemName: '', quantity: '', reason: '' });
+// `items` is the Product catalog (Parts 1–3) — the HC can only pick from
+// this list; there is deliberately no free-text item name field, so an
+// HC can never type in a product that doesn't exist in Admin Central
+// Inventory. Submitting sends productId only — the backend derives
+// name/unit from the Product record itself (see POST
+// /head-caregiver/inventory/request).
+const RequestStockModal = ({ items, onClose, doFetch, toast, onSubmitted }) => {
+    const [f, setF] = useState({ productId: '', quantity: '', reason: '' });
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
 
-    const pickItem = id => { const found = items.find(i => i._id === id); setF(p => ({ ...p, itemId: id, itemName: found?.name || '' })); };
+    const selected = items.find(i => i._id === f.productId) || null;
+
+    const validate = () => {
+        const e = {};
+        if (!f.productId) e.productId = 'Select an item from Admin Central Inventory.';
+        if (f.quantity === '' || f.quantity === null || f.quantity === undefined) e.quantity = 'Quantity is required.';
+        else if (isNaN(f.quantity)) e.quantity = 'Quantity must be a valid number.';
+        else if (Number(f.quantity) <= 0) e.quantity = 'Quantity must be greater than 0.';
+        return e;
+    };
 
     const submit = async () => {
-        const e = {};
-        if (!f.itemName.trim()) e.itemName = 'Select or enter item';
-        if (!f.quantity || +f.quantity < 1) e.quantity = 'Enter valid quantity';
+        const e = validate();
         if (Object.keys(e).length) { setErrs(e); return; }
         setSaving(true);
-        const r = await doFetch('/head-caregiver/inventory/request', { method: 'POST', body: JSON.stringify(f) });
+        const r = await doFetch('/head-caregiver/inventory/request', {
+            method: 'POST',
+            body: JSON.stringify({ productId: f.productId, quantity: Number(f.quantity), reason: f.reason }),
+        });
         setSaving(false);
-        if (r.success) { toast('Stock request submitted.'); onClose(); }
+        if (r.success) { toast('Stock request submitted.'); onSubmitted?.(); onClose(); }
         else toast(r.message || 'Failed.', 'error');
     };
 
@@ -1190,17 +1220,24 @@ const RequestStockModal = ({ items, onClose, doFetch, toast }) => {
             <div className="registration-modal" style={hcModalStyle}>
                 <HCHeader icon={<FaBoxOpen />} title="Request Stock Replenishment" onClose={onClose} />
                 <div style={hcBodyStyle}>
-                    <HCField label="Select Item" error={errs.itemName}>
-                        <select style={hcInputStyle(errs.itemName)} value={f.itemId} onChange={e => pickItem(e.target.value)}>
-                            <option value="">Choose from inventory…</option>
-                            {items.map(i => <option key={i._id} value={i._id}>{i.name} (Current: {i.quantity} {i.unit})</option>)}
+                    <HCField label="Select Item" required error={errs.productId}>
+                        <select style={hcInputStyle(errs.productId)} value={f.productId} onChange={e => setField('productId', e.target.value)}>
+                            <option value="">Choose from Admin Central Inventory…</option>
+                            {items.map(i => <option key={i._id} value={i._id}>{i.name} — {i.unit}</option>)}
                         </select>
+                        {items.length === 0 && (
+                            <p style={{ margin: '6px 2px 0', fontSize: '.78rem', color: '#7A5C4E' }}>
+                                No products available in Admin Central Inventory yet.
+                            </p>
+                        )}
                     </HCField>
-                    <HCField label="Item Name (manual if not in list)">
-                        <input style={hcInputStyle(errs.itemName)} value={f.itemName} onChange={e => setField('itemName', e.target.value)} placeholder="e.g. Paracetamol 500mg" />
-                    </HCField>
+                    {selected && (
+                        <p style={{ margin: '-4px 2px 10px', fontSize: '.82rem', color: '#7A5C4E' }}>
+                            {selected.name} — unit: <strong>{selected.unit}</strong> · your current assigned stock: <strong>{selected.quantity} {selected.unit}</strong>
+                        </p>
+                    )}
                     <HCField label="Quantity Needed" required error={errs.quantity}>
-                        <input type="number" min="1" style={hcInputStyle(errs.quantity)} value={f.quantity} onChange={e => setField('quantity', e.target.value)} />
+                        <input type="number" min="1" step="1" style={hcInputStyle(errs.quantity)} value={f.quantity} onChange={e => setField('quantity', e.target.value)} />
                     </HCField>
                     <HCField label="Reason / Notes" style={{ marginBottom: 6 }}>
                         <textarea rows={3} style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.reason} onChange={e => setField('reason', e.target.value)} placeholder="Why is this stock needed?" />
@@ -1295,6 +1332,11 @@ const HeadCaregiverDashboard = () => {
     // Product catalog (Parts 1–3), used only to populate the Request Stock
     // "Select Item" dropdown — carries no quantity of its own.
     const [products, setProducts] = useState([]);
+    // This HC's own submitted stock requests (Part 5) — Pending/Approved/
+    // Rejected. Purely a list of request records; creating one never
+    // moves Admin Central Stock or HC Assigned Stock (see the backend
+    // POST /inventory/request comment).
+    const [stockRequests, setStockRequests] = useState([]);
     const [caregivers, setCaregivers] = useState([]);
     const [stats, setStats] = useState({
         total: 0, onTime: 0, delayed: 0, missed: 0,
@@ -1309,6 +1351,7 @@ const HeadCaregiverDashboard = () => {
     const [activeMedsPage, setActiveMedsPage] = useState(1);
     const [invPage, setInvPage] = useState(1);
     const [stockPage, setStockPage] = useState(1);
+    const [requestsPage, setRequestsPage] = useState(1);
     const PER = 5; // rows per page, applied to every paginated table
 
     const shiftLabel = {
@@ -1357,7 +1400,7 @@ const HeadCaregiverDashboard = () => {
     }, [doFetch]);
 
     const loadAll = useCallback(async () => {
-        const [resR, schR, medR, invR, stR, assignedR, prodR] = await Promise.all([
+        const [resR, schR, medR, invR, stR, assignedR, prodR, reqR] = await Promise.all([
             doFetch('/head-caregiver/residents'),
             doFetch('/head-caregiver/schedule'),
             doFetch('/head-caregiver/medications'),
@@ -1369,6 +1412,8 @@ const HeadCaregiverDashboard = () => {
             doFetch('/head-caregiver/assigned-stock'),
             // Product catalog for the Request Stock dropdown (Parts 1–3).
             doFetch('/head-caregiver/products'),
+            // Part 5: this HC's own submitted stock requests.
+            doFetch('/head-caregiver/stock-requests'),
         ]);
         if (resR.success) setResidents(resR.data || []);
         if (schR.success) setSchedule(schR.data || []);
@@ -1377,8 +1422,17 @@ const HeadCaregiverDashboard = () => {
         if (stR.success) setStats(s => ({ ...s, ...stR.data }));
         if (assignedR.success) setAssignedStock(assignedR.data || []);
         if (prodR.success) setProducts(prodR.data || []);
+        if (reqR.success) setStockRequests(reqR.data || []);
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
+
+    // Refreshes just this HC's stock request list — called after
+    // submitting a new request, instead of a full loadAll(), since
+    // submitting a request never changes residents/schedule/stock.
+    const refreshStockRequests = useCallback(async () => {
+        const r = await doFetch('/head-caregiver/stock-requests');
+        if (r.success) setStockRequests(r.data || []);
+    }, [doFetch]);
 
     // The summary cards (Total Meds/On Time/Delayed/Missed/Pending) are server-
     // computed, so any local edit to `schedule` (add/edit/delete/mark status)
@@ -1407,6 +1461,8 @@ const HeadCaregiverDashboard = () => {
         setSchedPage(1);
         setActiveMedsPage(1);
         setInvPage(1);
+        setStockPage(1);
+        setRequestsPage(1);
     }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort]);
 
     // Re-apply a deep-linked section if we navigate here again while already mounted
@@ -2128,6 +2184,19 @@ const HeadCaregiverDashboard = () => {
         const safeStockPage = Math.min(stockPage, stockPages);
         const pagedStock = filteredAssignedStock.slice((safeStockPage - 1) * PER, safeStockPage * PER);
 
+        // Part 5: "Medication Inventory Status" on the My Stock page.
+        // Reuses the exact same `filteredInventory` (medication/
+        // medical_supplies view over HC Assigned Stock) already used on
+        // the Medicines tab — same rows, same source, never a second
+        // stock number.
+        const invPages2 = Math.max(1, Math.ceil(filteredInventory.length / PER));
+        const safeInvPage2 = Math.min(invPage, invPages2);
+        const pagedInventory2 = filteredInventory.slice((safeInvPage2 - 1) * PER, safeInvPage2 * PER);
+
+        const requestsPages = Math.max(1, Math.ceil(stockRequests.length / PER));
+        const safeRequestsPage = Math.min(requestsPage, requestsPages);
+        const pagedRequests = stockRequests.slice((safeRequestsPage - 1) * PER, safeRequestsPage * PER);
+
         return (
             <div>
                 <div className="card-white mb-18">
@@ -2186,6 +2255,111 @@ const HeadCaregiverDashboard = () => {
                             <div className="res-pagination">
                                 {Array.from({ length: stockPages }, (_, i) => i + 1).map(n => (
                                     <button key={n} className={`page-num-btn${safeStockPage === n ? ' active' : ''}`} onClick={() => setStockPage(n)}>{n}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Medication Inventory Status — Part 5: added to the My
+                    Stock page, directly below "My Assigned Stock". Same
+                    HC Assigned Stock rows as above (medication/
+                    medical_supplies subset), not a second quantity. */}
+                <div className="card-white mb-18">
+                    <div className="card-header">
+                        <h5>Medication Inventory Status</h5>
+                    </div>
+                    <div className="table-scroll">
+                        <table className="custom-table">
+                            <thead>
+                                <tr><th>Medication</th><th>Quantity</th><th>Unit</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {filteredInventory.length === 0 ? (
+                                    <tr><td colSpan="4" className="text-center no-data-italic">
+                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock assigned to you yet.'}
+                                    </td></tr>
+                                ) : (
+                                    pagedInventory2.map(item => {
+                                        const s = STOCK_STATUS_STYLE[item.status] || STOCK_STATUS_STYLE['In Stock'];
+                                        return (
+                                            <tr key={item._id}>
+                                                <td><strong>{item.name}</strong></td>
+                                                <td>{item.quantity}</td>
+                                                <td>{item.unit}</td>
+                                                <td>
+                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
+                                                        {item.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    {invPages2 > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(safeInvPage2 - 1) * PER + 1}–{Math.min(safeInvPage2 * PER, filteredInventory.length)} of {filteredInventory.length}</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: invPages2 }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${safeInvPage2 === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* My Stock Requests — Part 5. Requests this HC has
+                    submitted via "Request Stock". Read-only status list;
+                    approval/rejection happens on the Admin side (Part 6,
+                    not implemented yet). */}
+                <div className="card-white mb-18">
+                    <div className="card-header">
+                        <h5>My Stock Requests</h5>
+                        <button className="btn-primary-sm" onClick={() => setModal({ type: 'requestStock' })}>
+                            <FaBoxOpen /> Request Stock
+                        </button>
+                    </div>
+                    <div className="table-scroll">
+                        <table className="custom-table">
+                            <thead>
+                                <tr><th>Item</th><th>Quantity</th><th>Unit</th><th>Date</th><th>Reason</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                {stockRequests.length === 0 ? (
+                                    <tr><td colSpan="6" className="text-center no-data-italic">
+                                        You haven't submitted any stock requests yet.
+                                    </td></tr>
+                                ) : (
+                                    pagedRequests.map(r => {
+                                        const s = STOCK_REQUEST_STATUS_STYLE[r.status] || STOCK_REQUEST_STATUS_STYLE.pending;
+                                        return (
+                                            <tr key={r._id}>
+                                                <td><strong>{r.itemName}</strong></td>
+                                                <td>{r.quantity}</td>
+                                                <td>{r.unit}</td>
+                                                <td className="td-xs">{r.createdAt ? new Date(r.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                                                <td>{r.reason || '—'}</td>
+                                                <td>
+                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
+                                                        {requestStatusLabel(r.status)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    {requestsPages > 1 && (
+                        <div className="res-page-footer">
+                            <span className="res-page-label">Showing {(safeRequestsPage - 1) * PER + 1}–{Math.min(safeRequestsPage * PER, stockRequests.length)} of {stockRequests.length}</span>
+                            <div className="res-pagination">
+                                {Array.from({ length: requestsPages }, (_, i) => i + 1).map(n => (
+                                    <button key={n} className={`page-num-btn${safeRequestsPage === n ? ' active' : ''}`} onClick={() => setRequestsPage(n)}>{n}</button>
                                 ))}
                             </div>
                         </div>
@@ -2320,7 +2494,7 @@ const HeadCaregiverDashboard = () => {
             {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, l]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
-            {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} />}
+            {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} onSubmitted={refreshStockRequests} />}
 
             {/* Logout Confirm */}
             {showLogoutConfirm && (

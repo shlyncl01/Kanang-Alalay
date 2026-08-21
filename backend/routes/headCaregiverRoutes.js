@@ -957,36 +957,95 @@ router.get('/products', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// REQUEST STOCK
+// REQUEST STOCK  (Part 5)
 // ─────────────────────────────────────────────────────────────
+// Creates a Pending StockRequest only. Per the Part 5 spec this route
+// MUST NOT move any stock — Admin Central Stock (Inventory) and HC
+// Assigned Stock (HCAssignedStock) are both left completely untouched
+// here. That only happens once approval/transfer is built (Part 6).
+//
+// The requested item must be an existing Product from Admin Central
+// Inventory (Parts 1–3) — this route takes a productId, looks it up
+// server-side, and derives itemName/unit FROM the Product record. It
+// never trusts a client-supplied item name, so an HC can never manually
+// create a new product, or request something that doesn't exist in the
+// Admin catalog, by bypassing the frontend dropdown.
 router.post('/inventory/request', async (req, res) => {
     try {
-        const { itemId, itemName, quantity, unit, reason } = req.body;
-        if (!itemName || !quantity) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Item name and quantity are required.' 
-            });
+        const { productId, quantity, reason } = req.body;
+
+        // ── Validation (backend copy — frontend also validates, but per
+        // the Part 5 spec this cannot be trusted alone) ──────────────
+        if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+            return res.status(400).json({ success: false, message: 'Please select an item to request.' });
+        }
+        if (quantity === undefined || quantity === null || quantity === '' || isNaN(quantity)) {
+            return res.status(400).json({ success: false, message: 'Quantity is required and must be a valid number.' });
+        }
+        if (Number(quantity) <= 0) {
+            return res.status(400).json({ success: false, message: 'Quantity must be greater than 0.' });
+        }
+
+        // Selected product must exist in Admin Central Inventory.
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(400).json({ success: false, message: 'Selected item was not found in Admin Central Inventory.' });
         }
 
         const request = new StockRequest({
-            itemId: itemId || '',
-            itemName: itemName.trim(),
-            quantity: +quantity,
-            unit: unit || 'pcs',
-            reason: reason || '',
+            productId: product._id,
+            itemId: String(product._id),
+            itemName: product.name,
+            quantity: Number(quantity),
+            unit: product.unit,
+            reason: (reason || '').trim(),
             requestedBy: req.user._id,
+            status: 'pending',
         });
         await request.save();
         await request.populate('requestedBy', 'firstName lastName role');
+
+        // NOTE: intentionally no Inventory or HCAssignedStock write here —
+        // see the Part 5 "IMPORTANT STOCK RULE": Admin Central Stock and
+        // HC Assigned Stock both stay exactly as they were. Only the
+        // request record itself is created.
 
         const io = req.app.get('io');
         if (io) io.emit('stock_request', request);
 
         res.json({
             success: true,
-            message: `Stock request for ${quantity} ${unit || 'pcs'} of "${itemName}" submitted.`,
+            message: `Stock request for ${quantity} ${product.unit} of "${product.name}" submitted.`,
             data: request
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET MY STOCK REQUESTS  (Part 5)
+// ─────────────────────────────────────────────────────────────
+// Lets the HC see the requests THEY submitted (Pending/Approved/
+// Rejected), scoped to req.user._id so one HC never sees another HC's
+// requests. Read-only — approval/rejection is Admin-side (Part 6),
+// nothing here changes a request's status.
+router.get('/stock-requests', async (req, res) => {
+    try {
+        const requests = await StockRequest.find({ requestedBy: req.user._id })
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: requests.map((r) => ({
+                _id: r._id,
+                itemName: r.itemName,
+                quantity: r.quantity,
+                unit: r.unit,
+                reason: r.reason,
+                status: r.status,
+                createdAt: r.createdAt,
+            })),
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
