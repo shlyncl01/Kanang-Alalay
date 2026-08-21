@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaShieldAlt, FaEye, FaEyeSlash,
-    FaCheckCircle, FaTimesCircle, FaPhone, FaCheck
+    FaCheckCircle, FaTimesCircle, FaPhone, FaCheck, FaLock
 } from 'react-icons/fa';
 import '../styles/AccountSettings.css';
 
@@ -135,13 +135,14 @@ const AccountSettings = () => {
     const EyeBtn = ({ field }) => (
         <button type="button" className="pw-eye-btn"
             onClick={() => setShowPw(p => ({ ...p, [field]: !p[field] }))}
-            tabIndex={-1}>
+            tabIndex={-1}
+            aria-label={showPw[field] ? 'Hide password' : 'Show password'}>
             {showPw[field] ? <FaEyeSlash /> : <FaEye />}
         </button>
     );
 
     return (
-        <div className="page-wrapper">
+        <div className="page-wrapper settings-page">
             <div className="content-container">
                 <div className="page-header">
                     <button className="back-btn" onClick={() => navigate('/profile')}>
@@ -166,14 +167,17 @@ const AccountSettings = () => {
                         </div>
                     )}
 
-                    <form className="settings-form" onSubmit={handlePasswordSave}>
-                        <div className="input-group">
-                            <label>Current Password</label>
+                    <form className="settings-form" onSubmit={handlePasswordSave} noValidate>
+                        <div className="field-group">
+                            <label htmlFor="pw-current">Current Password</label>
                             <div className="pw-input-wrap">
+                                <FaLock className="field-leading-icon" />
                                 <input
+                                    id="pw-current"
                                     type={showPw.current ? 'text' : 'password'}
                                     placeholder="Enter current password"
                                     value={pw.current}
+                                    autoComplete="current-password"
                                     onChange={e => { setPw(p=>({...p,current:e.target.value})); setPwErrors(p=>({...p,current:''})); }}
                                     className={pwErrors.current ? 'input-error' : ''}
                                 />
@@ -182,14 +186,17 @@ const AccountSettings = () => {
                             {pwErrors.current && <span className="input-err-msg"><FaTimesCircle /> {pwErrors.current}</span>}
                         </div>
 
-                        <div className="input-group">
-                            <label>New Password</label>
+                        <div className="field-group">
+                            <label htmlFor="pw-new">New Password</label>
                             <div className="pw-input-wrap">
+                                <FaLock className="field-leading-icon" />
                                 <input
+                                    id="pw-new"
                                     type={showPw.newPw ? 'text' : 'password'}
-                                    placeholder="Enter new password (8-12 characters)"
+                                    placeholder="8-12 characters"
                                     value={pw.newPw}
                                     maxLength={12}
+                                    autoComplete="new-password"
                                     onChange={e => { setPw(p=>({...p,newPw:e.target.value})); setPwErrors(p=>({...p,newPw:''})); }}
                                     className={pwErrors.newPw ? 'input-error' : ''}
                                 />
@@ -206,13 +213,16 @@ const AccountSettings = () => {
                             {pwErrors.newPw && <span className="input-err-msg"><FaTimesCircle /> {pwErrors.newPw}</span>}
                         </div>
 
-                        <div className="input-group">
-                            <label>Confirm New Password</label>
+                        <div className="field-group">
+                            <label htmlFor="pw-confirm">Confirm New Password</label>
                             <div className="pw-input-wrap">
+                                <FaLock className="field-leading-icon" />
                                 <input
+                                    id="pw-confirm"
                                     type={showPw.confirm ? 'text' : 'password'}
                                     placeholder="Re-enter new password"
                                     value={pw.confirm}
+                                    autoComplete="new-password"
                                     onChange={e => { setPw(p=>({...p,confirm:e.target.value})); setPwErrors(p=>({...p,confirm:''})); }}
                                     className={pwErrors.confirm ? 'input-error' : ''}
                                 />
@@ -251,17 +261,22 @@ const AccountSettings = () => {
                         </div>
                     )}
 
-                    <form className="settings-form" onSubmit={handlePhoneSave}>
-                        <div className="input-group">
-                            <label>Phone / Mobile Number</label>
-                            <input
-                                type="tel"
-                                placeholder="e.g. 0912 345 6789"
-                                value={phone}
-                                maxLength={16}
-                                onChange={e => { setPhone(e.target.value); setPhoneErr(''); }}
-                                className={phoneErr ? 'input-error' : ''}
-                            />
+                    <form className="settings-form" onSubmit={handlePhoneSave} noValidate>
+                        <div className="field-group">
+                            <label htmlFor="phone-field">Phone / Mobile Number</label>
+                            <div className="pw-input-wrap">
+                                <FaPhone className="field-leading-icon" />
+                                <input
+                                    id="phone-field"
+                                    type="tel"
+                                    placeholder="e.g. 0912 345 6789"
+                                    value={phone}
+                                    maxLength={16}
+                                    autoComplete="tel"
+                                    onChange={e => { setPhone(e.target.value); setPhoneErr(''); }}
+                                    className={phoneErr ? 'input-error' : ''}
+                                />
+                            </div>
                             {phoneErr && <span className="input-err-msg"><FaTimesCircle /> {phoneErr}</span>}
                         </div>
                         <div className="form-actions">

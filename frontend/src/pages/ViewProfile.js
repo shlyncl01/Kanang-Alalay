@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaUserCircle, FaEnvelope, FaIdCard,
@@ -17,16 +17,10 @@ const API_BASE_URL =
 const ViewProfile = () => {
     const { user: ctxUser, logout } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
 
-    // "Back" should return to wherever the user actually came from. If this
-    // page was opened directly (deep link, refresh, browser-restored tab)
-    // there's no in-app history to go back to, so fall back to that user's
-    // dashboard instead of leaving the app or landing on a blank page.
-    const goBack = () => {
-        if (location.key !== 'default') navigate(-1);
-        else navigate(ctxUser?.role === 'admin' ? '/admin' : '/head-caregiver');
-    };
+    // Back always returns through the user's dashboard (not raw browser
+    // history) so it can never leave the app or land on a blank page.
+    const goBack = () => navigate(ctxUser?.role === 'admin' ? '/admin' : '/head-caregiver');
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState('');

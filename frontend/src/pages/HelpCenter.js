@@ -142,7 +142,7 @@ const HelpCenter = () => {
                         <div className="support-icon-wrapper"><FaBook /></div>
                         <h3>System Documentation</h3>
                         <p>Learn how to navigate the dashboard, manage residents, and handle bookings.</p>
-                        <button className="outline-btn" onClick={() => window.open('https://docs.google.com', '_blank')}>
+                        <button className="outline-btn" onClick={() => navigate('/help/guides')}>
                             Read Guides
                         </button>
                     </div>
