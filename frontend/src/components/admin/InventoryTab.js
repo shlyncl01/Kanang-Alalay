@@ -1,12 +1,16 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
     FaBox, FaEdit, FaTrash, FaExclamationTriangle,
     FaClock, FaSearch, FaPrint, FaFilter,
     FaChevronLeft, FaChevronRight, FaTimes,
     FaUpload, FaFileAlt, FaCheckCircle, FaTimesCircle,
     FaDownload, FaCloudUploadAlt, FaBoxOpen, FaSyncAlt,
+    FaEye, FaLayerGroup,
 } from 'react-icons/fa';
 import { CATEGORY_OPTIONS, getUnitsForCategory } from '../../constants/inventoryOptions';
+import {
+    groupInventoryByProduct, summarizeProductRows, EXPIRING_SOON_DAYS,
+} from '../../utils/inventoryGrouping';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -18,8 +22,19 @@ const CATEGORIES = [
     'All', 'medication', 'medical_supplies', 'food', 'hygiene',
     'General', 'Cleaning', 'Equipment', 'Linens & Bedding',
 ];
+// Backend category value -> the same friendly label used in the Add/Edit
+// form dropdown (CATEGORY_OPTIONS), so the table/filter show "Medicine"
+// instead of the raw enum value "medication".
+const CATEGORY_LABELS = CATEGORY_OPTIONS.reduce((m, c) => ({ ...m, [c.value]: c.label }), {});
+const getCategoryLabel = (value) => CATEGORY_LABELS[value] || value || '—';
+
 const UNITS = ['pcs', 'box', 'bottle', 'pack', 'bag', 'kg', 'liters', 'set', 'roll', 'pair'];
 const PER_PAGE = 10;
+// Product-monitoring table filters (Part 3). "In Stock" / "Low Stock" /
+// "Out of Stock" mirror the Status column exactly; "Expiring Soon" and
+// "Expired" are separate, orthogonal concerns (a product can be In Stock
+// overall while still having one batch that's expiring soon or expired).
+const STATUS_FILTERS = ['All', 'In Stock', 'Low Stock', 'Out of Stock', 'Expiring Soon', 'Expired'];
 
 const getStatusStyle = (item) => {
     if (item.quantity === 0)
@@ -33,6 +48,21 @@ const getStatusStyle = (item) => {
         : Infinity;
     if (daysLeft <= 30) return { label: 'Expiring Soon', bg: '#fff8e1', color: '#7c5a00' };
     return { label: 'In Stock', bg: '#e0faf4', color: '#0d6b4f' };
+};
+
+// Product-level status pill styling (main monitoring table), matching the
+// same color language as getStatusStyle above.
+const PRODUCT_STATUS_STYLE = {
+    'In Stock':     { bg: '#e0faf4', color: '#0d6b4f' },
+    'Low Stock':    { bg: '#fff8e1', color: '#7c5a00' },
+    'Out of Stock': { bg: '#fdecea', color: '#b71c1c' },
+};
+
+// Per-batch status pill styling (Batch Details view).
+const BATCH_STATUS_STYLE = {
+    Active:   { bg: '#e0faf4', color: '#0d6b4f' },
+    Depleted: { bg: '#f1f1f1', color: '#666' },
+    Expired:  { bg: '#fdecea', color: '#b71c1c' },
 };
 
 // ── Bulk CSV Import Modal ──────────────────────────────────────────────────────
@@ -638,7 +668,99 @@ const DeleteInventoryModal = ({ item, onConfirm, onClose }) => {
     );
 };
 
-// ── Stock Requests (submitted by Head Caregivers) ───────────────────────────────
+// ── Batch Details Modal ("View/Manage" action, Part 3) ──────────────────────────
+// Shows every batch belonging to one product. The product row on the main
+// table stays a single row no matter how many batches exist — this modal is
+// where individual batches are actually inspected/edited/deleted.
+const BatchDetailsModal = ({ product, onClose, onEditBatch, onDeleteBatch }) => {
+    if (!product) return null;
+
+    return (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+            <div className="registration-modal" style={{ maxWidth: 720, padding: 0 }}>
+                <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                    padding: '20px 26px', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)',
+                    borderRadius: '20px 20px 0 0',
+                }}>
+                    <div>
+                        <h4 style={{ margin: 0, color: '#fff', fontFamily: "'Playfair Display', serif", display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.1rem' }}>
+                            <FaLayerGroup /> {product.name}
+                        </h4>
+                        <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,.85)', fontSize: '.82rem' }}>
+                            {getCategoryLabel(product.category)} · {product.batches.length} batch{product.batches.length === 1 ? '' : 'es'} · Total Stock: {product.totalStock} {product.unit}
+                        </p>
+                    </div>
+                    <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: '1.5px solid rgba(255,255,255,.2)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <FaTimes size={12} />
+                    </button>
+                </div>
+
+                <div style={{ padding: '20px 26px', maxHeight: '65vh', overflowY: 'auto' }}>
+                    {product.batches.length === 0 ? (
+                        <p style={{ color: '#7A5C4E', textAlign: 'center', padding: '1.5rem 0' }}>
+                            This product has no batches left. It will disappear from the table once refreshed.
+                        </p>
+                    ) : (
+                        <table className="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>Batch</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Expiration Date</th>
+                                    <th>Batch Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {product.batches.map(batch => {
+                                    const st = BATCH_STATUS_STYLE[batch.batchStatus] || BATCH_STATUS_STYLE.Active;
+                                    return (
+                                        <tr key={batch._id}>
+                                            <td><strong>#{batch.batchNumber || '—'}</strong></td>
+                                            <td>{batch.quantity}</td>
+                                            <td>{batch.unit}</td>
+                                            <td style={{ fontSize: '.85rem' }}>
+                                                {batch.doesNotExpire
+                                                    ? <span style={{ color: '#7A5C4E' }}>Does not expire</span>
+                                                    : batch.expirationDate
+                                                        ? new Date(batch.expirationDate).toLocaleDateString()
+                                                        : <span style={{ color: '#ccc' }}>—</span>}
+                                            </td>
+                                            <td>
+                                                <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.76rem', fontWeight: 700, background: st.bg, color: st.color, border: `1.5px solid ${st.color}30` }}>
+                                                    {batch.batchStatus}
+                                                </span>
+                                            </td>
+                                            <td className="actions">
+                                                <span title="Edit batch" className="edit" onClick={() => onEditBatch(batch)} style={{ cursor: 'pointer' }}><FaEdit /></span>
+                                                <span title="Delete batch" className="delete" onClick={() => onDeleteBatch(batch)} style={{ cursor: 'pointer' }}><FaTrash /></span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+
+                    {product.expiringSoonCount > 0 && (
+                        <p style={{ marginTop: 14, marginBottom: 0, fontSize: '.82rem', color: '#7c5a00', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <FaClock size={12} /> {product.expiringSoonCount} batch{product.expiringSoonCount === 1 ? '' : 'es'} expiring within {EXPIRING_SOON_DAYS} days.
+                        </p>
+                    )}
+                    {product.expiredCount > 0 && (
+                        <p style={{ marginTop: 6, marginBottom: 0, fontSize: '.82rem', color: '#b71c1c', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <FaExclamationTriangle size={12} /> {product.expiredCount} expired batch{product.expiredCount === 1 ? '' : 'es'} excluded from Total Stock.
+                        </p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const STOCK_REQ_STATUS_STYLE = {
     pending:  { label: 'Pending',  bg: '#fff8e1', color: '#7c5a00' },
     approved: { label: 'Approved', bg: '#e0faf4', color: '#0d6b4f' },
@@ -850,22 +972,38 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
     const [statusFilter, setStatusFilter]   = useState('All');
     const [page, setPage]                   = useState(1);
     const [showBulkImport, setShowBulkImport] = useState(false);
+    const [viewingProductId, setViewingProductId] = useState(null);
     const printRef = useRef(null);
 
-    const lowCount      = inventory.filter(i => i.quantity > 0 && i.quantity <= (i.minThreshold ?? 10)).length;
-    const outCount      = inventory.filter(i => i.quantity === 0).length;
-    const expiringCount = inventory.filter(i => {
-        if (!i.expirationDate) return false;
-        const days = (new Date(i.expirationDate) - Date.now()) / (1000 * 60 * 60 * 24);
-        return days >= 0 && days <= 30;
-    }).length;
+    // ── Part 3: one row per PRODUCT, aggregated from the flat batch list.
+    // See src/utils/inventoryGrouping.js for the aggregation rules
+    // (active-batch-only Total Stock, Status thresholds, expiring/expired
+    // counts) — kept in its own framework-free module so it's unit tested
+    // directly rather than only eyeballed inside JSX.
+    const productRows = useMemo(() => groupInventoryByProduct(inventory), [inventory]);
+    const summary = useMemo(() => summarizeProductRows(productRows), [productRows]);
 
-    const filtered = inventory.filter(i => {
+    // Re-derive the currently-open Batch Details product from the live,
+    // recomputed rows (not a stale snapshot) so editing/deleting a batch
+    // inside the modal is reflected immediately without closing it.
+    const viewingProduct = viewingProductId ? productRows.find(p => p.productId === viewingProductId) : null;
+    useEffect(() => {
+        // If every batch for the product being viewed got deleted, its row
+        // disappears from productRows — close the now-empty modal instead
+        // of leaving it open with nothing to show.
+        if (viewingProductId && !viewingProduct) setViewingProductId(null);
+    }, [viewingProductId, viewingProduct]);
+
+    const filtered = productRows.filter(p => {
         const q = localSearch.toLowerCase();
-        const nameMatch = !q || i.name?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q);
-        const catMatch  = categoryFilter === 'All' || i.category === categoryFilter;
-        const st = getStatusStyle(i).label;
-        const stMatch   = statusFilter === 'All' || st === statusFilter;
+        const nameMatch = !q || p.name?.toLowerCase().includes(q) || getCategoryLabel(p.category).toLowerCase().includes(q) || p.category?.toLowerCase().includes(q);
+        const catMatch  = categoryFilter === 'All' || p.category === categoryFilter;
+
+        let stMatch = true;
+        if (statusFilter === 'Expiring Soon') stMatch = p.expiringSoonCount > 0;
+        else if (statusFilter === 'Expired') stMatch = p.expiredCount > 0;
+        else if (statusFilter !== 'All') stMatch = p.status === statusFilter;
+
         return nameMatch && catMatch && stMatch;
     });
 
@@ -947,29 +1085,28 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                 <p class="sub">Generated: ${now.toLocaleString('en-PH')} | Filters applied: ${filtersApplied}</p>
 
                 <div class="summary-grid">
-                    <div class="summary-box"><div class="val">${inventory.length}</div><div class="lbl">Total Items</div></div>
-                    <div class="summary-box"><div class="val" style="color:#7c5a00">${lowCount}</div><div class="lbl">Low Stock</div></div>
-                    <div class="summary-box"><div class="val" style="color:#b71c1c">${outCount}</div><div class="lbl">Out of Stock</div></div>
-                    <div class="summary-box"><div class="val" style="color:#856404">${expiringCount}</div><div class="lbl">Expiring Soon</div></div>
+                    <div class="summary-box"><div class="val">${summary.totalProducts}</div><div class="lbl">Total Products</div></div>
+                    <div class="summary-box"><div class="val">${summary.totalStock}</div><div class="lbl">Total Stock</div></div>
+                    <div class="summary-box"><div class="val" style="color:#7c5a00">${summary.lowStockCount}</div><div class="lbl">Low Stock</div></div>
+                    <div class="summary-box"><div class="val" style="color:#b71c1c">${summary.outOfStockCount}</div><div class="lbl">Out of Stock</div></div>
+                    <div class="summary-box"><div class="val" style="color:#856404">${summary.expiringSoonCount}</div><div class="lbl">Expiring Soon</div></div>
                 </div>
 
-                <h4>Inventory List (${filtered.length} of ${inventory.length} items shown)</h4>
+                <h4>Inventory List (${filtered.length} of ${productRows.length} products shown)</h4>
                 <table>
                     <thead>
-                        <tr><th>Item Name</th><th>Category</th><th>Quantity</th><th>Unit</th><th>Min Threshold</th><th>Expiration</th><th>Status</th></tr>
+                        <tr><th>Item</th><th>Category</th><th>Total Stock</th><th>Minimum Stock</th><th>Expiring Soon</th><th>Status</th></tr>
                     </thead>
                     <tbody>
-                        ${filtered.map(item => {
-                            const s = getStatusStyle(item);
-                            const cls = item.quantity === 0 ? 'out' : item.quantity <= (item.minThreshold ?? 10) ? 'low' : 'ok';
+                        ${filtered.map(p => {
+                            const cls = p.status === 'Out of Stock' ? 'out' : p.status === 'Low Stock' ? 'low' : 'ok';
                             return `<tr>
-                                <td><strong>${item.name}</strong>${item.notes ? `<br><small style="color:#7A5C4E">${item.notes}</small>` : ''}</td>
-                                <td>${item.category || '—'}</td>
-                                <td class="${cls}">${item.quantity}</td>
-                                <td>${item.unit}</td>
-                                <td>${item.minThreshold ?? 10} ${item.unit}</td>
-                                <td>${item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : '—'}</td>
-                                <td>${s.label}</td>
+                                <td><strong>${p.name}</strong></td>
+                                <td>${getCategoryLabel(p.category)}</td>
+                                <td class="${cls}">${p.totalStock} ${p.unit}</td>
+                                <td>${p.minThreshold} ${p.unit}</td>
+                                <td>${p.expiringSoonCount > 0 ? `${p.expiringSoonCount} batch(es)` : '—'}</td>
+                                <td>${p.status}</td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -1028,23 +1165,27 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                     </div>
                 </div>
 
-                {/* Stats row */}
+                {/* Stats row — Part 3: Total Products, Total Stock, Low Stock, Out of Stock, Expiring Soon */}
                 <div className="stats-grid inventory-stats-grid" style={{ marginBottom: 20 }}>
                     <div className="stat-card" style={{ padding: 14 }}>
+                        <div className="stat-icon" style={{ background: '#17a2b8' }}><FaLayerGroup /></div>
+                        <div className="stat-info"><h3>{summary.totalProducts}</h3><p>Total Products</p></div>
+                    </div>
+                    <div className="stat-card" style={{ padding: 14 }}>
+                        <div className="stat-icon" style={{ background: '#28a745' }}><FaBox /></div>
+                        <div className="stat-info"><h3>{summary.totalStock}</h3><p>Total Stock</p></div>
+                    </div>
+                    <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#dc3545' }}><FaExclamationTriangle /></div>
-                        <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{lowCount}</h3><p>Low Stock</p></div>
+                        <div className="stat-info"><h3 style={{ color: '#dc3545' }}>{summary.lowStockCount}</h3><p>Low Stock</p></div>
                     </div>
                     <div className="stat-card" style={{ padding: 14 }}>
-                        <div className="stat-icon" style={{ background: '#6c757d' }}><FaBox /></div>
-                        <div className="stat-info"><h3 style={{ color: '#6c757d' }}>{outCount}</h3><p>Out of Stock</p></div>
-                    </div>
-                    <div className="stat-card" style={{ padding: 14 }}>
-                        <div className="stat-icon" style={{ background: '#17a2b8' }}><FaBox /></div>
-                        <div className="stat-info"><h3>{inventory.length}</h3><p>Total Items</p></div>
+                        <div className="stat-icon" style={{ background: '#6c757d' }}><FaBoxOpen /></div>
+                        <div className="stat-info"><h3 style={{ color: '#6c757d' }}>{summary.outOfStockCount}</h3><p>Out of Stock</p></div>
                     </div>
                     <div className="stat-card" style={{ padding: 14 }}>
                         <div className="stat-icon" style={{ background: '#ffc107' }}><FaClock /></div>
-                        <div className="stat-info"><h3 style={{ color: expiringCount > 0 ? '#ffc107' : undefined }}>{expiringCount}</h3><p>Expiring Soon</p></div>
+                        <div className="stat-info"><h3 style={{ color: summary.expiringSoonCount > 0 ? '#ffc107' : undefined }}>{summary.expiringSoonCount}</h3><p>Expiring Soon</p></div>
                     </div>
                 </div>
 
@@ -1056,7 +1197,7 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                         <input
                             value={localSearch}
                             onChange={e => setLocalSearch(e.target.value)}
-                            placeholder="Search inventory by name or category…"
+                            placeholder="Search by item name or category…"
                             style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: '.88rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', height: 38 }}
                         />
                         {localSearch && (
@@ -1075,17 +1216,17 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                         onChange={e => setCategoryFilter(e.target.value)}
                         style={{ padding: '8px 12px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.85rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', fontFamily: "'DM Sans', sans-serif", height: 38, boxSizing: 'border-box' }}
                     >
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c === 'All' ? 'Category: All' : c}</option>)}
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c === 'All' ? 'Category: All' : getCategoryLabel(c)}</option>)}
                     </select>
 
-                    {/* Status */}
+                    {/* Status (includes Expiring Soon / Expired, per Part 3) */}
                     <select
                         className="inventory-filter-select"
                         value={statusFilter}
                         onChange={e => setStatusFilter(e.target.value)}
                         style={{ padding: '8px 12px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.85rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', fontFamily: "'DM Sans', sans-serif", height: 38, boxSizing: 'border-box' }}
                     >
-                        {['All', 'In Stock', 'Low Stock', 'Out of Stock', 'Expiring Soon', 'Expired'].map(s => (
+                        {STATUS_FILTERS.map(s => (
                             <option key={s} value={s}>{s === 'All' ? 'Status: All' : s}</option>
                         ))}
                     </select>
@@ -1096,7 +1237,7 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                         <FaBox style={{ fontSize: '2.5rem', opacity: .3, display: 'block', margin: '0 auto 10px' }} />
                         <p style={{ margin: 0 }}>
                             {localSearch || categoryFilter !== 'All' || statusFilter !== 'All'
-                                ? 'No items match your filters.'
+                                ? 'No products match your filters.'
                                 : 'No inventory items yet. Click "Add Item" to begin.'}
                         </p>
                     </div>
@@ -1105,43 +1246,57 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                         <table className="custom-table">
                             <thead>
                                 <tr>
-                                    <th>Item Name</th>
+                                    <th>Item</th>
                                     <th>Category</th>
-                                    <th>Stock</th>
-                                    <th>Min Threshold</th>
-                                    <th>Expiration</th>
+                                    <th>Total Stock</th>
+                                    <th>Minimum Stock</th>
+                                    <th>Expiring Soon</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {paged.map(item => {
-                                    const s = getStatusStyle(item);
+                                {paged.map(product => {
+                                    const s = PRODUCT_STATUS_STYLE[product.status] || PRODUCT_STATUS_STYLE['In Stock'];
                                     return (
-                                        <tr key={item._id}>
+                                        <tr key={product.productId}>
                                             <td>
-                                                <strong>{item.name}</strong>
-                                                {item.notes && <small style={{ display: 'block', color: '#7A5C4E', fontSize: '.75rem' }}>{item.notes}</small>}
+                                                <strong>{product.name}</strong>
+                                                {product.batches.length > 1 && (
+                                                    <small style={{ display: 'block', color: '#7A5C4E', fontSize: '.75rem' }}>
+                                                        {product.batches.length} batches
+                                                    </small>
+                                                )}
                                             </td>
-                                            <td><span className="badge-custom staff">{item.category}</span></td>
+                                            <td><span className="badge-custom staff">{getCategoryLabel(product.category)}</span></td>
                                             <td>
-                                                <strong style={{ color: item.quantity === 0 ? '#dc3545' : item.quantity <= (item.minThreshold ?? 10) ? '#ffc107' : 'inherit' }}>
-                                                    {item.quantity}
+                                                <strong style={{ color: product.status === 'Out of Stock' ? '#dc3545' : product.status === 'Low Stock' ? '#ffc107' : 'inherit' }}>
+                                                    {product.totalStock}
                                                 </strong>{' '}
-                                                <small style={{ color: '#7A5C4E' }}>{item.unit}</small>
+                                                <small style={{ color: '#7A5C4E' }}>{product.unit}</small>
+                                                {product.expiredCount > 0 && (
+                                                    <small style={{ display: 'block', color: '#b71c1c', fontSize: '.72rem' }} title="Expired batches are excluded from Total Stock">
+                                                        {product.expiredCount} expired batch{product.expiredCount === 1 ? '' : 'es'} excluded
+                                                    </small>
+                                                )}
                                             </td>
-                                            <td style={{ color: '#7A5C4E', fontSize: '.88rem' }}>{item.minThreshold ?? 10} {item.unit}</td>
-                                            <td style={{ fontSize: '.82rem' }}>
-                                                {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : <span style={{ color: '#ccc' }}>—</span>}
+                                            <td style={{ color: '#7A5C4E', fontSize: '.88rem' }}>{product.minThreshold} {product.unit}</td>
+                                            <td style={{ fontSize: '.85rem' }}>
+                                                {product.expiringSoonCount > 0 ? (
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#7c5a00', fontWeight: 600 }}>
+                                                        <FaClock size={11} /> {product.expiringSoonCount} batch{product.expiringSoonCount === 1 ? '' : 'es'}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: '#ccc' }}>—</span>
+                                                )}
                                             </td>
                                             <td>
                                                 <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
-                                                    {s.label}
+                                                    {product.status}
                                                 </span>
                                             </td>
                                             <td className="actions">
-                                                <span title="Edit" className="edit" onClick={() => setEditItem(item)} style={{ cursor: 'pointer' }}><FaEdit /></span>
-                                                <span title="Delete" className="delete" onClick={() => setDeleteTarget(item)} style={{ cursor: 'pointer' }}><FaTrash /></span>
+                                                <span title="View / Manage batches" className="edit" onClick={() => setViewingProductId(product.productId)} style={{ cursor: 'pointer' }}><FaEye /></span>
                                             </td>
                                         </tr>
                                     );
@@ -1174,6 +1329,14 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
 
             <StockRequestsPanel onApproved={() => {}} />
 
+            {viewingProduct && (
+                <BatchDetailsModal
+                    product={viewingProduct}
+                    onClose={() => setViewingProductId(null)}
+                    onEditBatch={(batch) => setEditItem(batch)}
+                    onDeleteBatch={(batch) => setDeleteTarget(batch)}
+                />
+            )}
             {editItem && <EditItemModal item={editItem} onSave={handleSaveEdit} onClose={() => setEditItem(null)} />}
             {deleteTarget && <DeleteInventoryModal item={deleteTarget} onConfirm={handleDeleteConfirm} onClose={() => setDeleteTarget(null)} />}
             {showBulkImport && <BulkImportModal onClose={() => setShowBulkImport(false)} onImported={handleBulkImported} />}
