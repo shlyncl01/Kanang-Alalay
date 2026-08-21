@@ -928,18 +928,18 @@ router.get('/inventory', async (req, res) => {
 // Backs the "Select Item" dropdown on the Request Stock modal. This reads
 // the existing Product catalog from Parts 1–3 (models/Product.js) — the
 // same catalog Admin manages — instead of a separate hardcoded/legacy
-// medication list. It intentionally returns the FULL catalog (not just
-// products the HC already has some of), because the whole point of a
-// stock request is often to get a product the HC currently has zero of.
-// No quantity is stored or duplicated here: the frontend pairs each
-// product with this HC's current quantity by matching against the
-// already-fetched /assigned-stock data, so the dropdown's "Current: N"
-// figure is still sourced from the one HCAssignedStock table.
+// medication list. It intentionally returns the FULL catalog across every
+// category (not just medication/medical_supplies, and not just products
+// the HC already has some of) — per the Part 5 spec an HC can request any
+// item Admin has ever added to Central Inventory (e.g. a food item like
+// "Test Biscuit"), not only medical items. No quantity is stored or
+// duplicated here: the frontend pairs each product with this HC's current
+// quantity by matching against the already-fetched /assigned-stock data,
+// so the dropdown's "Current: N" figure is still sourced from the one
+// HCAssignedStock table.
 router.get('/products', async (req, res) => {
     try {
-        const products = await Product.find({
-            category: { $in: ['medication', 'medical_supplies'] }
-        }).sort({ name: 1 });
+        const products = await Product.find({}).sort({ name: 1 });
 
         res.json({
             success: true,
