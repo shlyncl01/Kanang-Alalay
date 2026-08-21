@@ -309,7 +309,7 @@ router.post('/create-user-enhanced', async (req, res) => {
         console.log('✅ User created successfully:', user._id);
 
         // ── SEND WELCOME EMAIL ──────────────────────────────────────────────
-        const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/login`;
+        const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/entry-a96cc8350c56e2d3`;
         const roleLabel = role === 'head_caregiver' ? 'Head Caregiver' : role.charAt(0).toUpperCase() + role.slice(1);
 
         const welcomeHtml = `
@@ -354,12 +354,11 @@ router.post('/create-user-enhanced', async (req, res) => {
                 <ol style="margin:0;padding-left:18px;color:#444;font-size:.86rem;line-height:1.8">
                     <li>Go to <a href="${loginUrl}" style="color:#d94e1b">${loginUrl}</a></li>
                     <li>Log in with your username and temporary password</li>
-                    <li>Enter the OTP code when prompted</li>
                     <li>Set your permanent password and complete your profile</li>
                 </ol>
             </div>
             <p style="color:#dc3545;font-size:.8rem;text-align:center;margin:0">
-                ⚠️ For your security, do not share these credentials with anyone.
+                For your security, do not share these credentials with anyone.
             </p>
         </div>
         <div style="background:#fafafa;padding:14px 32px;text-align:center;border-top:1px solid #eee">
