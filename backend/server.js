@@ -29,6 +29,7 @@ const medicationScannerRoutes = require('./routes/medication-scanner');
 const scheduleRoutes = require('./routes/schedule');
 const voiceRoutes = require('./routes/voiceRoutes');
 const userRoutes = require('./routes/userRoutes');
+const supportRoutes = require('./routes/supportRoutes');
 
 const app = express();
 
@@ -244,6 +245,7 @@ app.use('/api/medications', medicationRoutes);
 app.use('/api/medication-scanner', medicationScannerRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/support', supportRoutes);
 
 app.get('/api/stats', async (req, res) => {
     try {

@@ -79,13 +79,14 @@ if (useResend) {
     });
 }
 
-const sendEmail = async (to, subject, htmlContent) => {
+const sendEmail = async (to, subject, htmlContent, options = {}) => {
     try {
         const mailOptions = {
             from: `"Kanang-Alalay Admin" <${fromEmail}>`,
             to,
             subject,
-            html: htmlContent
+            html: htmlContent,
+            ...(options.replyTo ? { replyTo: options.replyTo } : {})
         };
 
         if (useResend) {
@@ -93,7 +94,8 @@ const sendEmail = async (to, subject, htmlContent) => {
                 from: mailOptions.from,
                 to: mailOptions.to,
                 subject: mailOptions.subject,
-                html: mailOptions.html
+                html: mailOptions.html,
+                ...(mailOptions.replyTo ? { reply_to: mailOptions.replyTo } : {})
             });
             if (error) {
                 // Resend doesn't throw on API errors — it returns an `error` object instead,
@@ -348,6 +350,27 @@ const generateBookingCancelledTemplate = (booking) => `
     </div>
 </div>`;
 
+// Contact Support Email Template (Help Center → Contact Support form)
+const generateSupportRequestTemplate = ({ category, subject, message, name, email, staffId, role }) => `
+<div style="background-color: #fcf8f5; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+    <div style="max-width: 550px; margin: 0 auto; background-color: #ffffff; padding: 40px; border-radius: 8px; border-top: 5px solid #F96B38; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+        <h2 style="color: #D94E1B; margin-top: 0;">New Support Request</h2>
+        <p style="color: #444; font-size: 15px;"><strong>${category || 'Other'}</strong></p>
+
+        <div style="background-color: #FFF1E8; padding: 20px; border-radius: 6px; margin: 20px 0;">
+            <p style="margin: 4px 0; color: #1a0a00;"><strong>From:</strong> ${name || 'Unknown'} ${role ? `(${role})` : ''}</p>
+            ${email ? `<p style="margin: 4px 0; color: #1a0a00;"><strong>Email:</strong> ${email}</p>` : ''}
+            ${staffId ? `<p style="margin: 4px 0; color: #1a0a00;"><strong>Staff ID:</strong> ${staffId}</p>` : ''}
+        </div>
+
+        <h3 style="color: #1a0a00; font-size: 15px; margin-bottom: 6px;">${subject}</h3>
+        <p style="color: #444; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${message}</p>
+
+        <hr style="margin: 30px 0; border-color: #eee;" />
+        <p style="color: #999; font-size: 12px; margin: 0;">Sent via Kanang-Alalay Help Center — Contact Support form.</p>
+    </div>
+</div>`;
+
 module.exports = { 
     sendEmail, 
     generateOtpTemplate, 
@@ -355,5 +378,6 @@ module.exports = {
     generateDonationTemplate,
     generateBookingConfirmationTemplate,
     generateBookingRejectionTemplate,
-    generateBookingCancelledTemplate
+    generateBookingCancelledTemplate,
+    generateSupportRequestTemplate
 };
