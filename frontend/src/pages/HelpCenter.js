@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaLifeRing, FaBook, FaHeadset,
@@ -42,20 +42,20 @@ const FAQ_DATA = [
 const HelpCenter = () => {
     const { user } = useAuth();
     const navigate  = useNavigate();
+    const location  = useLocation();
+
+    // Same "back to previous page, or a sensible fallback" logic used on
+    // Profile/Settings — avoids a blank page when Help Center is opened
+    // directly (deep link, refresh) with no in-app history behind it.
+    const goBack = () => {
+        if (location.key !== 'default') navigate(-1);
+        else navigate(user?.role === 'admin' ? '/admin' : '/head-caregiver');
+    };
     const [openIdx, setOpenIdx] = useState({});
-    const faqRef = useRef(null);
 
     const toggle = (si, qi) => {
         const key = `${si}-${qi}`;
         setOpenIdx(p => ({ ...p, [key]: !p[key] }));
-    };
-
-    // "Read Guides" has no dedicated documentation page to route to — the FAQ
-    // section below IS the system's guide content, so this scrolls the user
-    // straight to it instead of pointing at a placeholder external link.
-    const scrollToFaq = () => {
-        faqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setOpenIdx(p => ({ ...p, '0-0': true, '0-1': true, '0-2': true }));
     };
 
     // Where each quick-link should land depends on role: admin-only sections live on
@@ -82,7 +82,7 @@ const HelpCenter = () => {
         <div className="page-wrapper">
             <div className="content-container help-container">
                 <div className="page-header">
-                    <button className="back-btn" onClick={() => navigate(-1)}>
+                    <button className="back-btn" onClick={goBack}>
                         <FaArrowLeft /> Back
                     </button>
                     <h2>Help &amp; Support</h2>
@@ -115,7 +115,7 @@ const HelpCenter = () => {
                 </div>
 
                 {/* FAQ */}
-                <div className="help-faq-section" ref={faqRef}>
+                <div className="help-faq-section">
                     <h3 className="help-section-title">Frequently Asked Questions</h3>
                     {FAQ_DATA.map((section, si) => (
                         <div key={si} className="faq-section">
@@ -142,7 +142,7 @@ const HelpCenter = () => {
                         <div className="support-icon-wrapper"><FaBook /></div>
                         <h3>System Documentation</h3>
                         <p>Learn how to navigate the dashboard, manage residents, and handle bookings.</p>
-                        <button className="outline-btn" onClick={scrollToFaq}>
+                        <button className="outline-btn" onClick={() => window.open('https://docs.google.com', '_blank')}>
                             Read Guides
                         </button>
                     </div>

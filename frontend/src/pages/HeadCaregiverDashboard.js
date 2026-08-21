@@ -1257,6 +1257,8 @@ const HeadCaregiverDashboard = () => {
     const location = useLocation();
     const doFetch = useFetch();
 
+    // Support deep-linking into a specific tab, e.g. navigate('/head-caregiver', { state: { section: 'residents' } })
+    // from Help Center's Quick Navigation cards.
     const [activeSection, setSection] = useState(location.state?.section || 'home');
     const [searchQuery, setSearch] = useState('');
     const [accountMenuOpen, setAcctMenu] = useState(false);
@@ -1399,7 +1401,7 @@ const HeadCaregiverDashboard = () => {
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const handleLogout = () => setShowLogoutConfirm(true);
-    const confirmLogout = () => { logout(); navigate('/login'); };
+    const confirmLogout = () => { logout(); navigate('/'); };
 
     const markStatus = async (id, status, method = 'manual') => {
         const log = schedule.find(l => l._id === id);

@@ -1,10 +1,48 @@
+/* ============================================================
+   AccountSettings.css — shares the Kanang-Alalay brand tokens
+   defined in ViewProfile.css (--ka-orange, --ka-cream, etc).
+   Re-declared here too so this page renders correctly even if
+   ViewProfile.css hasn't loaded first.
+   ============================================================ */
+:root {
+  --ka-orange:      #F96B38;
+  --ka-orange-dk:   #D94E1B;
+  --ka-orange-lt:   #FDDECA;
+  --ka-orange-pale: #FFF1E8;
+  --ka-gold:        #E0A458;
+  --ka-cream:       #FFF8F3;
+  --ka-ink:         #1A0A00;
+  --ka-muted:       #7A5C4E;
+  --ka-border:      #E8D6CC;
+  --ka-white:       #FFFFFF;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ── SETTINGS CARD ────────────────────────────────────────────
+   A thin gradient rule along the top ties it back to the badge
+   ring used on the Profile page, without repeating the motif.
+   ─────────────────────────────────────────────────────────── */
 .settings-card {
+  position: relative;
   background: #FFFFFF;
   border-radius: 16px;
   box-shadow: 0 4px 30px rgba(249,107,56,.1);
   padding: 36px 40px;
   border: 1px solid #E8D6CC;
+  overflow: hidden;
+  animation: settingsCardIn .4s cubic-bezier(.2,.8,.2,1) both;
 }
+.settings-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--ka-orange), var(--ka-gold), var(--ka-orange-dk));
+}
+@keyframes settingsCardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .settings-card-header {
   display: flex;
@@ -14,17 +52,29 @@
   padding-bottom: 22px;
   border-bottom: 1.5px solid #E8D6CC;
 }
+/* Icon becomes a filled badge chip, matching the info-icon
+   treatment on the Profile page, instead of a bare glyph. */
 .settings-card-header .header-icon {
-  color: #F96B38;
-  font-size: 1.5rem;
-  margin-top: 3px;
+  color: var(--ka-orange);
+  background: var(--ka-orange-pale);
+  border: 1px solid var(--ka-orange-lt);
+  font-size: 1.15rem;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  margin-top: 0;
 }
 .settings-card-header h3 {
   margin: 0 0 4px;
   font-family: 'Playfair Display', Georgia, serif;
   color: #1A0A00;
   font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -.01em;
 }
 .settings-card-sub {
   margin: 0;
@@ -53,11 +103,11 @@
 .input-group { margin-bottom: 20px; }
 .input-group label {
   display: block;
-  font-size: .78rem;
+  font-size: .74rem;
   font-weight: 700;
   color: #7A5C4E;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .08em;
   margin-bottom: 8px;
 }
 .input-group input, .input-group .pw-input-wrap input {
@@ -69,7 +119,7 @@
   font-size: .95rem;
   color: #1A0A00;
   background: #FFF8F3;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .2s, box-shadow .2s, background .2s;
   outline: none;
   box-sizing: border-box;
 }
@@ -79,15 +129,16 @@
 .input-group .pw-input-wrap input:focus {
   border-color: #F96B38;
   background: #FFFFFF;
-  box-shadow: 0 0 0 3px rgba(249,107,56,.12);
+  box-shadow: 0 0 0 3px rgba(249,107,56,.14);
 }
 .input-group input.input-error { border-color: #C0392B; background: #fff8f8; }
+.input-group input.input-error:focus { box-shadow: 0 0 0 3px rgba(192,57,43,.12); }
 
 .pw-input-wrap { position: relative; }
 .pw-input-wrap input { padding-right: 44px; }
 .pw-eye-btn {
   position: absolute;
-  right: 12px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -97,10 +148,12 @@
   font-size: 1rem;
   display: flex;
   align-items: center;
-  padding: 4px;
-  transition: color .18s;
+  padding: 6px;
+  border-radius: 8px;
+  transition: color .18s, background .18s;
 }
-.pw-eye-btn:hover { color: #F96B38; }
+.pw-eye-btn:hover { color: #F96B38; background: var(--ka-orange-pale); }
+.pw-eye-btn:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: 1px; }
 
 .pw-strength {
   display: flex;
@@ -129,6 +182,7 @@
   font-size: .78rem;
   font-weight: 600;
   margin-top: 6px;
+  animation: fadeIn .18s ease;
 }
 .input-match-msg {
   display: flex;
@@ -164,6 +218,30 @@
   transition: all .2s;
 }
 .cancel-btn:hover { background: #FFF8F3; border-color: #F96B38; color: #D94E1B; }
+.cancel-btn:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: 2px; }
+
+/* brand-btn is shared with ViewProfile.js / HelpCenter — kept
+   pixel-identical to those files so whichever stylesheet loads
+   last doesn't change its appearance. */
+.brand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--ka-orange), var(--ka-orange-dk));
+  color: var(--ka-white);
+  border: none;
+  padding: 12px 28px;
+  border-radius: 11px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .22s;
+  box-shadow: 0 4px 16px rgba(249,107,56,.3);
+}
+.brand-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(249,107,56,.4); }
+.brand-btn:focus-visible { outline: 2px solid var(--ka-orange-dk); outline-offset: 2px; }
+.brand-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; transform: none; }
 
 @media (max-width: 600px) {
   .settings-card { padding: 22px 18px; }

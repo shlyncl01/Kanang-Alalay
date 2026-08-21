@@ -842,7 +842,7 @@ const AdminDashboard = () => {
     };
 
     const handleLogout = () => setShowLogoutConfirm(true);
-    const confirmLogout = () => { logout(); navigate('/login'); };
+    const confirmLogout = () => { logout(); navigate('/'); };
 
     const renderPagination = (total, page, setPage, perPage = itemsPerPage) => {
         const pages = Math.ceil(total / perPage);

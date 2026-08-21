@@ -1,7 +1,30 @@
+:root {
+  --ka-orange:      #F96B38;
+  --ka-orange-dk:   #D94E1B;
+  --ka-orange-lt:   #FDDECA;
+  --ka-orange-pale: #FFF1E8;
+  --ka-gold:        #E0A458;
+  --ka-cream:       #FFF8F3;
+  --ka-ink:         #1A0A00;
+  --ka-muted:       #7A5C4E;
+  --ka-border:      #E8D6CC;
+  --ka-white:       #FFFFFF;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
 .help-container { max-width: 860px; }
 
+/* ── HERO ─────────────────────────────────────────────────────
+   Brought into the same orange/terracotta family as the rest of
+   the app (was an unrelated brown gradient before). The diagonal
+   weave watermark is the same texture used once on the Profile
+   page — the pages' shared signature, used sparingly.
+   ─────────────────────────────────────────────────────────── */
 .help-hero-banner {
-  background: linear-gradient(135deg, #b85c2d, #7d3a06);
+  background: linear-gradient(135deg, var(--ka-orange) 0%, var(--ka-orange-dk) 55%, #A83A14 100%);
   border-radius: 20px;
   padding: 52px 40px;
   text-align: center;
@@ -13,25 +36,31 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 20% 50%, rgba(255,255,255,.08) 0%, transparent 60%),
-              radial-gradient(circle at 80% 20%, rgba(255,255,255,.06) 0%, transparent 50%);
+  background-image:
+    repeating-linear-gradient(45deg,  rgba(255,255,255,.06) 0 2px, transparent 2px 16px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.05) 0 2px, transparent 2px 16px),
+    radial-gradient(circle at 20% 50%, rgba(255,255,255,.08) 0%, transparent 60%),
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,.06) 0%, transparent 50%);
 }
 .hero-icon {
   font-size: 3rem;
-  color: rgba(255,255,255,.8);
+  color: rgba(255,255,255,.85);
   display: block;
   margin: 0 auto 18px;
   position: relative;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,.15));
 }
 .help-hero-banner h1 {
   font-family: 'Playfair Display', Georgia, serif;
   color: #fff;
   font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -.01em;
   margin: 0 0 12px;
   position: relative;
 }
 .help-hero-banner p {
-  color: rgba(255,255,255,.85);
+  color: rgba(255,255,255,.9);
   font-size: .95rem;
   max-width: 480px;
   margin: 0 auto;
@@ -39,6 +68,11 @@
   position: relative;
 }
 
+/* ── QUICK LINKS ──────────────────────────────────────────────
+   Now real <button> elements (see HelpCenter.js) — reset native
+   button chrome and keep the original tile look, plus a proper
+   focus ring and active state so they read as controls.
+   ─────────────────────────────────────────────────────────── */
 .help-quick-links {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -54,19 +88,26 @@
   border-radius: 12px;
   padding: 14px 16px;
   transition: all .2s;
+  /* native <button> reset */
+  appearance: none;
+  margin: 0;
+  color: inherit;
+  text-align: left;
 }
 .quick-link-chip:hover {
   border-color: #F96B38;
   box-shadow: 0 4px 14px rgba(249,107,56,.12);
   transform: translateY(-1px);
 }
+.quick-link-chip:active { transform: translateY(0); }
+.quick-link-chip:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: 2px; }
 .quick-link-icon {
   color: #F96B38;
   font-size: 1.2rem;
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  background: #FFF8F3;
+  background: var(--ka-orange-pale);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -83,11 +124,13 @@
   margin-top: 2px;
 }
 
+/* ── FAQ ──────────────────────────────────────────────────────── */
 .help-faq-section { margin-bottom: 32px; }
 .help-section-title {
   font-family: 'Playfair Display', Georgia, serif;
   color: #1A0A00;
   font-size: 1.2rem;
+  font-weight: 800;
   margin: 0 0 18px;
 }
 .faq-section { margin-bottom: 20px; }
@@ -96,7 +139,7 @@
   font-weight: 700;
   color: #F96B38;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: .1em;
   margin-bottom: 10px;
   padding-left: 2px;
 }
@@ -106,9 +149,9 @@
   border-radius: 10px;
   margin-bottom: 8px;
   overflow: hidden;
-  transition: border-color .2s;
+  transition: border-color .2s, box-shadow .2s;
 }
-.faq-item.open { border-color: #F96B38; }
+.faq-item.open { border-color: #F96B38; box-shadow: 0 4px 14px rgba(249,107,56,.08); }
 .faq-question {
   display: flex;
   justify-content: space-between;
@@ -127,7 +170,14 @@
   transition: background .18s;
 }
 .faq-question:hover { background: #FFF8F3; }
-.faq-question svg { color: #F96B38; flex-shrink: 0; font-size: .85rem; }
+.faq-question:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: -2px; }
+.faq-question svg {
+  color: #F96B38;
+  flex-shrink: 0;
+  font-size: .85rem;
+  transition: transform .2s ease;
+}
+.faq-item.open .faq-question svg { transform: rotate(-180deg); }
 .faq-answer {
   padding: 0 20px 18px;
   font-size: .88rem;
@@ -136,8 +186,14 @@
   border-top: 1px solid #E8D6CC;
   margin-top: 0;
   padding-top: 14px;
+  animation: faqIn .22s ease;
 }
+@keyframes faqIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
+/* ── SUPPORT CARDS ────────────────────────────────────────────
+   Icon sits in the same badge ring used for the profile avatar
+   — the second (and last) appearance of that signature.
+   ─────────────────────────────────────────────────────────── */
 .help-card-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -154,23 +210,36 @@
 }
 .support-card:hover { box-shadow: 0 8px 24px rgba(249,107,56,.12); transform: translateY(-2px); }
 .support-icon-wrapper {
+  position: relative;
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: #FFF8F3;
-  color: #F96B38;
-  font-size: 1.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 18px;
-  border: 2px solid #FDDECA;
+  padding: 4px;
+  background: conic-gradient(from 210deg, var(--ka-orange), var(--ka-gold), var(--ka-orange-dk), var(--ka-orange));
+  box-shadow: 0 4px 14px rgba(217,78,27,.22);
+}
+.support-icon-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--ka-orange-pale);
+}
+.support-icon-wrapper svg {
+  position: relative;
+  color: #F96B38;
+  font-size: 1.4rem;
 }
 .support-card h3 {
   margin: 0 0 10px;
   font-family: 'Playfair Display', Georgia, serif;
   color: #1A0A00;
   font-size: 1.05rem;
+  font-weight: 800;
 }
 .support-card p {
   color: #7A5C4E;
@@ -196,6 +265,7 @@
   transition: all .2s;
 }
 .outline-btn:hover { background: #FFF8F3; box-shadow: 0 4px 12px rgba(249,107,56,.15); }
+.outline-btn:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: 2px; }
 
 .help-user-info {
   text-align: center;
