@@ -102,6 +102,22 @@ const inventorySchema = new mongoose.Schema(
       required: function() { return this.category === 'medication'; }
     },
 
+    // ── NEW (Part 2): lets the Add/Edit form mark an item as never
+    // expiring. This is purely additive — it does NOT change the schema's
+    // existing `required` rule above (still medication-only), so bulk CSV
+    // import (routes/adminRoutes.js POST /inventory/bulk-import, which
+    // uses insertMany and therefore full-document validation) keeps
+    // working exactly as before for non-medication rows with no
+    // expiration date. The broader "expiration required unless
+    // doesNotExpire, for every category" rule from the Part 2 spec is
+    // enforced instead at the route layer for the single-item Add/Edit
+    // form (utils/inventoryFormValidation.js), which is the correct,
+    // narrowly-scoped place for a form-specific rule.
+    doesNotExpire: {
+      type: Boolean,
+      default: false,
+    },
+
     notes: {
       type: String,
       trim: true,

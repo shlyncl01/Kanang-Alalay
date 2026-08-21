@@ -8,6 +8,7 @@ const Donation = require('../models/Donation');
 const Inventory = require('../models/Inventory');
 const Product = require('../models/Product');
 const { findOrCreateProduct, getNextBatchNumber } = require('../utils/inventoryProductService');
+const { validateInventoryInput } = require('../utils/inventoryFormValidation');
 const RegistrationCode = require('../models/VerificationCode');
 const StockRequest = require('../models/StockRequest');
 const VitalsLog = require('../models/VitalsLog');
@@ -875,13 +876,15 @@ router.get('/inventory', async (req, res) => {
 
 router.post('/inventory', async (req, res) => {
     try {
-        const { name, quantity, unit, category, minThreshold, expirationDate, notes, supplier } = req.body;
+        const { name, quantity, unit, category, minThreshold, expirationDate, notes, supplier, doesNotExpire } = req.body;
 
-        if (!name || !name.trim()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Item name is required.'
-            });
+        // ── Form validation (backend is the source of truth — never rely
+        // on the frontend alone) ──────────────────────────────────────
+        const validationError = validateInventoryInput({
+            name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire,
+        });
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
         }
 
         // ── Product + Batch ──────────────────────────────────────────
@@ -891,12 +894,25 @@ router.post('/inventory', async (req, res) => {
         // a normalized (trimmed, whitespace-collapsed, lowercased) form so
         // "Skyflakes" / "skyflakes " / "SKYFLAKES" all resolve to the same
         // product, while "Skyflakes" and "Skyflakes Chocolate" stay separate.
-        const { product } = await findOrCreateProduct(Product, {
+        const { product, created } = await findOrCreateProduct(Product, {
             name,
-            category: category || 'General',
-            unit: unit || 'pcs',
+            category,
+            unit,
             minimumStockLevel: minThreshold,
         });
+
+        // If this name already resolves to an existing Product, the new
+        // batch's category/unit MUST match that Product's — otherwise
+        // "total stock" for the product (e.g. summing quantity across
+        // batches) stops making sense (you can't add "10 kg" to a product
+        // whose existing stock is tracked in "pack"). Reject rather than
+        // silently overriding what the Admin typed.
+        if (!created && (product.category !== category || product.unit !== unit)) {
+            return res.status(400).json({
+                success: false,
+                message: `"${product.name}" already exists as a product with category "${product.category}" and unit "${product.unit}". Add this batch using the same category and unit, or use a different item name if this is actually a different product.`,
+            });
+        }
 
         const batchNumber = await getNextBatchNumber(Inventory, product._id);
 
@@ -912,8 +928,9 @@ router.post('/inventory', async (req, res) => {
             quantity: quantity || 0,
             unit: product.unit,
             category: product.category,
-            minThreshold: product.minimumStockLevel,
-            expirationDate: expirationDate || null,
+            minThreshold: Number(minThreshold),
+            expirationDate: doesNotExpire ? null : (expirationDate || null),
+            doesNotExpire: !!doesNotExpire,
             supplier: supplier || undefined,
             notes: notes || ''
         });
@@ -937,20 +954,57 @@ router.post('/inventory', async (req, res) => {
 
 router.put('/inventory/:id', async (req, res) => {
     try {
+        const existing = await Inventory.findById(req.params.id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: 'Item not found' });
+        }
+
         const updates = { ...req.body };
+
+        // Merge incoming updates over the existing document so we validate
+        // the FINAL state of the item, not just whichever fields happened
+        // to be included in this particular PUT body.
+        const merged = {
+            name: updates.name !== undefined ? updates.name : existing.name,
+            category: updates.category !== undefined ? updates.category : existing.category,
+            quantity: updates.quantity !== undefined ? updates.quantity : existing.quantity,
+            unit: updates.unit !== undefined ? updates.unit : existing.unit,
+            minThreshold: updates.minThreshold !== undefined ? updates.minThreshold : existing.minThreshold,
+            expirationDate: updates.expirationDate !== undefined ? updates.expirationDate : existing.expirationDate,
+            doesNotExpire: updates.doesNotExpire !== undefined ? updates.doesNotExpire : existing.doesNotExpire,
+        };
+
+        const validationError = validateInventoryInput(merged);
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
+        }
 
         // If the batch's name is being edited, re-resolve which Product it
         // belongs to (same normalized-name matching used on create) instead
         // of leaving it pointed at the old product or left unlinked.
         if (updates.name && updates.name.trim()) {
-            const { product } = await findOrCreateProduct(Product, {
-                name: updates.name,
-                category: updates.category,
-                unit: updates.unit,
-                minimumStockLevel: updates.minThreshold,
+            const { product, created } = await findOrCreateProduct(Product, {
+                name: merged.name,
+                category: merged.category,
+                unit: merged.unit,
+                minimumStockLevel: merged.minThreshold,
             });
+
+            if (!created && (product.category !== merged.category || product.unit !== merged.unit)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `"${product.name}" already exists as a product with category "${product.category}" and unit "${product.unit}". Edit this batch using the same category and unit, or use a different item name if this is actually a different product.`,
+                });
+            }
+
             updates.productId = product._id;
             updates.name = product.name;
+        }
+
+        // "Does not expire" always wins — never leave a stale expiration
+        // date set on a document flagged as non-expiring.
+        if (merged.doesNotExpire) {
+            updates.expirationDate = null;
         }
 
         const item = await Inventory.findByIdAndUpdate(

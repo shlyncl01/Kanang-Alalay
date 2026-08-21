@@ -1,27 +1,11 @@
 import React, { useState } from 'react';
 import { FaTimes, FaBox } from 'react-icons/fa';
-
-const CATEGORIES = ['Medicine', 'Food & Nutrition', 'Linens & Bedding', 'Hygiene', 'Medical Supplies', 'Cleaning', 'Equipment', 'General'];
-const UNITS      = ['pcs', 'box', 'bottle', 'pack', 'bag', 'kg', 'liters', 'set', 'roll', 'pair'];
-
-// Maps the UI-friendly category labels above to the values accepted by the
-// backend Inventory model's enum (models/Inventory.js). Without this mapping,
-// categories like "Medicine" or "Food & Nutrition" fail Mongoose enum validation
-// (e.g. "'Linens & Bedding' is not a valid enum value for path 'category'").
-const CATEGORY_TO_BACKEND_VALUE = {
-    'Medicine': 'medication',
-    'Food & Nutrition': 'food',
-    'Linens & Bedding': 'Linens & Bedding',
-    'Hygiene': 'hygiene',
-    'Medical Supplies': 'medical_supplies',
-    'Cleaning': 'Cleaning',
-    'Equipment': 'Equipment',
-    'General': 'General',
-};
+import { CATEGORY_OPTIONS, getUnitsForCategory } from '../constants/inventoryOptions';
 
 const EMPTY_FORM = {
-    name: '', category: '', quantity: '', unit: 'pcs',
-    minThreshold: '', expirationDate: '', supplier: '', notes: '',
+    name: '', category: '', quantity: '', unit: '',
+    minThreshold: '', expirationDate: '', doesNotExpire: false,
+    supplier: '', notes: '',
 };
 
 const inputStyle = (hasError) => ({
@@ -49,22 +33,75 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
     const validate = (f) => {
         const e = {};
         if (!f.name.trim()) e.name = 'Item name is required.';
+
+        if (!f.category) e.category = 'Category is required.';
+
         if (f.quantity === '' || isNaN(f.quantity) || Number(f.quantity) < 0)
             e.quantity = 'Enter a valid, non-negative quantity.';
-        if (f.minThreshold !== '' && (isNaN(f.minThreshold) || Number(f.minThreshold) < 0))
+
+        // Unit depends on Category: require a category first, then require
+        // a unit that's actually valid for that category.
+        if (!f.category) {
+            e.unit = 'Select a category first.';
+        } else if (!f.unit) {
+            e.unit = 'Unit is required.';
+        } else if (!getUnitsForCategory(f.category).includes(f.unit)) {
+            e.unit = 'Selected unit is not valid for this category.';
+        }
+
+        // Minimum Stock Level is required (Part 2 spec). It shares the same
+        // `unit` field as Quantity above — there's only one Unit per item,
+        // so "50 pack / 10 kg" mismatches can't happen by construction.
+        if (f.minThreshold === '')
+            e.minThreshold = 'Minimum stock level is required.';
+        else if (isNaN(f.minThreshold) || Number(f.minThreshold) < 0)
             e.minThreshold = 'Minimum stock level cannot be negative.';
-        if (f.expirationDate && isNaN(Date.parse(f.expirationDate)))
-            e.expirationDate = 'Enter a valid date.';
+
+        // Expiration is required unless explicitly marked as non-expiring.
+        if (!f.doesNotExpire) {
+            if (!f.expirationDate) {
+                e.expirationDate = 'Expiration date is required, or check "Does not expire".';
+            } else if (isNaN(Date.parse(f.expirationDate))) {
+                e.expirationDate = 'Enter a valid date.';
+            } else {
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                if (new Date(f.expirationDate) < today) {
+                    e.expirationDate = 'Expiration date cannot be in the past.';
+                }
+            }
+        }
+
         return e;
     };
 
     const currentErrors = validate(form);
-    const hasRequiredFields = form.name.trim() !== '' && form.quantity !== '' && !isNaN(form.quantity) && Number(form.quantity) >= 0;
+    const hasRequiredFields = form.name.trim() !== '' && form.category !== '' && form.unit !== '' &&
+        form.quantity !== '' && !isNaN(form.quantity) && Number(form.quantity) >= 0 &&
+        form.minThreshold !== '' && (form.doesNotExpire || form.expirationDate !== '');
     const canSubmit = hasRequiredFields && Object.keys(currentErrors).length === 0 && !submitting;
 
     const handleChange = (field, val) => {
-        setForm(p => ({ ...p, [field]: val }));
+        setForm(p => {
+            const next = { ...p, [field]: val };
+            // Category changed: if the currently-selected unit isn't valid
+            // for the new category, clear it so the Admin has to pick a
+            // valid one explicitly (never silently keep an invalid unit).
+            if (field === 'category') {
+                const validUnits = getUnitsForCategory(val);
+                if (!validUnits.includes(p.unit)) {
+                    next.unit = '';
+                }
+            }
+            // "Does not expire" checked: clear any expiration date/error,
+            // since it no longer applies.
+            if (field === 'doesNotExpire' && val === true) {
+                next.expirationDate = '';
+            }
+            return next;
+        });
         if (errors[field]) setErrors(p => ({ ...p, [field]: '' }));
+        if (field === 'category' && errors.unit) setErrors(p => ({ ...p, unit: '' }));
+        if (field === 'doesNotExpire' && errors.expirationDate) setErrors(p => ({ ...p, expirationDate: '' }));
         if (serverError) setServerError('');
     };
 
@@ -84,11 +121,12 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
         try {
             const result = await onSave({
                 name: form.name.trim(),
-                category: CATEGORY_TO_BACKEND_VALUE[form.category] || form.category,
+                category: form.category,
                 quantity: Number(form.quantity),
                 unit: form.unit,
-                minThreshold: form.minThreshold !== '' ? Number(form.minThreshold) : undefined,
-                expirationDate: form.expirationDate || undefined,
+                minThreshold: Number(form.minThreshold),
+                expirationDate: form.doesNotExpire ? undefined : form.expirationDate,
+                doesNotExpire: form.doesNotExpire,
                 supplier: form.supplier.trim() || undefined,
                 notes: form.notes.trim() || undefined,
             });
@@ -155,15 +193,18 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
 
                     {/* Category */}
                     <div style={{ marginBottom: 18 }}>
-                        <label style={labelStyle}>Category</label>
+                        <label style={labelStyle}>
+                            Category <span style={{ color: '#dc3545' }}>*</span>
+                        </label>
                         <select
                             value={form.category}
                             onChange={e => handleChange('category', e.target.value)}
-                            style={inputStyle(false)}
+                            style={inputStyle(errors.category)}
                         >
                             <option value="">Select category…</option>
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
+                        {errors.category && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.category}</small>}
                     </div>
 
                     {/* Quantity + Unit */}
@@ -183,21 +224,28 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
                             {errors.quantity && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.quantity}</small>}
                         </div>
                         <div>
-                            <label style={labelStyle}>Unit</label>
+                            <label style={labelStyle}>
+                                Unit <span style={{ color: '#dc3545' }}>*</span>
+                            </label>
                             <select
                                 value={form.unit}
                                 onChange={e => handleChange('unit', e.target.value)}
-                                style={inputStyle(false)}
+                                disabled={!form.category}
+                                style={{ ...inputStyle(errors.unit), opacity: form.category ? 1 : 0.6, cursor: form.category ? 'pointer' : 'not-allowed' }}
                             >
-                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                <option value="">{form.category ? 'Select unit…' : 'Select category first'}</option>
+                                {getUnitsForCategory(form.category).map(u => <option key={u} value={u}>{u}</option>)}
                             </select>
+                            {errors.unit && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.unit}</small>}
                         </div>
                     </div>
 
                     {/* Minimum Stock Level + Expiration Date */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 10 }}>
                         <div>
-                            <label style={labelStyle}>Minimum Stock Level</label>
+                            <label style={labelStyle}>
+                                Minimum Stock Level <span style={{ color: '#dc3545' }}>*</span>
+                            </label>
                             <input
                                 type="number"
                                 min="0"
@@ -207,17 +255,34 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
                                 style={inputStyle(errors.minThreshold)}
                             />
                             {errors.minThreshold && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.minThreshold}</small>}
+                            {form.unit && <small style={{ color: '#A38070', fontSize: '.76rem', marginTop: 4, display: 'block' }}>Same unit as Quantity ({form.unit}).</small>}
                         </div>
                         <div>
-                            <label style={labelStyle}>Expiration Date <span style={{ color: '#A38070', fontWeight: 500, textTransform: 'none' }}>(optional)</span></label>
+                            <label style={labelStyle}>
+                                Expiration Date {!form.doesNotExpire && <span style={{ color: '#dc3545' }}>*</span>}
+                            </label>
                             <input
                                 type="date"
                                 value={form.expirationDate}
                                 onChange={e => handleChange('expirationDate', e.target.value)}
-                                style={inputStyle(errors.expirationDate)}
+                                disabled={form.doesNotExpire}
+                                style={{ ...inputStyle(errors.expirationDate), opacity: form.doesNotExpire ? 0.6 : 1, cursor: form.doesNotExpire ? 'not-allowed' : 'text' }}
                             />
                             {errors.expirationDate && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.expirationDate}</small>}
                         </div>
+                    </div>
+
+                    {/* Does not expire */}
+                    <div style={{ marginBottom: 18 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', color: '#2c3e50', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={form.doesNotExpire}
+                                onChange={e => handleChange('doesNotExpire', e.target.checked)}
+                                style={{ width: 16, height: 16, cursor: 'pointer' }}
+                            />
+                            This item does not expire
+                        </label>
                     </div>
 
                     {/* Supplier */}

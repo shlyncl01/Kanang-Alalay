@@ -1,5 +1,16 @@
 const mongoose = require('mongoose');
 
+/**
+ * A Product represents ONE unique inventory item (e.g. "Skyflakes",
+ * "Paracetamol 500mg"). Products are never seeded or hardcoded — they are
+ * created dynamically the first time an Admin adds inventory for a name
+ * that doesn't already exist (see routes/adminRoutes.js POST /inventory).
+ *
+ * Actual stock lives on Batch documents (models/Inventory.js), which
+ * reference a Product via productId. A Product's "total stock" is the sum
+ * of quantity across all of its batches — it is not stored on the Product
+ * itself, so it can never go stale.
+ */
 const productSchema = new mongoose.Schema(
   {
     name: {

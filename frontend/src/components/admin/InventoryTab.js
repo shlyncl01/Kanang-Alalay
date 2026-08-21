@@ -6,6 +6,7 @@ import {
     FaUpload, FaFileAlt, FaCheckCircle, FaTimesCircle,
     FaDownload, FaCloudUploadAlt, FaBoxOpen, FaSyncAlt,
 } from 'react-icons/fa';
+import { CATEGORY_OPTIONS, getUnitsForCategory } from '../../constants/inventoryOptions';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -419,25 +420,90 @@ const BulkImportModal = ({ onClose, onImported }) => {
 const EditItemModal = ({ item, onSave, onClose }) => {
     const [form, setForm] = useState({
         name:           item.name || '',
-        category:       item.category || 'General',
+        category:       item.category || '',
         quantity:       item.quantity ?? 0,
-        unit:           item.unit || 'pcs',
-        minThreshold:   item.minThreshold ?? 10,
+        unit:           item.unit || '',
+        minThreshold:   item.minThreshold ?? '',
         expirationDate: item.expirationDate ? item.expirationDate.slice(0, 10) : '',
+        doesNotExpire:  item.doesNotExpire || false,
         notes:          item.notes || '',
     });
+    const [errors, setErrors] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const validate = (f) => {
+        const e = {};
+        if (!f.name.trim()) e.name = 'Item name is required.';
+        if (!f.category) e.category = 'Category is required.';
+
+        if (f.quantity === '' || isNaN(f.quantity) || Number(f.quantity) < 0)
+            e.quantity = 'Enter a valid, non-negative quantity.';
+
+        if (!f.category) {
+            e.unit = 'Select a category first.';
+        } else if (!f.unit) {
+            e.unit = 'Unit is required.';
+        } else if (!getUnitsForCategory(f.category).includes(f.unit)) {
+            e.unit = 'Selected unit is not valid for this category.';
+        }
+
+        if (f.minThreshold === '')
+            e.minThreshold = 'Minimum stock level is required.';
+        else if (isNaN(f.minThreshold) || Number(f.minThreshold) < 0)
+            e.minThreshold = 'Minimum stock level cannot be negative.';
+
+        if (!f.doesNotExpire) {
+            if (!f.expirationDate) {
+                e.expirationDate = 'Expiration date is required, or check "Does not expire".';
+            } else if (isNaN(Date.parse(f.expirationDate))) {
+                e.expirationDate = 'Enter a valid date.';
+            } else {
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                if (new Date(f.expirationDate) < today) {
+                    e.expirationDate = 'Expiration date cannot be in the past.';
+                }
+            }
+        }
+
+        return e;
+    };
+
+    const handleChange = (field, val) => {
+        setForm(p => {
+            const next = { ...p, [field]: val };
+            if (field === 'category') {
+                const validUnits = getUnitsForCategory(val);
+                if (!validUnits.includes(p.unit)) next.unit = '';
+            }
+            if (field === 'doesNotExpire' && val === true) {
+                next.expirationDate = '';
+            }
+            return next;
+        });
+        if (errors[field]) setErrors(p => ({ ...p, [field]: '' }));
+        if (field === 'category' && errors.unit) setErrors(p => ({ ...p, unit: '' }));
+        if (field === 'doesNotExpire' && errors.expirationDate) setErrors(p => ({ ...p, expirationDate: '' }));
+        if (error) setError('');
+    };
+
     const handleSave = async () => {
-        if (!form.name.trim()) { setError('Item name is required.'); return; }
+        const e = validate(form);
+        if (Object.keys(e).length) { setErrors(e); return; }
+
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${API_BASE_URL}/admin/inventory/${item._id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-                body: JSON.stringify({ ...form, quantity: Number(form.quantity), minThreshold: Number(form.minThreshold), expirationDate: form.expirationDate || undefined }),
+                body: JSON.stringify({
+                    ...form,
+                    quantity: Number(form.quantity),
+                    minThreshold: Number(form.minThreshold),
+                    expirationDate: form.doesNotExpire ? null : (form.expirationDate || undefined),
+                    doesNotExpire: form.doesNotExpire,
+                }),
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
@@ -450,7 +516,9 @@ const EditItemModal = ({ item, onSave, onClose }) => {
     };
 
     const inp = { width: '100%', padding: '9px 12px', border: '1.5px solid #E8D6CC', borderRadius: 8, fontSize: '.88rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', system-ui, sans-serif" };
+    const inpErr = { ...inp, borderColor: '#dc3545' };
     const lbl = { display: 'block', fontSize: '.75rem', fontWeight: 700, color: '#7A5C4E', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 };
+    const errTxt = { color: '#dc3545', fontSize: '.74rem', marginTop: 3, display: 'block' };
 
     return (
         <div className="modal-overlay" style={{ zIndex: 10001 }}>
@@ -467,25 +535,57 @@ const EditItemModal = ({ item, onSave, onClose }) => {
                     {error && <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: '.85rem' }}>⚠️ {error}</div>}
                     <div style={{ marginBottom: 12 }}>
                         <label style={lbl}>Item Name *</label>
-                        <input style={inp} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+                        <input style={errors.name ? inpErr : inp} value={form.name} onChange={e => handleChange('name', e.target.value)} />
+                        {errors.name && <small style={errTxt}>{errors.name}</small>}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                        <div><label style={lbl}>Category</label>
-                            <select style={inp} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
-                                {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                        <div><label style={lbl}>Category *</label>
+                            <select style={errors.category ? inpErr : inp} value={form.category} onChange={e => handleChange('category', e.target.value)}>
+                                <option value="">Select category…</option>
+                                {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                             </select>
+                            {errors.category && <small style={errTxt}>{errors.category}</small>}
                         </div>
-                        <div><label style={lbl}>Unit</label>
-                            <select style={inp} value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))}>
-                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                        <div><label style={lbl}>Unit *</label>
+                            <select
+                                style={{ ...(errors.unit ? inpErr : inp), opacity: form.category ? 1 : 0.6, cursor: form.category ? 'pointer' : 'not-allowed' }}
+                                value={form.unit}
+                                onChange={e => handleChange('unit', e.target.value)}
+                                disabled={!form.category}
+                            >
+                                <option value="">{form.category ? 'Select unit…' : 'Select category first'}</option>
+                                {getUnitsForCategory(form.category).map(u => <option key={u} value={u}>{u}</option>)}
                             </select>
+                            {errors.unit && <small style={errTxt}>{errors.unit}</small>}
                         </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                        <div><label style={lbl}>Quantity *</label><input type="number" min="0" style={inp} value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} /></div>
-                        <div><label style={lbl}>Min Threshold</label><input type="number" min="0" style={inp} value={form.minThreshold} onChange={e => setForm(p => ({ ...p, minThreshold: e.target.value }))} /></div>
+                        <div><label style={lbl}>Quantity *</label>
+                            <input type="number" min="0" style={errors.quantity ? inpErr : inp} value={form.quantity} onChange={e => handleChange('quantity', e.target.value)} />
+                            {errors.quantity && <small style={errTxt}>{errors.quantity}</small>}
+                        </div>
+                        <div><label style={lbl}>Min Stock Level *</label>
+                            <input type="number" min="0" style={errors.minThreshold ? inpErr : inp} value={form.minThreshold} onChange={e => handleChange('minThreshold', e.target.value)} />
+                            {errors.minThreshold && <small style={errTxt}>{errors.minThreshold}</small>}
+                        </div>
                     </div>
-                    <div style={{ marginBottom: 12 }}><label style={lbl}>Expiration Date (optional)</label><input type="date" style={inp} value={form.expirationDate} onChange={e => setForm(p => ({ ...p, expirationDate: e.target.value }))} /></div>
+                    <div style={{ marginBottom: 8 }}>
+                        <label style={lbl}>Expiration Date {!form.doesNotExpire && '*'}</label>
+                        <input
+                            type="date"
+                            style={{ ...(errors.expirationDate ? inpErr : inp), opacity: form.doesNotExpire ? 0.6 : 1 }}
+                            value={form.expirationDate}
+                            onChange={e => handleChange('expirationDate', e.target.value)}
+                            disabled={form.doesNotExpire}
+                        />
+                        {errors.expirationDate && <small style={errTxt}>{errors.expirationDate}</small>}
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.83rem', color: '#2c3e50', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={form.doesNotExpire} onChange={e => handleChange('doesNotExpire', e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                            This item does not expire
+                        </label>
+                    </div>
                     <div style={{ marginBottom: 18 }}><label style={lbl}>Notes</label><textarea style={{ ...inp, minHeight: 60, resize: 'vertical' }} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} /></div>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                         <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 9, border: '1.5px solid #E8D6CC', background: 'transparent', cursor: 'pointer', fontWeight: 600, color: '#7A5C4E' }}>Cancel</button>
