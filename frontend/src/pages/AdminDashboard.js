@@ -1679,6 +1679,15 @@ const AdminDashboard = () => {
             setInventory={setInventory}
             setShowAddInventory={setShowAddInventory}
             currentUser={user}
+            showConfirm={showConfirm}
+            closeConfirm={closeConfirm}
+            // Part 6 §9 — after a stock request is approved, Admin Central
+            // Inventory quantities changed server-side. Re-pull the same
+            // data the rest of the dashboard already uses (silent = no
+            // full-page spinner) so the Inventory list/summary reflect the
+            // deduction immediately, matching TEST 5 (values remain correct
+            // after refresh, and here we don't even need a manual refresh).
+            onStockApproved={() => loadAllData(true)}
         />
     );
 

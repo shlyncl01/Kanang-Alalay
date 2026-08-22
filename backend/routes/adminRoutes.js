@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 
 const User = require('../models/User');
 const Booking = require('../models/Booking');
@@ -11,6 +12,7 @@ const { findOrCreateProduct, getNextBatchNumber } = require('../utils/inventoryP
 const { validateInventoryInput } = require('../utils/inventoryFormValidation');
 const RegistrationCode = require('../models/VerificationCode');
 const StockRequest = require('../models/StockRequest');
+const HCAssignedStock = require('../models/HCAssignedStock');
 const VitalsLog = require('../models/VitalsLog');
 const ActivityLog = require('../models/ActivityLog');
 const MedicationLog = require('../models/MedicationLog');
@@ -1144,33 +1146,217 @@ router.get('/stock-requests', async (req, res) => {
     }
 });
 
+// ── Part 6 helpers ──────────────────────────────────────────────────
+//
+// This codebase has no existing mongoose session/transaction usage
+// anywhere (checked routes/*.js), so we can't assume the deployment is
+// running MongoDB as a replica set — multi-document `session.
+// startTransaction()` calls throw outright on a standalone mongod, which
+// is the more likely setup for a project at this stage. Rather than risk
+// that, approval is built as a small saga: every write is an atomic,
+// conditional single-document operation (guarded with a filter so it can
+// never overshoot), performed in an order where a failure partway through
+// is safely undone by compensating writes. The net effect is the same
+// all-or-nothing guarantee section 7 asks for, without depending on
+// replica-set transactions being available.
+
+// Batch draw-down order when a Product has more than one Inventory batch.
+// No FIFO/FEFO logic existed anywhere in the project to reuse, so this
+// establishes one: batches with a real expiration date are drawn down
+// soonest-expiring-first (FEFO), since handing out stock closest to
+// expiring first is the only choice that makes sense for a caregiving
+// facility. Non-expiring batches (doesNotExpire, or no expirationDate)
+// are drawn down oldest-purchased-first (FIFO) and only after every
+// dated batch is exhausted.
+function sortBatchesFefoFifo(batches) {
+    return [...batches].sort((a, b) => {
+        const aDated = a.expirationDate && !a.doesNotExpire;
+        const bDated = b.expirationDate && !b.doesNotExpire;
+        if (aDated && bDated) return new Date(a.expirationDate) - new Date(b.expirationDate);
+        if (aDated && !bDated) return -1;
+        if (!aDated && bDated) return 1;
+        return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+}
+
+// Inventory's own status auto-calc lives in a pre('save') hook (models/
+// Inventory.js), which findOneAndUpdate never triggers. Re-run the same
+// rule by hand after every atomic $inc so a batch's status field doesn't
+// go stale the moment it's touched outside .save().
+async function recomputeBatchStatus(batchId) {
+    const batch = await Inventory.findById(batchId);
+    if (!batch) return;
+    let status;
+    if (batch.expirationDate && batch.expirationDate < new Date()) status = 'expired';
+    else if (batch.quantity === 0) status = 'out_of_stock';
+    else if (batch.quantity <= batch.minThreshold) status = 'low_stock';
+    else status = 'available';
+    if (batch.status !== status) {
+        await Inventory.updateOne({ _id: batch._id }, { status });
+    }
+}
+
+// Compensating action: undo a partial set of batch deductions (used when
+// a later step in the approval saga fails) by adding each amount back to
+// the exact batch it was taken from.
+async function restoreBatchDeductions(deductions) {
+    for (const d of deductions) {
+        await Inventory.updateOne({ _id: d.batchId }, { $inc: { quantity: d.amount } });
+        await recomputeBatchStatus(d.batchId);
+    }
+}
+
 router.put('/stock-requests/:id', async (req, res) => {
     try {
+        const { id } = req.params;
         const { status, adminNote } = req.body;
 
-        const stockReq = await StockRequest.findByIdAndUpdate(
-            req.params.id,
-            {
-                status,
-                adminNote: adminNote || '',
-                resolvedBy: req.user._id,
-                resolvedAt: new Date()
-            },
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid request ID.' });
+        }
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Status must be 'approved' or 'rejected'." });
+        }
+
+        // Part 6 §8 — duplicate approval guard, part 1: fail fast on the
+        // common case (someone already resolved this, no race involved).
+        // The atomic status-flip filters below (status: 'pending') are what
+        // actually close the race window for two near-simultaneous clicks.
+        const existing = await StockRequest.findById(id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: 'Request not found.' });
+        }
+        if (existing.status !== 'pending') {
+            return res.status(409).json({
+                success: false,
+                message: `This request has already been ${existing.status}.`,
+            });
+        }
+
+        // ── REJECT — Part 6 §2: status flips, nothing else moves. ──────
+        if (status === 'rejected') {
+            const updated = await StockRequest.findOneAndUpdate(
+                { _id: id, status: 'pending' },
+                { status: 'rejected', adminNote: adminNote || '', resolvedBy: req.user._id, resolvedAt: new Date() },
+                { new: true }
+            )
+                .populate('requestedBy', 'firstName lastName role')
+                .populate('resolvedBy', 'firstName lastName');
+
+            if (!updated) {
+                return res.status(409).json({ success: false, message: 'This request has already been resolved.' });
+            }
+            return res.json({ success: true, data: updated, message: 'Stock request rejected.' });
+        }
+
+        // ── APPROVE — Part 6 §3–§7 ──────────────────────────────────────
+
+        // §3.1 — the requested Product must still exist (Admin could have
+        // deleted it between the HC's request and this approval).
+        const product = await Product.findById(existing.productId);
+        if (!product) {
+            return res.status(400).json({
+                success: false,
+                message: 'The requested product no longer exists in Admin Central Inventory. Request left Pending.',
+            });
+        }
+
+        const requestedQty = existing.quantity;
+
+        // §3.2 / §5 — verify enough stock is available BEFORE touching
+        // anything. Expired batches and empty batches are never eligible
+        // to be handed out.
+        const eligibleBatches = await Inventory.find({
+            productId: product._id,
+            quantity: { $gt: 0 },
+            status: { $ne: 'expired' },
+        });
+        const totalAvailable = eligibleBatches.reduce((sum, b) => sum + b.quantity, 0);
+
+        if (totalAvailable < requestedQty) {
+            // Do NOT change Admin stock or HC stock; request stays Pending.
+            return res.status(409).json({
+                success: false,
+                message: `Insufficient stock: only ${totalAvailable} ${product.unit} available, but ${requestedQty} ${product.unit} were requested. Request left Pending.`,
+            });
+        }
+
+        // §3.3 / §4 — deduct from Admin Central Inventory batch-by-batch in
+        // FEFO/FIFO order. Each deduction is an atomic conditional $inc
+        // (quantity: { $gte: take }) so a batch can never be driven
+        // negative even under concurrent approvals. If a batch's quantity
+        // changed underneath us since we read it (rare race), we stop and
+        // roll back everything already deducted rather than leave the
+        // request half-fulfilled.
+        const ordered = sortBatchesFefoFifo(eligibleBatches);
+        let remaining = requestedQty;
+        const deductions = [];
+
+        for (const batch of ordered) {
+            if (remaining <= 0) break;
+            const take = Math.min(batch.quantity, remaining);
+            const updatedBatch = await Inventory.findOneAndUpdate(
+                { _id: batch._id, quantity: { $gte: take } },
+                { $inc: { quantity: -take } },
+                { new: true }
+            );
+            if (!updatedBatch) {
+                await restoreBatchDeductions(deductions);
+                return res.status(409).json({
+                    success: false,
+                    message: 'Stock levels changed while processing this approval. Please try again. Request left Pending.',
+                });
+            }
+            await recomputeBatchStatus(updatedBatch._id);
+            deductions.push({ batchId: batch._id, amount: take });
+            remaining -= take;
+        }
+
+        if (remaining > 0) {
+            // Defensive only — the totalAvailable check above should make
+            // this unreachable, but never allow a partial transfer.
+            await restoreBatchDeductions(deductions);
+            return res.status(409).json({
+                success: false,
+                message: 'Insufficient stock to fulfill this request. Request left Pending.',
+            });
+        }
+
+        // §3.4 — credit the requesting HC's OWN assigned-stock balance,
+        // identified by their user ID (never name/email), upserting the
+        // (headCaregiver, product) row per HCAssignedStock's unique index.
+        await HCAssignedStock.findOneAndUpdate(
+            { headCaregiverId: existing.requestedBy, productId: product._id },
+            { $inc: { quantity: requestedQty } },
+            { upsert: true }
+        );
+
+        // §3.5 / §8 — flip the request to Approved with the SAME
+        // status:'pending' guard used for reject. If this doesn't match
+        // (another action resolved it in the moment between our checks
+        // above and now), someone else won the race — undo both the batch
+        // deduction and the HC credit so we never double-transfer.
+        const updatedRequest = await StockRequest.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { status: 'approved', adminNote: adminNote || '', resolvedBy: req.user._id, resolvedAt: new Date() },
             { new: true }
         )
-            .populate('requestedBy', 'firstName lastName');
+            .populate('requestedBy', 'firstName lastName role')
+            .populate('resolvedBy', 'firstName lastName');
 
-        if (!stockReq) {
-            return res.status(404).json({
-                success: false,
-                message: 'Request not found.'
-            });
+        if (!updatedRequest) {
+            await restoreBatchDeductions(deductions);
+            await HCAssignedStock.findOneAndUpdate(
+                { headCaregiverId: existing.requestedBy, productId: product._id },
+                { $inc: { quantity: -requestedQty } }
+            );
+            return res.status(409).json({ success: false, message: 'This request has already been resolved by another action.' });
         }
 
         res.json({
             success: true,
-            data: stockReq,
-            message: `Stock request ${status}.`
+            data: updatedRequest,
+            message: `Stock request approved — ${requestedQty} ${product.unit} transferred to the head caregiver's assigned stock.`,
         });
 
     } catch (err) {

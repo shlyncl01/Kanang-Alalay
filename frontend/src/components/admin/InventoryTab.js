@@ -769,7 +769,7 @@ const STOCK_REQ_STATUS_STYLE = {
 
 const STOCK_REQ_PER_PAGE = 10;
 
-const StockRequestsPanel = ({ onApproved }) => {
+const StockRequestsPanel = ({ onApproved, showConfirm, closeConfirm }) => {
     const [requests, setRequests]   = useState([]);
     const [loading, setLoading]     = useState(true);
     const [error, setError]         = useState('');
@@ -799,7 +799,10 @@ const StockRequestsPanel = ({ onApproved }) => {
 
     useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
-    const resolveRequest = async (id, status) => {
+    // The actual PUT — separated from the confirmation prompt below so it
+    // can be reused whether or not showConfirm is available.
+    const performResolve = async (id, status) => {
+        setError('');
         setProcessingId(id);
         try {
             const res = await fetch(`${API_BASE_URL}/admin/stock-requests/${id}`, {
@@ -808,6 +811,11 @@ const StockRequestsPanel = ({ onApproved }) => {
                 body: JSON.stringify({ status }),
             });
             const data = await res.json();
+            // Insufficient stock, duplicate-approval, and deleted-product
+            // failures all come back here as data.success === false with a
+            // specific data.message (Part 6 §5/§8) — surfaced as-is rather
+            // than papered over with a generic error, so Admin sees exactly
+            // why an approval didn't go through.
             if (!data.success) throw new Error(data.message || 'Failed to update request.');
             setRequests(prev => prev.map(r => r._id === id ? data.data : r));
             if (status === 'approved' && onApproved) onApproved(data.data);
@@ -816,6 +824,28 @@ const StockRequestsPanel = ({ onApproved }) => {
         } finally {
             setProcessingId(null);
         }
+    };
+
+    // Part 6 §9 — confirm before approval/rejection, same pattern already
+    // used for bookings elsewhere in the Admin dashboard (showConfirm/
+    // closeConfirm passed down from AdminDashboard). Falls back to running
+    // immediately if a parent ever renders this panel without that pattern
+    // wired up.
+    const resolveRequest = (id, status) => {
+        const req = requests.find(r => r._id === id);
+        if (!showConfirm) return performResolve(id, status);
+
+        const actionLabel = status === 'approved' ? 'Approve' : 'Reject';
+        showConfirm(
+            `${actionLabel} Stock Request`,
+            `Are you sure you want to ${actionLabel.toLowerCase()} the request for ${req?.quantity ?? ''} ${req?.unit || 'pcs'} of "${req?.itemName}"?${status === 'approved' ? '\n\nThis will deduct the quantity from Admin Central Inventory and add it to the head caregiver\'s assigned stock.' : ''}`,
+            async () => {
+                if (closeConfirm) closeConfirm();
+                await performResolve(id, status);
+            },
+            status === 'rejected',
+            actionLabel
+        );
     };
 
     const pending  = requests.filter(r => r.status === 'pending' || !r.status);
@@ -963,7 +993,7 @@ const StockRequestsPanel = ({ onApproved }) => {
 };
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUser }) => {
+const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUser, showConfirm, closeConfirm, onStockApproved }) => {
     const [editItem, setEditItem]           = useState(null);
     const [deleteTarget, setDeleteTarget]   = useState(null);
     const [deleting, setDeleting]           = useState(false);
@@ -1327,7 +1357,7 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                 )}
             </div>
 
-            <StockRequestsPanel onApproved={() => {}} />
+            <StockRequestsPanel onApproved={onStockApproved} showConfirm={showConfirm} closeConfirm={closeConfirm} />
 
             {viewingProduct && (
                 <BatchDetailsModal
