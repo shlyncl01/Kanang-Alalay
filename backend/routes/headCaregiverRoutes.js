@@ -85,6 +85,7 @@ function shapeLog(l) {
         nextDose: l.nextDose || '',
         scheduledTime: l.scheduledTime,
         administeredTime: l.administeredTime,
+        administeredQuantity: l.administeredQuantity,
         status: l.status,
         notes: l.notes || '',
         verificationMethod: l.verificationMethod,
@@ -741,6 +742,30 @@ router.get('/residents/:id/medication-history', async (req, res) => {
     }
 });
 
+// ── Part 7 helpers ──────────────────────────────────────────────────
+//
+// Medication (the clinical drug-reference model, with its own embedded
+// `stock` field used only for Admin's medication reference data) and
+// Product (the Admin Central Inventory catalog that HCAssignedStock is
+// keyed against) are two separate models with no foreign key between
+// them — the ONLY previous link was the buggy `new RegExp(medicationName)`
+// match against Inventory.name being replaced below. Since adding a
+// schema-level link is out of scope here ("do NOT redesign the inventory
+// system" / "do not create duplicate medication models"), this resolves
+// a Medication to its Product the same way Admin's own "Add Inventory"
+// flow de-dupes product names (see Product.js: normalizedName is
+// "lowercased, whitespace-collapsed") — an exact match on that same
+// normalized form, restricted to medication/medical_supplies categories
+// so a name collision with an unrelated non-medical Product can't occur.
+function normalizeProductName(name) {
+    return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Inventory's own status is auto-computed on every read (getStockStatus),
+// so once HCAssignedStock.quantity is correct there's nothing extra to do
+// for Part 7 §5 — "Medication Inventory Status" (GET /inventory above)
+// already recalculates status from the live quantity on every fetch.
+
 // ─────────────────────────────────────────────────────────────
 // UPDATE SCHEDULE STATUS
 // ─────────────────────────────────────────────────────────────
@@ -755,31 +780,128 @@ router.put('/schedule/:id/status', async (req, res) => {
             });
         }
 
+        // Part 7 §3 — administration quantity must be > 0. There's no
+        // quantity-entry field in the current "Administer" UI (every click
+        // has always represented exactly one dose unit), so this defaults
+        // to 1 but still accepts an explicit value from any future caller.
+        let administeredQuantity = 1;
+        if (req.body.administeredQuantity !== undefined || req.body.quantity !== undefined) {
+            administeredQuantity = Number(req.body.administeredQuantity ?? req.body.quantity);
+            if (!Number.isFinite(administeredQuantity) || administeredQuantity <= 0) {
+                return res.status(400).json({ success: false, message: 'Administration quantity must be greater than 0.' });
+            }
+        }
+
         const log = await MedicationLog.findById(req.params.id);
         if (!log) return res.status(404).json({ success: false, message: 'Log not found.' });
 
-        log.status = status;
-        if (status === 'administered' || status === 'completed') {
-            log.administeredTime = new Date();
-            await Inventory.findOneAndUpdate(
-                { name: { $regex: new RegExp(log.medicationName, 'i') } },
-                { $inc: { quantity: -1 } }
-            );
-            if (log.residentId) {
-                const stillOverdue = await MedicationLog.findOne({
-                    residentId: log.residentId,
-                    status: 'overdue',
-                    _id: { $ne: log._id }
+        const isAdministering = status === 'administered' || status === 'completed';
+        // Guard against double-deduction from a duplicate/repeat call (e.g.
+        // an accidental second click) — once a dose is already recorded as
+        // given, marking it "administered" again must not draw down stock a
+        // second time for the same dose.
+        const alreadyAdministered = log.status === 'administered' || log.status === 'completed';
+
+        let deductedProduct = null; // set below if we perform a deduction, used for the response message
+
+        if (isAdministering && !alreadyAdministered) {
+            // §1/§3 — Medication must exist.
+            const medication = await Medication.findById(log.medicationId);
+            if (!medication) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'The medication for this dose no longer exists. Administration was not recorded.',
                 });
-                if (!stillOverdue) {
-                    await Resident.findByIdAndUpdate(log.residentId, {
-                        medicationOverdue: false,
-                        overdueMed: '',
-                        overdueAt: null,
-                    });
-                }
             }
+
+            // Resolve the clinical Medication to its Admin Central Inventory
+            // Product (see normalizeProductName above for why this is a name
+            // match rather than a stored foreign key).
+            const normalizedName = normalizeProductName(medication.name);
+            const product = await Product.findOne({
+                normalizedName,
+                category: { $in: ['medication', 'medical_supplies'] },
+            });
+            if (!product) {
+                return res.status(400).json({
+                    success: false,
+                    message: `"${medication.name}" is not linked to a product in Admin Central Inventory yet. Ask an Admin to add it before this dose can be administered.`,
+                });
+            }
+
+            // §3 — HC must have the medication assigned, with enough of it.
+            const assigned = await HCAssignedStock.findOne({ headCaregiverId: req.user._id, productId: product._id });
+            const available = assigned ? assigned.quantity : 0;
+            if (available < administeredQuantity) {
+                return res.status(409).json({
+                    success: false,
+                    message: assigned
+                        ? `Insufficient stock: you have ${available} ${product.unit} of ${product.name} assigned, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
+                        : `${product.name} is not in your assigned stock. Administration was not recorded.`,
+                });
+            }
+
+            // §2/§6 — deduct atomically. The quantity:{$gte:...} guard means
+            // this can never drive the balance negative, and if concurrent
+            // requests raced past the check above, exactly one of them will
+            // fail here instead of both succeeding.
+            const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
+                { headCaregiverId: req.user._id, productId: product._id, quantity: { $gte: administeredQuantity } },
+                { $inc: { quantity: -administeredQuantity } },
+                { new: true }
+            );
+            if (!updatedAssignedStock) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Your assigned stock changed while processing this administration. Please try again.',
+                });
+            }
+            deductedProduct = product;
+
+            // §6 — administration must not be recorded as successful if
+            // anything below throws. Since the deduction above already
+            // committed, a failure here is compensated by crediting the
+            // same amount straight back before the error response goes out.
+            try {
+                log.status = status;
+                log.administeredTime = new Date();
+                log.administeredQuantity = administeredQuantity;
+                if (log.residentId) {
+                    const stillOverdue = await MedicationLog.findOne({
+                        residentId: log.residentId,
+                        status: 'overdue',
+                        _id: { $ne: log._id }
+                    });
+                    if (!stillOverdue) {
+                        await Resident.findByIdAndUpdate(log.residentId, {
+                            medicationOverdue: false,
+                            overdueMed: '',
+                            overdueAt: null,
+                        });
+                    }
+                }
+                if (notes !== undefined) log.notes = notes;
+                if (verificationMethod !== undefined) log.verificationMethod = verificationMethod;
+                await log.save();
+            } catch (innerErr) {
+                await HCAssignedStock.updateOne(
+                    { headCaregiverId: req.user._id, productId: product._id },
+                    { $inc: { quantity: administeredQuantity } }
+                );
+                throw innerErr;
+            }
+
+            return res.json({
+                success: true,
+                data: shapeLog(log),
+                message: `Medication marked as ${status}. ${administeredQuantity} ${deductedProduct.unit} deducted from your assigned stock.`,
+            });
         }
+
+        // ── Every other status transition (scheduled/overdue/missed/skipped/
+        // pending, or re-marking an already-administered dose) — unchanged
+        // from before, no stock is ever touched here. ────────────────────
+        log.status = status;
         if (notes !== undefined) log.notes = notes;
         if (verificationMethod !== undefined) log.verificationMethod = verificationMethod;
         await log.save();

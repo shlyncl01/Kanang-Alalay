@@ -47,7 +47,19 @@ const medicationLogSchema = new mongoose.Schema({
         played:   Boolean,
         playedAt: Date,
         language: String
-    }
+    },
+
+    // ── Part 7: HC stock deduction ──────────────────────────────────────────────
+    // How many units of the medication were actually taken from the
+    // administering caregiver's HCAssignedStock for this dose. Recorded at
+    // administration time purely for audit trail (so "why did stock drop by N"
+    // is always traceable back to a specific dose) — it does not drive any
+    // deduction logic itself; the deduction happens once, atomically, in
+    // routes/headCaregiverRoutes.js PUT /schedule/:id/status. Defaults to 1
+    // (one dose unit) since that's what every existing "Administer" click in
+    // the UI has always represented — there's no quantity-entry field on the
+    // schedule yet, so this is additive and never breaks older log entries.
+    administeredQuantity: { type: Number, default: 1, min: 1 },
 
 }, { timestamps: true });
 
