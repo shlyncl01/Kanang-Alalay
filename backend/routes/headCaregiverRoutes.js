@@ -13,6 +13,11 @@ const User = require('../models/User');
 const HCAssignedStock = require('../models/HCAssignedStock');
 const Product = require('../models/Product');
 const Alert = require('../models/Alert');
+// ── NEW (Part 10): persisted daily compliance snapshots, so a Head
+// Caregiver's compliance rate for a given day survives past that day
+// instead of only existing as a live calculation over "today"'s
+// MedicationLog rows. See the model file for the full design rationale.
+const ComplianceHistory = require('../models/ComplianceHistory');
 const { getStockStatus } = require('../utils/stockStatus');
 const { protect } = require('../middleware/authMiddleware');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
@@ -1250,6 +1255,28 @@ router.get('/stats', async (req, res) => {
         const complianceRate = total > 0 ? Math.round((onTime / total) * 100) : 0;
         const lowMedStock = invItems.filter(i => i.quantity <= (i.minThreshold ?? 10)).length;
 
+        // ── PART 10: persist today's snapshot ───────────────────────────
+        // Upsert (not insert) so repeated dashboard loads on the same
+        // Manila day keep refreshing today's row instead of creating
+        // duplicates. Once the day rolls over, `today` changes and this
+        // starts a new row — the previous day's row is left untouched,
+        // which is what keeps it from "disappearing". Only done for
+        // head_caregiver requests, since this is head-caregiver compliance
+        // history; scoped to req.user._id so it can never be read back by
+        // another Head Caregiver. Failure here must never break the
+        // existing /stats response, so it's caught and logged, not thrown.
+        if (req.user.role === 'head_caregiver') {
+            try {
+                await ComplianceHistory.findOneAndUpdate(
+                    { headCaregiverId: req.user._id, date: today },
+                    { $set: { scheduled: total, completed: onTime, delayed, missed, pending, complianceRate } },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                );
+            } catch (histErr) {
+                console.error('Failed to save compliance history:', histErr.message);
+            }
+        }
+
         res.json({ 
             success: true, 
             data: { 
@@ -1264,6 +1291,36 @@ router.get('/stats', async (req, res) => {
                 lowMedStock 
             } 
         });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// PART 10 — MEDICATION COMPLIANCE HISTORY
+// ─────────────────────────────────────────────────────────────
+// Returns this Head Caregiver's saved daily compliance snapshots (written
+// by the upsert in GET /stats above). Always scoped to req.user._id — a
+// Head Caregiver can only ever retrieve their own history, never another
+// HC's, satisfying the same per-user isolation the rest of this file uses
+// for HCAssignedStock etc.
+router.get('/compliance-history', async (req, res) => {
+    try {
+        if (req.user.role !== 'head_caregiver') {
+            return res.status(403).json({ success: false, message: 'Only a head caregiver can view compliance history.' });
+        }
+
+        // Optional ?days=N to cap how far back to look. Defaults to 30,
+        // capped at 365 so an unbounded query string can't force a huge scan.
+        const days = Math.min(parseInt(req.query.days, 10) || 30, 365);
+        const since = new Date(startOfManilaDay().getTime() - days * 24 * 60 * 60 * 1000);
+
+        const records = await ComplianceHistory.find({
+            headCaregiverId: req.user._id,
+            date: { $gte: since },
+        }).sort({ date: -1 });
+
+        res.json({ success: true, data: records });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
