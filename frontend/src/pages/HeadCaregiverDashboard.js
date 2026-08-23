@@ -97,6 +97,17 @@ const useFetch = () => useCallback(async (endpoint, opts = {}) => {
     } catch (e) { return { success: false, message: e.message }; }
 }, []);
 
+// Part 8 — same relative-time convention already used by Admin's
+// notification bell (AdminDashboard.js), so both dashboards' dropdowns
+// read consistently.
+const timeAgo = (iso) => {
+    const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+};
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ msg, type, onDone }) => {
     useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
@@ -1337,6 +1348,16 @@ const HeadCaregiverDashboard = () => {
     // moves Admin Central Stock or HC Assigned Stock (see the backend
     // POST /inventory/request comment).
     const [stockRequests, setStockRequests] = useState([]);
+    // Part 8 — notifications from the project's existing Alert system
+    // (GET/PUT /api/alerts*, routes/alertRoutes.js) — not a separate
+    // notification store. Stock Request Approved/Rejected and Medication
+    // Administered alerts land here, scoped server-side to this HC's own
+    // relatedUser, so they persist across refresh and never expose
+    // another HC's alerts.
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [notifOpen, setNotifOpen] = useState(false);
+    const notifRef = useRef(null);
     const [caregivers, setCaregivers] = useState([]);
     const [stats, setStats] = useState({
         total: 0, onTime: 0, delayed: 0, missed: 0,
@@ -1400,7 +1421,7 @@ const HeadCaregiverDashboard = () => {
     }, [doFetch]);
 
     const loadAll = useCallback(async () => {
-        const [resR, schR, medR, invR, stR, assignedR, prodR, reqR] = await Promise.all([
+        const [resR, schR, medR, invR, stR, assignedR, prodR, reqR, alertR, unreadR] = await Promise.all([
             doFetch('/head-caregiver/residents'),
             doFetch('/head-caregiver/schedule'),
             doFetch('/head-caregiver/medications'),
@@ -1414,6 +1435,13 @@ const HeadCaregiverDashboard = () => {
             doFetch('/head-caregiver/products'),
             // Part 5: this HC's own submitted stock requests.
             doFetch('/head-caregiver/stock-requests'),
+            // Part 8: the project's existing Alert system (routes/
+            // alertRoutes.js, mounted at /api/alerts — a sibling of
+            // /api/head-caregiver, not nested under it). GET / already
+            // scopes non-admin roles to their own relatedUser, so this
+            // naturally returns only this HC's own notifications.
+            doFetch('/alerts'),
+            doFetch('/alerts/unread-count'),
         ]);
         if (resR.success) setResidents(resR.data || []);
         if (schR.success) setSchedule(schR.data || []);
@@ -1423,8 +1451,41 @@ const HeadCaregiverDashboard = () => {
         if (assignedR.success) setAssignedStock(assignedR.data || []);
         if (prodR.success) setProducts(prodR.data || []);
         if (reqR.success) setStockRequests(reqR.data || []);
+        if (alertR.success) setNotifications(alertR.data || []);
+        if (unreadR.success) setUnreadCount(unreadR.count || 0);
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
+
+    // Re-fetches just the notification list/badge — called when the
+    // dropdown is opened, so it's current at the moment the HC checks it,
+    // without needing a full loadAll().
+    const refreshNotifications = useCallback(async () => {
+        const [alertR, unreadR] = await Promise.all([
+            doFetch('/alerts'),
+            doFetch('/alerts/unread-count'),
+        ]);
+        if (alertR.success) setNotifications(alertR.data || []);
+        if (unreadR.success) setUnreadCount(unreadR.count || 0);
+    }, [doFetch]);
+
+    const markNotificationRead = useCallback(async (id) => {
+        setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+        setUnreadCount(c => Math.max(0, c - 1));
+        const r = await doFetch(`/alerts/${id}/read`, { method: 'PUT' });
+        if (!r.success) {
+            // Roll the optimistic update back if the server didn't confirm it.
+            await refreshNotifications();
+        }
+    }, [doFetch, refreshNotifications]);
+
+    const markAllNotificationsRead = useCallback(async () => {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        setUnreadCount(0);
+        const r = await doFetch('/alerts/mark-all-read', { method: 'PUT' });
+        if (!r.success) {
+            await refreshNotifications();
+        }
+    }, [doFetch, refreshNotifications]);
 
     // Refreshes just this HC's stock request list — called after
     // submitting a new request, instead of a full loadAll(), since
@@ -1481,6 +1542,17 @@ const HeadCaregiverDashboard = () => {
         await loadAll();
         setRefreshing(false);
     };
+
+    // Close the notification dropdown on outside click (same pattern as
+    // the existing account-menu dropdown / Admin's notif-dropdown).
+    useEffect(() => {
+        if (!notifOpen) return;
+        const handleClickOutside = (e) => {
+            if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [notifOpen]);
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const handleLogout = () => setShowLogoutConfirm(true);
@@ -2431,8 +2503,69 @@ const HeadCaregiverDashboard = () => {
                             )}
                         </div>
                         <div className="topbar-right">
+                            <div className="topbar-notif-menu" ref={notifRef} style={{ position: 'relative' }}>
+                                <button
+                                    className="topbar-icon-btn"
+                                    onClick={() => { const opening = !notifOpen; setNotifOpen(opening); setAcctMenu(false); if (opening) refreshNotifications(); }}
+                                    title="Notifications"
+                                >
+                                    <FaBell />
+                                    {unreadCount > 0 && (
+                                        <span className="notif-dot-badge">
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {notifOpen && (
+                                    <div className="notif-dropdown" style={{ position: 'absolute', top: '100%', right: 0, width: 360, background: '#fff', borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.15)', zIndex: 1000, marginTop: 8, overflow: 'hidden' }}>
+                                        <div className="notif-dropdown-header" style={{ padding: '12px 16px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 600 }}>Notifications</span>
+                                            {unreadCount > 0 && (
+                                                <button className="notif-action-btn" onClick={markAllNotificationsRead} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', color: '#F96B38' }}>Mark all as read</button>
+                                            )}
+                                        </div>
+                                        <div className="notif-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
+                                            {notifications.length === 0 ? (
+                                                <div className="notif-empty" style={{ textAlign: 'center', padding: '40px 20px' }}>
+                                                    <FaBell style={{ fontSize: '2rem', color: '#E8D6CC' }} />
+                                                    <p style={{ marginTop: 12, color: '#7A5C4E' }}>No notifications yet.</p>
+                                                </div>
+                                            ) : notifications.map(n => {
+                                                const meta = n.type === 'stock-request-approved'
+                                                    ? { color: '#28a745', icon: <FaCheck /> }
+                                                    : n.type === 'stock-request-rejected'
+                                                        ? { color: '#dc3545', icon: <FaTimes /> }
+                                                        : { color: '#b85c2d', icon: <FaPills /> };
+                                                return (
+                                                    <div key={n._id}
+                                                        className={`notif-item ${n.isRead ? 'read' : 'unread'}`}
+                                                        onClick={() => { if (!n.isRead) markNotificationRead(n._id); }}
+                                                        style={{
+                                                            padding: '12px 16px',
+                                                            borderBottom: '1px solid #E8D6CC',
+                                                            cursor: n.isRead ? 'default' : 'pointer',
+                                                            background: n.isRead ? '#fff' : '#FFF8F3',
+                                                            display: 'flex',
+                                                            gap: 12
+                                                        }}
+                                                    >
+                                                        <div className="notif-item-icon" style={{ color: meta.color, fontSize: '1.1rem' }}>{meta.icon}</div>
+                                                        <div className="notif-item-body" style={{ flex: 1 }}>
+                                                            <strong style={{ fontSize: '0.85rem', display: 'block' }}>{n.title}</strong>
+                                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>{n.message}</span>
+                                                            <small style={{ fontSize: '0.65rem', color: '#999', display: 'block', marginTop: 4 }}>{timeAgo(n.createdAt)}</small>
+                                                        </div>
+                                                        {!n.isRead && <div className="notif-unread-dot" style={{ width: 8, height: 8, background: meta.color, borderRadius: '50%', alignSelf: 'center', flexShrink: 0 }} />}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                             <div className="topbar-user-menu">
-                                <div className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`} onClick={() => setAcctMenu(o => !o)}>
+                                <div className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`} onClick={() => { setAcctMenu(o => !o); setNotifOpen(false); }}>
                                     <FaUserCircle className="topbar-user-avatar" />
                                     <div className="topbar-user-info">
                                         <span className="topbar-user-name">{user?.firstName} {user?.lastName}</span>

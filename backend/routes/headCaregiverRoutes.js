@@ -12,6 +12,7 @@ const User = require('../models/User');
 // doc comment on the model for the full design rationale.
 const HCAssignedStock = require('../models/HCAssignedStock');
 const Product = require('../models/Product');
+const Alert = require('../models/Alert');
 const { getStockStatus } = require('../utils/stockStatus');
 const { protect } = require('../middleware/authMiddleware');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
@@ -891,6 +892,27 @@ router.put('/schedule/:id/status', async (req, res) => {
                 throw innerErr;
             }
 
+            // Part 8 §3 — notify the administering caregiver (the same
+            // person whose HCAssignedStock was just deducted above) that
+            // the dose went through. Uses the project's existing Alert
+            // system (models/Alert.js, routes/alertRoutes.js) rather than
+            // a separate notification store — "medication-administered"
+            // was already a valid Alert type before Part 8. Best-effort:
+            // the administration itself already succeeded and committed,
+            // so a failure here is only logged, never surfaced as a
+            // failed administration.
+            try {
+                await Alert.create({
+                    type: 'medication-administered',
+                    title: 'Medication Administered',
+                    message: `${medication.name} was administered successfully.`,
+                    relatedUser: req.user._id,
+                    details: { medicationLogId: log._id, medicationId: medication._id, quantity: administeredQuantity },
+                });
+            } catch (notifyErr) {
+                console.error('Failed to create medication administration alert:', notifyErr);
+            }
+
             return res.json({
                 success: true,
                 data: shapeLog(log),
@@ -1246,5 +1268,20 @@ router.get('/stats', async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 });
+
+// ─────────────────────────────────────────────────────────────
+// PART 8 — NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────
+// Head Caregiver notifications are served by the project's existing,
+// already-wired Alert system — GET/PUT /api/alerts, /api/alerts/
+// unread-count, /api/alerts/:id/read, /api/alerts/mark-all-read (see
+// routes/alertRoutes.js) — not a duplicate set of routes here. Those
+// routes already scope every non-admin read/write to
+// relatedUser === req.user._id, which is exactly the per-HC isolation
+// Part 8 §6 asks for. The three notification TRIGGERS Part 8 needs
+// (stock request approved/rejected, medication administered) call
+// Alert.create() directly from inside the workflows that already existed
+// — see the medication-administration success path above (this file) and
+// the stock-request approve/reject handler in routes/adminRoutes.js.
 
 module.exports = router;

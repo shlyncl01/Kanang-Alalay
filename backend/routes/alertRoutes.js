@@ -74,8 +74,18 @@ router.post('/', protect, adminOnly, async (req, res) => {
 // PUT /api/alerts/:id/read  — mark single alert as read
 router.put('/:id/read', protect, async (req, res) => {
     try {
-        const alert = await Alert.findByIdAndUpdate(
-            req.params.id,
+        // Part 8 fix: this previously updated ANY alert by ID with no
+        // ownership check at all, so any authenticated non-admin user
+        // could mark — and by extension discover — another user's alert
+        // just by guessing an ID. Scoped the same way GET / and
+        // PUT /mark-all-read already scope reads: admin can touch any
+        // alert, everyone else only their own (relatedUser === them).
+        const query = req.user.role === 'admin'
+            ? { _id: req.params.id }
+            : { _id: req.params.id, relatedUser: req.user._id };
+
+        const alert = await Alert.findOneAndUpdate(
+            query,
             { isRead: true },
             { new: true }
         );

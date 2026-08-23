@@ -13,6 +13,7 @@ const { validateInventoryInput } = require('../utils/inventoryFormValidation');
 const RegistrationCode = require('../models/VerificationCode');
 const StockRequest = require('../models/StockRequest');
 const HCAssignedStock = require('../models/HCAssignedStock');
+const Alert = require('../models/Alert');
 const VitalsLog = require('../models/VitalsLog');
 const ActivityLog = require('../models/ActivityLog');
 const MedicationLog = require('../models/MedicationLog');
@@ -1253,6 +1254,24 @@ router.put('/stock-requests/:id', async (req, res) => {
             if (!updated) {
                 return res.status(409).json({ success: false, message: 'This request has already been resolved.' });
             }
+
+            // Part 8 §2 — notify the requesting HC via the project's
+            // existing Alert system (not a separate notification store).
+            // Best-effort: the rejection itself already committed above,
+            // so a failure here is only logged, never turned into a
+            // failed rejection response.
+            try {
+                await Alert.create({
+                    type: 'stock-request-rejected',
+                    title: 'Stock Request Rejected',
+                    message: `Your request for ${existing.quantity} ${existing.unit} of ${existing.itemName} has been rejected.`,
+                    relatedUser: existing.requestedBy,
+                    details: { stockRequestId: existing._id },
+                });
+            } catch (notifyErr) {
+                console.error('Failed to create stock request rejection alert:', notifyErr);
+            }
+
             return res.json({ success: true, data: updated, message: 'Stock request rejected.' });
         }
 
@@ -1358,6 +1377,22 @@ router.put('/stock-requests/:id', async (req, res) => {
                 { $inc: { quantity: -requestedQty } }
             );
             return res.status(409).json({ success: false, message: 'This request has already been resolved by another action.' });
+        }
+
+        // Part 8 §2 — notify the requesting HC via the existing Alert
+        // system. Best-effort, same as the reject branch above: the
+        // transfer already fully committed by this point, so a
+        // notification failure is only logged.
+        try {
+            await Alert.create({
+                type: 'stock-request-approved',
+                title: 'Stock Request Approved',
+                message: `Your request for ${existing.quantity} ${existing.unit} of ${existing.itemName} has been approved.`,
+                relatedUser: existing.requestedBy,
+                details: { stockRequestId: existing._id },
+            });
+        } catch (notifyErr) {
+            console.error('Failed to create stock request approval alert:', notifyErr);
         }
 
         res.json({
