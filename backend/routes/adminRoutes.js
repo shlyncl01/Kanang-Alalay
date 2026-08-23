@@ -872,12 +872,12 @@ router.get('/inventory', async (req, res) => {
 
 router.post('/inventory', async (req, res) => {
     try {
-        const { name, quantity, unit, category, minThreshold, expirationDate, notes, supplier, doesNotExpire } = req.body;
+        const { name, quantity, unit, category, minThreshold, expirationDate, notes, supplier, doesNotExpire, brand, dosage } = req.body;
 
         // ── Form validation (backend is the source of truth — never rely
         // on the frontend alone) ──────────────────────────────────────
         const validationError = validateInventoryInput({
-            name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire,
+            name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire, brand, dosage,
         });
         if (validationError) {
             return res.status(400).json({ success: false, message: validationError });
@@ -928,6 +928,11 @@ router.post('/inventory', async (req, res) => {
             expirationDate: doesNotExpire ? null : (expirationDate || null),
             doesNotExpire: !!doesNotExpire,
             supplier: supplier || undefined,
+            // Required by the model (and by validateInventoryInput above)
+            // whenever category is 'medication' ("Medicine" in the form);
+            // optional for every other category.
+            brand: brand ? String(brand).trim() : undefined,
+            dosage: dosage ? String(dosage).trim() : undefined,
             notes: notes || ''
         });
 
@@ -968,6 +973,8 @@ router.put('/inventory/:id', async (req, res) => {
             minThreshold: updates.minThreshold !== undefined ? updates.minThreshold : existing.minThreshold,
             expirationDate: updates.expirationDate !== undefined ? updates.expirationDate : existing.expirationDate,
             doesNotExpire: updates.doesNotExpire !== undefined ? updates.doesNotExpire : existing.doesNotExpire,
+            brand: updates.brand !== undefined ? updates.brand : existing.brand,
+            dosage: updates.dosage !== undefined ? updates.dosage : existing.dosage,
         };
 
         const validationError = validateInventoryInput(merged);

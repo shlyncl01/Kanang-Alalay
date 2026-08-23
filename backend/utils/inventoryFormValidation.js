@@ -19,8 +19,17 @@ const { CATEGORY_UNIT_MAP, CATEGORY_VALUES } = require('./inventoryCategoryUnits
  *   - quantity and minThreshold implicitly share the same `unit` field
  *     (there is only one Unit per batch), so "50 pack / 10 kg" mismatches
  *     are structurally impossible rather than something we have to check.
+ *   - when category is 'medication' (the "Medicine" option in the form),
+ *     brand and dosage are also required. This mirrors the model-level
+ *     `required: function() { return this.category === 'medication'; }`
+ *     already on models/Inventory.js for these same two fields — this is
+ *     just the same rule enforced earlier, with a clear message, before
+ *     the doc-level validator would otherwise reject it. batchNumber is
+ *     the third such model field but is server-generated
+ *     (getNextBatchNumber in adminRoutes.js), never Admin-entered, so it
+ *     has no place in form-level validation.
  */
-function validateInventoryInput({ name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire }) {
+function validateInventoryInput({ name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire, brand, dosage }) {
   if (!name || !String(name).trim()) {
     return 'Item name is required.';
   }
@@ -56,6 +65,15 @@ function validateInventoryInput({ name, category, quantity, unit, minThreshold, 
     startOfToday.setHours(0, 0, 0, 0);
     if (parsed < startOfToday) {
       return 'Expiration date cannot be in the past.';
+    }
+  }
+
+  if (category === 'medication') {
+    if (!brand || !String(brand).trim()) {
+      return 'Brand is required for Medicine items.';
+    }
+    if (!dosage || !String(dosage).trim()) {
+      return 'Dosage is required for Medicine items.';
     }
   }
 

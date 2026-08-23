@@ -456,6 +456,8 @@ const EditItemModal = ({ item, onSave, onClose }) => {
         minThreshold:   item.minThreshold ?? '',
         expirationDate: item.expirationDate ? item.expirationDate.slice(0, 10) : '',
         doesNotExpire:  item.doesNotExpire || false,
+        brand:          item.brand || '',
+        dosage:         item.dosage || '',
         notes:          item.notes || '',
     });
     const [errors, setErrors] = useState({});
@@ -496,6 +498,14 @@ const EditItemModal = ({ item, onSave, onClose }) => {
             }
         }
 
+        // Brand and Dosage are only required when Category is Medicine
+        // ('medication') — mirrors AddInventoryModal.js and the model-level
+        // requiredness in models/Inventory.js.
+        if (f.category === 'medication') {
+            if (!f.brand.trim()) e.brand = 'Brand is required for Medicine items.';
+            if (!f.dosage.trim()) e.dosage = 'Dosage is required for Medicine items.';
+        }
+
         return e;
     };
 
@@ -513,6 +523,9 @@ const EditItemModal = ({ item, onSave, onClose }) => {
         });
         if (errors[field]) setErrors(p => ({ ...p, [field]: '' }));
         if (field === 'category' && errors.unit) setErrors(p => ({ ...p, unit: '' }));
+        if (field === 'category' && val !== 'medication' && (errors.brand || errors.dosage)) {
+            setErrors(p => ({ ...p, brand: '', dosage: '' }));
+        }
         if (field === 'doesNotExpire' && errors.expirationDate) setErrors(p => ({ ...p, expirationDate: '' }));
         if (error) setError('');
     };
@@ -589,6 +602,21 @@ const EditItemModal = ({ item, onSave, onClose }) => {
                             {errors.unit && <small style={errTxt}>{errors.unit}</small>}
                         </div>
                     </div>
+
+                    {/* Brand + Dosage — only shown/required when Category is Medicine */}
+                    {form.category === 'medication' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                            <div><label style={lbl}>Brand *</label>
+                                <input style={errors.brand ? inpErr : inp} value={form.brand} onChange={e => handleChange('brand', e.target.value)} placeholder="e.g., Unilab" />
+                                {errors.brand && <small style={errTxt}>{errors.brand}</small>}
+                            </div>
+                            <div><label style={lbl}>Dosage *</label>
+                                <input style={errors.dosage ? inpErr : inp} value={form.dosage} onChange={e => handleChange('dosage', e.target.value)} placeholder="e.g., 500 mg" />
+                                {errors.dosage && <small style={errTxt}>{errors.dosage}</small>}
+                            </div>
+                        </div>
+                    )}
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                         <div><label style={lbl}>Quantity *</label>
                             <input type="number" min="0" style={errors.quantity ? inpErr : inp} value={form.quantity} onChange={e => handleChange('quantity', e.target.value)} />

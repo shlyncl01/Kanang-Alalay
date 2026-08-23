@@ -5,6 +5,7 @@ import { CATEGORY_OPTIONS, getUnitsForCategory } from '../constants/inventoryOpt
 const EMPTY_FORM = {
     name: '', category: '', quantity: '', unit: '',
     minThreshold: '', expirationDate: '', doesNotExpire: false,
+    brand: '', dosage: '',
     supplier: '', notes: '',
 };
 
@@ -71,13 +72,22 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
             }
         }
 
+        // Brand and Dosage are only required when Category is Medicine
+        // ('medication') — mirrors the same requiredness models/Inventory.js
+        // already enforces server-side for these two fields.
+        if (f.category === 'medication') {
+            if (!f.brand.trim()) e.brand = 'Brand is required for Medicine items.';
+            if (!f.dosage.trim()) e.dosage = 'Dosage is required for Medicine items.';
+        }
+
         return e;
     };
 
     const currentErrors = validate(form);
     const hasRequiredFields = form.name.trim() !== '' && form.category !== '' && form.unit !== '' &&
         form.quantity !== '' && !isNaN(form.quantity) && Number(form.quantity) >= 0 &&
-        form.minThreshold !== '' && (form.doesNotExpire || form.expirationDate !== '');
+        form.minThreshold !== '' && (form.doesNotExpire || form.expirationDate !== '') &&
+        (form.category !== 'medication' || (form.brand.trim() !== '' && form.dosage.trim() !== ''));
     const canSubmit = hasRequiredFields && Object.keys(currentErrors).length === 0 && !submitting;
 
     const handleChange = (field, val) => {
@@ -101,6 +111,9 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
         });
         if (errors[field]) setErrors(p => ({ ...p, [field]: '' }));
         if (field === 'category' && errors.unit) setErrors(p => ({ ...p, unit: '' }));
+        if (field === 'category' && val !== 'medication' && (errors.brand || errors.dosage)) {
+            setErrors(p => ({ ...p, brand: '', dosage: '' }));
+        }
         if (field === 'doesNotExpire' && errors.expirationDate) setErrors(p => ({ ...p, expirationDate: '' }));
         if (serverError) setServerError('');
     };
@@ -127,6 +140,8 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
                 minThreshold: Number(form.minThreshold),
                 expirationDate: form.doesNotExpire ? undefined : form.expirationDate,
                 doesNotExpire: form.doesNotExpire,
+                brand: form.brand.trim() || undefined,
+                dosage: form.dosage.trim() || undefined,
                 supplier: form.supplier.trim() || undefined,
                 notes: form.notes.trim() || undefined,
             });
@@ -206,6 +221,38 @@ const AddInventoryModal = ({ isOpen, onClose, onSave }) => {
                         </select>
                         {errors.category && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.category}</small>}
                     </div>
+
+                    {/* Brand + Dosage — only shown/required when Category is Medicine */}
+                    {form.category === 'medication' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+                            <div>
+                                <label style={labelStyle}>
+                                    Brand <span style={{ color: '#dc3545' }}>*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., Unilab"
+                                    value={form.brand}
+                                    onChange={e => handleChange('brand', e.target.value)}
+                                    style={inputStyle(errors.brand)}
+                                />
+                                {errors.brand && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.brand}</small>}
+                            </div>
+                            <div>
+                                <label style={labelStyle}>
+                                    Dosage <span style={{ color: '#dc3545' }}>*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., 500 mg"
+                                    value={form.dosage}
+                                    onChange={e => handleChange('dosage', e.target.value)}
+                                    style={inputStyle(errors.dosage)}
+                                />
+                                {errors.dosage && <small style={{ color: '#dc3545', fontSize: '.78rem', marginTop: 4, display: 'block' }}>{errors.dosage}</small>}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Quantity + Unit */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>

@@ -1276,6 +1276,8 @@ const AdminDashboard = () => {
                     minThreshold: Number(item.minThreshold),
                     expirationDate: item.doesNotExpire ? undefined : (item.expirationDate || undefined),
                     doesNotExpire: !!item.doesNotExpire,
+                    brand: item.brand || undefined,
+                    dosage: item.dosage || undefined,
                     supplier: item.supplier || undefined,
                     notes: item.notes || '',
                 }),
