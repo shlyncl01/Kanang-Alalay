@@ -2033,10 +2033,6 @@ const HeadCaregiverDashboard = () => {
         const safeActiveMedsPage = Math.min(activeMedsPage, activeMedsPages);
         const pagedActiveMeds = filteredGroupedByResident.slice((safeActiveMedsPage - 1) * PER, safeActiveMedsPage * PER);
 
-        const invPages = Math.max(1, Math.ceil(filteredInventory.length / PER));
-        const safeInvPage = Math.min(invPage, invPages);
-        const pagedInventory = filteredInventory.slice((safeInvPage - 1) * PER, safeInvPage * PER);
-
         return (
             <div>
                 <div className="med-pills-row">
@@ -2184,73 +2180,19 @@ const HeadCaregiverDashboard = () => {
                         </div>
                     )}
                 </div>
-
-                {/* Medication Inventory Status — PART 4 FIX: this is a
-                    medication/medical_supplies VIEW over HC Assigned Stock
-                    (see GET /head-caregiver/inventory), not a second stock
-                    number. Quantity and Status below always match the
-                    same item's row in "My Stock" exactly, because it's the
-                    same row. There is no per-batch expiry at this level
-                    (HC Assigned Stock tracks Product-level quantity, not
-                    individual batches), so the old Expiry column is
-                    replaced with Status, which this data does carry. */}
-                <div className="card-white mb-18">
-                    <div className="card-header">
-                        <h5>Medication Inventory Status</h5>
-                        <button className="btn-primary-sm" onClick={() => setModal({ type: 'requestStock' })}>
-                            <FaBoxOpen /> Request Stock
-                        </button>
-                    </div>
-                    <div className="table-scroll">
-                        <table className="custom-table">
-                            <thead>
-                                <tr><th>Medication</th><th>Ward / Cabinet</th><th>Stock Level</th><th>Status</th></tr>
-                            </thead>
-                            <tbody>
-                                {filteredInventory.length === 0 ? (
-                                    <tr><td colSpan="4" className="text-center no-data-italic">
-                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock assigned to you yet.'}
-                                    </td></tr>
-                                ) : (
-                                    pagedInventory.map(item => {
-                                        const s = STOCK_STATUS_STYLE[item.status] || STOCK_STATUS_STYLE['In Stock'];
-                                        return (
-                                            <tr key={item._id}>
-                                                <td><strong>{item.name}</strong></td>
-                                                <td className="inv-ward-cell">{user?.ward || '—'} Cabinet</td>
-                                                <td>{item.quantity} {item.unit}</td>
-                                                <td>
-                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
-                                                        {item.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    {invPages > 1 && (
-                        <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(safeInvPage - 1) * PER + 1}–{Math.min(safeInvPage * PER, filteredInventory.length)} of {filteredInventory.length}</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: invPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeInvPage === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
             </div>
         );
     };
 
     // ── SCREEN 4: HC ASSIGNED STOCK (Part 4) ────────────────────────────
-    // Read-only view of this HC's own stock balance. Deliberately separate
-    // from the "Medication Inventory Status" table in renderMedicines()
-    // above, which shows Admin Central Stock — the same Product can (and
-    // usually will) show a different number here than it does there.
+    // Read-only view of this HC's own stock balance. The "Medication
+    // Inventory Status" table (medication/medical_supplies subset of this
+    // same HC Assigned Stock data) lives ONLY here on My Stock as of
+    // Part 9 — it used to also be duplicated on the Medicines tab
+    // (renderMedicines() above), which was removed as a UI cleanup; the
+    // underlying data/state (filteredInventory, invPage, etc.) is
+    // untouched and still comes from the same GET /head-caregiver/
+    // inventory call used elsewhere.
     const renderMyStock = () => {
         const stockPages = Math.max(1, Math.ceil(filteredAssignedStock.length / PER));
         const safeStockPage = Math.min(stockPage, stockPages);
