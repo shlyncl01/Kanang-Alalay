@@ -216,6 +216,19 @@ router.post('/login', async (req, res) => {
                 accountStatus: 'role_blocked'
             });
         }
+        // Mirrors the check above in the other direction — admin/head_caregiver
+        // are web-only. Without this, that role could still log into the mobile
+        // app, registering that device's push token under their account too —
+        // and since head_caregiver/admin receive every caregiver's alerts by
+        // design, any other account later logged into on the same device would
+        // appear to be "leaking" alerts that aren't really theirs.
+        if (isMobileLogin && WEB_ALLOWED_ROLES.includes(user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Mobile access is not available for your role. Please use the website.',
+                accountStatus: 'role_blocked'
+            });
+        }
 
         // Mobile stays logged in until the user explicitly logs out; web keeps a
         // shorter session since it's used on shared/admin machines.
@@ -281,6 +294,13 @@ router.post('/verify-first-login', async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: 'Web access is not available for your role. Please use the mobile app.',
+                accountStatus: 'role_blocked'
+            });
+        }
+        if (isMobileLogin && WEB_ALLOWED_ROLES.includes(user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Mobile access is not available for your role. Please use the website.',
                 accountStatus: 'role_blocked'
             });
         }
