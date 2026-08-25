@@ -1503,6 +1503,43 @@ const HeadCaregiverDashboard = () => {
         if (r.success) setStats(s => ({ ...s, ...r.data }));
     }, [doFetch]);
 
+    // Per-page refresh scoped to just the table(s) that page shows — used by
+    // the small refresh button on Residents / Medicines / My Stock so a
+    // click there doesn't have to reload every other page's data too.
+    const refreshResidentsPage = useCallback(async () => {
+        setRefreshing(true);
+        const [resR] = await Promise.all([doFetch('/head-caregiver/residents'), fetchCaregivers()]);
+        if (resR.success) setResidents(resR.data || []);
+        setRefreshing(false);
+    }, [doFetch, fetchCaregivers]);
+
+    const refreshMedicinesPage = useCallback(async () => {
+        setRefreshing(true);
+        const [schR, medR] = await Promise.all([
+            doFetch('/head-caregiver/schedule'),
+            doFetch('/head-caregiver/medications'),
+        ]);
+        if (schR.success) setSchedule(schR.data || []);
+        if (medR.success) setMedications(medR.data || []);
+        await refreshStats();
+        setRefreshing(false);
+    }, [doFetch, refreshStats]);
+
+    const refreshStockPage = useCallback(async () => {
+        setRefreshing(true);
+        const [invR, assignedR, prodR, reqR] = await Promise.all([
+            doFetch('/head-caregiver/inventory'),
+            doFetch('/head-caregiver/assigned-stock'),
+            doFetch('/head-caregiver/products'),
+            doFetch('/head-caregiver/stock-requests'),
+        ]);
+        if (invR.success) setInventory(invR.data || []);
+        if (assignedR.success) setAssignedStock(assignedR.data || []);
+        if (prodR.success) setProducts(prodR.data || []);
+        if (reqR.success) setStockRequests(reqR.data || []);
+        setRefreshing(false);
+    }, [doFetch]);
+
     useEffect(() => {
         (async () => { setLoading(true); await loadAll(); setLoading(false); })();
     }, [loadAll]);
@@ -1542,6 +1579,29 @@ const HeadCaregiverDashboard = () => {
         await loadAll();
         setRefreshing(false);
     };
+
+    // Small icon-only refresh button reused on every page (Home, Residents,
+    // Medicines, My Stock). Defaults to a full loadAll() so every table on
+    // whichever page it's clicked from is brought current; pass a scoped
+    // `onClick` to refresh only that page's data instead.
+    const RefreshBtn = ({ onClick = handleRefresh, title = 'Refresh data' }) => (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={refreshing}
+            title={title}
+            aria-label={title}
+            className="refresh-icon-btn"
+            style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                border: '1.5px solid #D9762B', background: '#fff', color: '#D9762B',
+                cursor: refreshing ? 'default' : 'pointer', opacity: refreshing ? 0.7 : 1,
+            }}
+        >
+            <FaSync className={refreshing ? 'spin' : ''} style={{ fontSize: '.8rem' }} />
+        </button>
+    );
 
     // Close the notification dropdown on outside click (same pattern as
     // the existing account-menu dropdown / Admin's notif-dropdown).
@@ -1866,6 +1926,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="res-page-header">
                     <span className="res-page-label">MY ASSIGNED RESIDENTS ({residents.length})</span>
                     <div className="res-page-controls">
+                        <RefreshBtn onClick={refreshResidentsPage} title="Refresh residents" />
                         <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
                             <option value="All">Filter: All</option>
                             <option value="alert">Alert</option>
@@ -2064,6 +2125,7 @@ const HeadCaregiverDashboard = () => {
                         <option value="Desc">Sort: Time ↓</option>
                     </select>
                     <div className="med-action-btns">
+                        <RefreshBtn onClick={refreshMedicinesPage} title="Refresh medication tables" />
                         <button className="btn-primary-sm" onClick={() => setModal({ type: 'addSchedule' })}><FaPlus /> Add Medication</button>
                     </div>
                 </div>
@@ -2216,6 +2278,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>My Assigned Stock</h5>
+                        <RefreshBtn onClick={refreshStockPage} title="Refresh stock tables" />
                     </div>
                     <p style={{ margin: '0 0 14px', padding: '0 2px', color: '#7A5C4E', fontSize: '.85rem' }}>
                         Your own stock balance, separate from Admin Central Stock. This is
