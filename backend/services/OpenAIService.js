@@ -3,7 +3,20 @@ const { toFile } = require('openai');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const processVoice = async (text, language = 'English') => {
+// Only the last MAX_HISTORY_TURNS messages are kept, and only ever as plain
+// {role, content} pairs — trusting/replaying anything else the client sends
+// here would let arbitrary fields reach the OpenAI call.
+const MAX_HISTORY_TURNS = 10;
+
+const sanitizeHistory = (history) => {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-MAX_HISTORY_TURNS)
+    .map((m) => ({ role: m.role, content: m.content.trim() }));
+};
+
+const processVoice = async (text, language = 'English', history = []) => {
   const languageInstruction = language === 'Tagalog'
     ? 'Respond in natural, conversational Tagalog (Filipino) appropriate for a Filipino care home setting. Keep medication/drug names and dosage units in their original form (do not translate them).'
     : 'Respond in English only. Do not add a Tagalog translation or restate any part of the response in Tagalog, even if the topic feels like it would suit a bilingual Filipino care home audience.';
@@ -19,15 +32,17 @@ LANGUAGE: ${languageInstruction} This applies regardless of what language the ca
 
 STYLE: Never phrase things as litotes (understatement through a double negative, e.g. "not unsafe" instead of "safe", "not uncommon" instead of "common", "not incorrect" instead of "correct"). Always state things directly and plainly, in both English and Tagalog — this matters for clarity in a medical/spoken context where a caregiver shouldn't have to mentally un-negate a sentence to understand it.
 
+MEMORY: The conversation history before this message is real — earlier assistant replies may contain real resident/medication data looked up from the database (not something you made up). If the caregiver's new message is a follow-up referring back to something just discussed ("what are those 3?", "which ones were late?"), answer it directly using that prior context instead of asking them to repeat themselves. Only fall back to "unknown" if the message truly doesn't connect to anything in the conversation.
+
 Classify every message into exactly ONE of these intents:
 
 - "administer" — caregiver is giving/recording a medication dose. E.g., "Administer Paracetamol to Maria Santos at 9 AM room 201", "Give Losartan to Juan". Extract patient, medication, dosage, time, room. Give a short confirmation response.
-- "show" — caregiver wants to see/look up information (a resident's medications, schedule, room, etc). E.g., "Show me Maria's medications", "What's scheduled for room 201". Extract whatever of patient/medication/room is mentioned. Acknowledge what they're asking to see; you do not have live database access, so make clear you're confirming the request, not reading live records.
+- "show" — caregiver wants to see/look up information (a resident's medications, schedule, room, etc), for one resident or for all of them. E.g., "Show me Maria's medications", "What's scheduled for room 201", "Show me today's schedule for everyone". Extract whatever of patient/medication/room is mentioned — patient is null if they're asking about all residents. Acknowledge what they're asking to see; you do not have live database access, so make clear you're confirming the request, not reading live records.
 - "confirm" — caregiver is confirming something already happened. E.g., "I gave Maria her medication", "Confirmed, administered to Juan". Extract patient, medication. Acknowledge the confirmation.
 - "cancel" — caregiver wants to cancel or undo something. E.g., "Cancel that", "Never mind", "Cancel the reminder for Maria". Extract patient/medication if mentioned. Acknowledge the cancellation.
 - "symptom_report" — caregiver describes a symptom or health issue. E.g., "Maria has a headache", "Resident has fever", "Patient is dizzy". Identify the symptom, suggest common OTC/prescribed remedies appropriate for elderly care home residents, give practical care advice (rest, hydration, monitoring), and recommend when to escalate to a doctor. Be concise but helpful.
 - "health_query" — caregiver asks a general health/medication question not tied to a specific incident. Answer helpfully and safely.
-- "unknown" — anything that doesn't clearly fit the above.
+- "unknown" — anything that doesn't clearly fit the above, including follow-ups you can answer directly from the conversation history above (see MEMORY).
 
 Return ONLY valid JSON in this exact format:
 {
@@ -43,6 +58,7 @@ Return ONLY valid JSON in this exact format:
 
 Always be professional, empathetic, and safety-conscious.`,
       },
+      ...sanitizeHistory(history),
       { role: 'user', content: text },
     ],
   });
