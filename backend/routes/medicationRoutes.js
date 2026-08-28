@@ -75,6 +75,39 @@ router.get('/resident/:residentId', authMiddleware, async (req, res) => {
     }
 });
 
+// Get medication administration history for a resident (the mobile app's
+// Resident Profile > History tab) — was calling this route but it had gone
+// missing from the backend, so every request silently 404'd and the tab
+// always showed empty regardless of real history.
+router.get('/history/:residentId', authMiddleware, async (req, res) => {
+    try {
+        const history = await MedicationLog.find({
+            residentId: req.params.residentId,
+            status: { $in: ['administered', 'completed', 'missed', 'skipped'] },
+        })
+            .populate('caregiverId', 'firstName lastName')
+            .sort({ administeredTime: -1, scheduledTime: -1 });
+
+        const shaped = history.map((log) => ({
+            _id: log._id,
+            medicationName: log.medicationName,
+            dosage: log.dosage,
+            administeredTime: log.administeredTime,
+            scheduledTime: log.scheduledTime,
+            status: log.status,
+            caregiverName: log.caregiverId
+                ? `${log.caregiverId.firstName || ''} ${log.caregiverId.lastName || ''}`.trim()
+                : 'Caregiver',
+            notes: log.notes || '',
+        }));
+
+        res.json({ success: true, history: shaped });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Server error fetching medication history' });
+    }
+});
+
 // Get medication by ID, medicationId, or QR code
 router.get('/:id', authMiddleware, async (req, res) => {
     try {
