@@ -501,14 +501,12 @@ body {
    ─────────────────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  /* Fixed 6-column grid (rather than auto-fit/minmax) so the 6 stat cards
-     reliably share one row on normal desktop/laptop widths — auto-fit with
-     a 180px minimum was conservatively rounding down to 5 columns before
-     wrapping the 6th card onto its own row well before the viewport was
-     actually too narrow for six. minmax(0, 1fr) lets columns shrink evenly
-     instead of overflowing. Narrower viewports drop to fewer columns via
-     the breakpoints below. */
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Fixed 3-column grid so the 6 stat cards always form two rows of three
+     on desktop — cramming all 6 into one row left too little width per
+     card and forced text to wrap mid-word. minmax(0, 1fr) lets columns
+     shrink evenly instead of overflowing. Narrower viewports drop to fewer
+     columns via the breakpoints below. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   margin-bottom: 26px;
   width: 100%;
@@ -589,21 +587,30 @@ body {
 .stat-info h3 {
   margin: 0 0 3px;
   font-family: var(--d-font-head);
-  font-size: 1.9rem;
+  /* Responsive instead of fixed so long values (₱ amounts, percentages)
+     shrink to fit the card rather than wrapping mid-character. */
+  font-size: clamp(1.2rem, 1.8vw, 1.9rem);
   color: var(--d-ink);
   line-height: 1.15;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 .stat-info p {
   margin: 0;
-  font-size: .8rem;
+  /* Responsive instead of fixed so labels stay on one line and shrink
+     rather than wrapping/breaking mid-word. */
+  font-size: clamp(0.6rem, 0.8vw, 0.8rem);
   color: var(--d-muted);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: .04em;
-  overflow-wrap: break-word;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 /* ── ACTIVITY FEED ────────────────────────────────────────────
@@ -1354,9 +1361,8 @@ body {
   .main-content { padding: 24px; }
 }
 
-/* ── ≤1299px (smaller laptop): six columns no longer have room to stay
-     legible next to the full-width sidebar — step down to 3×2 here
-     instead of waiting for the icon-rail breakpoint below. ── */
+/* ── ≤1299px (smaller laptop): 3×2 is already the desktop default above;
+     this just keeps the same layout as the sidebar takes up more room. ── */
 @media (max-width: 1299px) {
   .stats-grid { grid-template-columns: repeat(3, 1fr); }
 }
