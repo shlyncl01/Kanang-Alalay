@@ -24,6 +24,42 @@
     min-height: 100vh;
 }
 
+/* ===== ADMIN SUB-PAGE BACK BUTTON =====
+   Shown at the top of every Admin sub-page (anything other than System
+   Overview). Styled to match .btn-outline-sm so it fits the existing
+   design without introducing a new button style. */
+.admin-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin-bottom: 16px;
+    background: transparent;
+    color: var(--d-orange-dk);
+    border: 1.5px solid var(--d-orange);
+    border-radius: 9px;
+    font-family: var(--d-font-body);
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .22s;
+    white-space: nowrap;
+}
+.admin-back-btn:hover {
+    background: var(--d-orange-lt);
+    transform: translateY(-1px);
+}
+.admin-back-btn svg {
+    font-size: .8rem;
+}
+
+@media (max-width: 768px) {
+    .admin-back-btn {
+        margin-bottom: 12px;
+        padding: 7px 14px;
+    }
+}
+
 .main-content-wrapper {
     display: flex;
     flex-direction: column;

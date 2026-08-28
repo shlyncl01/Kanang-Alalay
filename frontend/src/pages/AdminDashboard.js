@@ -11,7 +11,7 @@ import {
     FaSearch, FaCog, FaQuestionCircle, FaTimes, FaCheck, FaInfoCircle,
     FaExclamationCircle, FaSpinner, FaTimesCircle, FaHistory, FaFilter,
     FaPrint, FaChevronLeft, FaChevronRight, FaBars,
-    FaMapMarkerAlt, FaLandmark
+    FaMapMarkerAlt, FaLandmark, FaArrowLeft
 } from 'react-icons/fa';
 import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
@@ -777,6 +777,32 @@ const AdminDashboard = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.state?.section]);
+
+    // ── Back navigation for Admin sub-pages ──────────────────────────────
+    // The Admin Panel is a single-route SPA (all sections live at /admin and
+    // are swapped via `activeSection` state rather than distinct router
+    // paths), so there's no browser history entry per section for
+    // navigate(-1) to use. Instead we keep a lightweight in-app history
+    // stack of visited sections — this is "the project's existing
+    // navigation mechanism" adapted to work with that architecture, and it
+    // still avoids hardcoding Back to always land on System Overview: it
+    // returns to whatever section was actually visited before.
+    const sectionHistoryRef = useRef([]);
+    const prevSectionRef = useRef(activeSection);
+    useEffect(() => {
+        if (prevSectionRef.current !== activeSection) {
+            sectionHistoryRef.current.push(prevSectionRef.current);
+            prevSectionRef.current = activeSection;
+        }
+    }, [activeSection]);
+
+    const handleBackNavigation = () => {
+        const previous = sectionHistoryRef.current.pop();
+        // Falls back to System Overview only when there's nowhere else to
+        // go back to — e.g. the section was opened directly via a deep
+        // link/URL with no prior in-app navigation.
+        setActiveSection(previous || 'overview');
+    };
 
     const fetchApi = useCallback(async (endpoint, options = {}) => {
         const token = localStorage.getItem('token');
@@ -2065,6 +2091,16 @@ const AdminDashboard = () => {
                     </div>
 
                     <div className="main-content" style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+                        {!loading && activeSection !== 'overview' && (
+                            <button
+                                type="button"
+                                className="admin-back-btn"
+                                onClick={handleBackNavigation}
+                                aria-label="Back"
+                            >
+                                <FaArrowLeft /> Back
+                            </button>
+                        )}
                         {renderContent()}
                     </div>
                 </div>
