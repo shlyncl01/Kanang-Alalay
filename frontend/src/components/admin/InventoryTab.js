@@ -5,7 +5,7 @@ import {
     FaChevronLeft, FaChevronRight, FaTimes,
     FaUpload, FaFileAlt, FaCheckCircle, FaTimesCircle,
     FaDownload, FaCloudUploadAlt, FaBoxOpen, FaSyncAlt,
-    FaEye, FaLayerGroup,
+    FaEye, FaLayerGroup, FaMinusCircle, FaClipboardCheck,
 } from 'react-icons/fa';
 import { CATEGORY_OPTIONS, CATEGORY_UNITS, getUnitsForCategory } from '../../constants/inventoryOptions';
 import {
@@ -876,6 +876,306 @@ const DeleteInventoryModal = ({ item, onConfirm, onClose }) => {
     );
 };
 
+// ── Bulk Stock Reduction Modal (Part 11) ────────────────────────────────────────
+// Operates on the flat, per-BATCH `inventory` list (the same documents the
+// table on this page groups into products) — batches are the real unit
+// `quantity` lives on in the database, so "current stock" / "remaining
+// stock" shown here are always the exact numbers about to be written, not
+// a recomputed product-level total.
+const BulkReductionModal = ({ inventory, onClose, onReduced }) => {
+    const [step, setStep]         = useState('select'); // 'select' | 'confirm' | 'submitting' | 'done'
+    const [search, setSearch]     = useState('');
+    // Keyed by batch _id -> { checked: bool, qty: string }
+    const [rows, setRows]         = useState({});
+    const [reason, setReason]     = useState('');
+    const [error, setError]       = useState('');
+    const [results, setResults]   = useState(null); // { count } on success
+
+    const toggleRow = (item) => {
+        setRows(prev => {
+            const cur = prev[item._id] || { checked: false, qty: '' };
+            return { ...prev, [item._id]: { ...cur, checked: !cur.checked } };
+        });
+        if (error) setError('');
+    };
+
+    const setQty = (itemId, val) => {
+        setRows(prev => ({ ...prev, [itemId]: { ...(prev[itemId] || { checked: true }), checked: true, qty: val } }));
+        if (error) setError('');
+    };
+
+    const filteredItems = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return inventory;
+        return inventory.filter(i =>
+            i.name?.toLowerCase().includes(q) ||
+            i.batchNumber?.toLowerCase?.().includes(q) ||
+            getCategoryLabel(i.category).toLowerCase().includes(q)
+        );
+    }, [inventory, search]);
+
+    const selected = useMemo(
+        () => inventory.filter(i => rows[i._id]?.checked),
+        [inventory, rows]
+    );
+
+    // Per-row validation error, used both to block "Review Reduction" and
+    // to highlight the offending row inline.
+    const rowError = (item) => {
+        const r = rows[item._id];
+        if (!r?.checked) return null;
+        const qty = Number(r.qty);
+        if (r.qty === '' || isNaN(qty)) return 'Enter a quantity.';
+        if (qty <= 0) return 'Must be greater than 0.';
+        if (qty > item.quantity) return `Only ${item.quantity} ${item.unit} available.`;
+        return null;
+    };
+
+    const canReview = selected.length > 0 && selected.every(i => !rowError(i));
+
+    const goToConfirm = () => {
+        if (!canReview) {
+            setError(selected.length === 0
+                ? 'Select at least one item to reduce.'
+                : 'Fix the highlighted quantities before continuing.');
+            return;
+        }
+        setError('');
+        setStep('confirm');
+    };
+
+    const handleSubmit = async () => {
+        setStep('submitting');
+        setError('');
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_BASE_URL}/admin/inventory/bulk-reduce`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+                body: JSON.stringify({
+                    reductions: selected.map(i => ({ itemId: i._id, quantity: Number(rows[i._id].qty) })),
+                    reason: reason.trim(),
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Bulk reduction failed.');
+            onReduced(data.data);
+            setResults({ count: data.data.length });
+            setStep('done');
+        } catch (e) {
+            // Nothing partially applied server-side on failure (see
+            // adminRoutes.js POST /inventory/bulk-reduce) — safe to just
+            // surface the error and let the admin retry from Select.
+            setError(e.message);
+            setStep('confirm');
+        }
+    };
+
+    const overlay = { position: 'fixed', inset: 0, background: 'rgba(20,8,0,0.55)', backdropFilter: 'blur(3px)', zIndex: 10002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 };
+    const modal   = { background: '#fff', borderRadius: 20, width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.22)', overflow: 'hidden' };
+    const header  = { padding: '18px 24px', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 };
+    const body    = { padding: '24px', overflowY: 'auto', flex: 1 };
+    const footer  = { padding: '16px 24px', borderTop: '1.5px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FFF8F3', flexShrink: 0 };
+    const qtyInp  = (hasErr) => ({ width: 90, padding: '6px 9px', border: `1.5px solid ${hasErr ? '#dc3545' : '#E8D6CC'}`, borderRadius: 7, fontSize: '.82rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', fontFamily: "'DM Sans', sans-serif" });
+
+    return (
+        <div style={overlay}>
+            <div style={modal}>
+                {/* Header */}
+                <div style={header}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <FaMinusCircle style={{ color: '#fff', fontSize: '1.1rem' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: 0, color: '#fff', fontFamily: "'Playfair Display', serif", fontSize: '1.05rem' }}>Bulk Stock Reduction</h4>
+                        <small style={{ color: 'rgba(255,255,255,.7)', fontSize: '.76rem' }}>
+                            {step === 'select'     && 'Select items and enter how much to reduce from each'}
+                            {step === 'confirm'    && 'Review the changes before saving'}
+                            {step === 'submitting' && 'Saving changes, please wait…'}
+                            {step === 'done'       && 'Reduction complete'}
+                        </small>
+                    </div>
+                    <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,.15)', border: '1.5px solid rgba(255,255,255,.25)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
+                        <FaTimes size={12} />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div style={body}>
+                    {error && (
+                        <div style={{ background: '#fdecea', color: '#b71c1c', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: '.85rem' }}>
+                            ⚠️ {error}
+                        </div>
+                    )}
+
+                    {/* ── STEP: Select ── */}
+                    {step === 'select' && (<>
+                        <div style={{ position: 'relative', marginBottom: 14 }}>
+                            <FaSearch style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#B58968', fontSize: '.8rem' }} />
+                            <input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Search items by name, batch #, or category…"
+                                style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.85rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" }}
+                            />
+                        </div>
+
+                        <div style={{ borderRadius: 12, border: '1.5px solid #E8D6CC', overflow: 'hidden' }}>
+                            <div style={{ overflowX: 'auto', maxHeight: 380 }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#b85c2d', position: 'sticky', top: 0 }}>
+                                            <th style={{ padding: '10px 12px', width: 34 }}></th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Item</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Batch</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Current Stock</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Reduce By</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Remaining</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredItems.length === 0 && (
+                                            <tr><td colSpan={6} style={{ padding: '20px 12px', textAlign: 'center', color: '#7A5C4E' }}>No items match your search.</td></tr>
+                                        )}
+                                        {filteredItems.map((item, idx) => {
+                                            const r = rows[item._id] || { checked: false, qty: '' };
+                                            const err = rowError(item);
+                                            const remaining = item.quantity - (r.checked && r.qty !== '' && !isNaN(Number(r.qty)) ? Number(r.qty) : 0);
+                                            return (
+                                                <tr key={item._id} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFAFA', borderBottom: '1px solid #F0E8E0' }}>
+                                                    <td style={{ padding: '8px 12px' }}>
+                                                        <input type="checkbox" checked={!!r.checked} onChange={() => toggleRow(item)} style={{ cursor: 'pointer' }} />
+                                                    </td>
+                                                    <td style={{ padding: '8px 12px', fontWeight: 600, color: '#1A0A00' }}>{item.name}</td>
+                                                    <td style={{ padding: '8px 12px', color: '#7A5C4E' }}>#{item.batchNumber || '—'}</td>
+                                                    <td style={{ padding: '8px 12px', color: '#7A5C4E' }}>{item.quantity} {item.unit}</td>
+                                                    <td style={{ padding: '8px 12px' }}>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max={item.quantity}
+                                                            disabled={!r.checked}
+                                                            value={r.qty}
+                                                            onChange={e => setQty(item._id, e.target.value)}
+                                                            style={{ ...qtyInp(!!err), opacity: r.checked ? 1 : 0.5 }}
+                                                        />
+                                                        {err && <small style={{ display: 'block', color: '#dc3545', fontSize: '.7rem', marginTop: 2 }}>{err}</small>}
+                                                    </td>
+                                                    <td style={{ padding: '8px 12px', fontWeight: 700, color: remaining < 0 ? '#dc3545' : (remaining === 0 ? '#b71c1c' : '#1A0A00') }}>
+                                                        {r.checked && r.qty !== '' && !isNaN(Number(r.qty)) ? `${remaining} ${item.unit}` : '—'}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </>)}
+
+                    {/* ── STEP: Confirm ── */}
+                    {step === 'confirm' && (<>
+                        <div style={{ background: '#fff8e1', border: '1.5px solid #ffc10740', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: '.86rem', color: '#7c5a00', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <FaExclamationTriangle style={{ flexShrink: 0, marginTop: 2 }} />
+                            <span>You are about to reduce stock for <strong>{selected.length}</strong> item{selected.length !== 1 ? 's' : ''}. This action will permanently update inventory.</span>
+                        </div>
+
+                        <div style={{ borderRadius: 12, border: '1.5px solid #E8D6CC', overflow: 'hidden', marginBottom: 16 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#7d3a06' }}>
+                                        <th style={{ padding: '9px 12px', textAlign: 'left', color: '#fff' }}>Item</th>
+                                        <th style={{ padding: '9px 12px', textAlign: 'left', color: '#fff' }}>Batch</th>
+                                        <th style={{ padding: '9px 12px', textAlign: 'left', color: '#fff' }}>Before</th>
+                                        <th style={{ padding: '9px 12px', textAlign: 'left', color: '#fff' }}>Reducing By</th>
+                                        <th style={{ padding: '9px 12px', textAlign: 'left', color: '#fff' }}>After</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {selected.map((item, idx) => {
+                                        const qty = Number(rows[item._id].qty);
+                                        return (
+                                            <tr key={item._id} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFAFA', borderBottom: '1px solid #F0E8E0' }}>
+                                                <td style={{ padding: '8px 12px', fontWeight: 600 }}>{item.name}</td>
+                                                <td style={{ padding: '8px 12px', color: '#7A5C4E' }}>#{item.batchNumber || '—'}</td>
+                                                <td style={{ padding: '8px 12px' }}>{item.quantity} {item.unit}</td>
+                                                <td style={{ padding: '8px 12px', color: '#dc3545', fontWeight: 700 }}>-{qty} {item.unit}</td>
+                                                <td style={{ padding: '8px 12px', fontWeight: 700 }}>{item.quantity - qty} {item.unit}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <label style={{ display: 'block', fontSize: '.75rem', fontWeight: 700, color: '#7A5C4E', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>
+                            Reason / Notes (optional)
+                        </label>
+                        <textarea
+                            rows={2}
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            placeholder="e.g. Physical count adjustment, damaged stock write-off, expired disposal…"
+                            style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.87rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: "'DM Sans', sans-serif" }}
+                        />
+                    </>)}
+
+                    {/* ── STEP: Submitting ── */}
+                    {step === 'submitting' && (
+                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                            <div style={{ width: 70, height: 70, borderRadius: '50%', background: 'linear-gradient(135deg, #F96B38, #D94E1B)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', animation: 'spin 1s linear infinite' }}>
+                                <FaSyncAlt style={{ color: '#fff', fontSize: '1.6rem' }} />
+                            </div>
+                            <p style={{ fontWeight: 700, fontSize: '1rem', color: '#1A0A00', margin: '0 0 6px', fontFamily: "'Playfair Display', serif" }}>Saving reduction…</p>
+                            <p style={{ color: '#7A5C4E', fontSize: '.85rem', margin: 0 }}>Please wait, do not close this window.</p>
+                            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                        </div>
+                    )}
+
+                    {/* ── STEP: Done ── */}
+                    {step === 'done' && (
+                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                            <div style={{ width: 70, height: 70, borderRadius: '50%', background: 'linear-gradient(135deg, #28a745, #1e7e34)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                                <FaCheckCircle style={{ color: '#fff', fontSize: '2rem' }} />
+                            </div>
+                            <p style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1A0A00', margin: '0 0 6px', fontFamily: "'Playfair Display', serif" }}>Stock Reduced</p>
+                            <p style={{ color: '#7A5C4E', fontSize: '.85rem', margin: 0 }}>{results?.count ?? 0} item{(results?.count ?? 0) !== 1 ? 's' : ''} updated and saved.</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div style={footer}>
+                    <div>
+                        {step === 'confirm' && (
+                            <button onClick={() => { setStep('select'); setError(''); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 9, border: '1.5px solid #E8D6CC', background: 'transparent', color: '#7A5C4E', cursor: 'pointer', fontWeight: 600, fontSize: '.85rem', fontFamily: "'DM Sans', sans-serif" }}>
+                                ← Back to Select
+                            </button>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        {step !== 'submitting' && (
+                            <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 9, border: '1.5px solid #E8D6CC', background: 'transparent', cursor: 'pointer', fontWeight: 600, color: '#7A5C4E', fontFamily: "'DM Sans', sans-serif" }}>
+                                {step === 'done' ? 'Close' : 'Cancel'}
+                            </button>
+                        )}
+                        {step === 'select' && (
+                            <button onClick={goToConfirm} style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: 'linear-gradient(135deg, #F96B38, #D94E1B)', color: '#fff', cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <FaClipboardCheck size={12} /> Review Reduction{selected.length ? ` (${selected.length})` : ''}
+                            </button>
+                        )}
+                        {step === 'confirm' && (
+                            <button onClick={handleSubmit} style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: 'linear-gradient(135deg, #dc3545, #a71d2a)', color: '#fff', cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <FaMinusCircle size={12} /> Confirm Reduction
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Batch Details Modal ("View/Manage" action, Part 3) ──────────────────────────
 // Shows every batch belonging to one product. The product row on the main
 // table stays a single row no matter how many batches exist — this modal is
@@ -1210,6 +1510,7 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
     const [statusFilter, setStatusFilter]   = useState('All');
     const [page, setPage]                   = useState(1);
     const [showBulkImport, setShowBulkImport] = useState(false);
+    const [showBulkReduction, setShowBulkReduction] = useState(false);
     const [viewingProductId, setViewingProductId] = useState(null);
     const printRef = useRef(null);
 
@@ -1275,6 +1576,18 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
 
     const handleBulkImported = (newItems) => {
         setInventory(prev => [...prev, ...newItems]);
+    };
+
+    // updatedBatches = the fresh Inventory documents returned by
+    // POST /admin/inventory/bulk-reduce (already reflecting the new
+    // quantity + recomputed status from the server) — swap each one in by
+    // _id so the table/stats re-derive from real, persisted numbers rather
+    // than the client guessing the post-reduction state itself.
+    const handleBulkReduced = (updatedBatches) => {
+        setInventory(prev => prev.map(i => {
+            const match = updatedBatches.find(u => u._id === i._id);
+            return match || i;
+        }));
     };
 
     const handlePrint = () => {
@@ -1398,6 +1711,9 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
                         <button className="btn-outline-sm" onClick={handlePrint}><FaPrint /> Print Report</button>
                         <button className="btn-outline-sm" onClick={() => setShowBulkImport(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <FaUpload size={12} /> Bulk Import
+                        </button>
+                        <button className="btn-outline-sm" onClick={() => setShowBulkReduction(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <FaMinusCircle size={12} /> Bulk Reduction
                         </button>
                         <button className="btn-primary-sm" onClick={() => setShowAddInventory(true)}><FaBox /> Add Item</button>
                     </div>
@@ -1578,6 +1894,13 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
             {editItem && <EditItemModal item={editItem} onSave={handleSaveEdit} onClose={() => setEditItem(null)} />}
             {deleteTarget && <DeleteInventoryModal item={deleteTarget} onConfirm={handleDeleteConfirm} onClose={() => setDeleteTarget(null)} />}
             {showBulkImport && <BulkImportModal onClose={() => setShowBulkImport(false)} onImported={handleBulkImported} />}
+            {showBulkReduction && (
+                <BulkReductionModal
+                    inventory={inventory}
+                    onClose={() => setShowBulkReduction(false)}
+                    onReduced={handleBulkReduced}
+                />
+            )}
         </>
     );
 };

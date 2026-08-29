@@ -13,6 +13,7 @@ const { validateInventoryInput } = require('../utils/inventoryFormValidation');
 const RegistrationCode = require('../models/VerificationCode');
 const StockRequest = require('../models/StockRequest');
 const HCAssignedStock = require('../models/HCAssignedStock');
+const InventoryAuditLog = require('../models/InventoryAuditLog');
 const Alert = require('../models/Alert');
 const VitalsLog = require('../models/VitalsLog');
 const ActivityLog = require('../models/ActivityLog');
@@ -1161,6 +1162,200 @@ router.get('/inventory/:id/qr', async (req, res) => {
     } catch (error) {
         console.error('QR generation error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// BULK STOCK REDUCTION (Part 11)
+//
+// Reduces Admin Central Inventory quantities for several BATCHES
+// (models/Inventory.js documents) in a single submission, and writes one
+// InventoryAuditLog row per batch touched. Deliberately operates on
+// individual batches, not products — the same unit the rest of this file
+// already deducts against (see the FEFO/FIFO stock-request approval saga
+// below) — so "current stock" and "remaining stock" in the modal are
+// always the real number being written to the database, never a
+// recomputed product-level total that could mask which batch actually
+// changed.
+//
+// §13 (all-or-nothing): every row is re-validated against its CURRENT
+// database quantity — never whatever the client had cached — before ANY
+// write happens. If that validation pass fails for even one row, nothing
+// in this request has touched the database yet, so there's nothing to
+// undo. The actual writes are then the exact same atomic-conditional-$inc
+// + compensating-rollback saga used by PUT /stock-requests/:id above
+// (recomputeBatchStatus / restoreBatchDeductions, defined further down in
+// this file — function declarations are hoisted, so they're available
+// here) — this project has no transaction/session usage anywhere to build
+// on (see the Part 6 helpers comment below), so a saga is how "all or
+// nothing" is achieved on a possibly-standalone MongoDB deployment.
+// ─────────────────────────────────────────────────────────────
+router.post('/inventory/bulk-reduce', async (req, res) => {
+    try {
+        const { reductions, reason } = req.body;
+
+        if (!Array.isArray(reductions) || reductions.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Select at least one item to reduce.',
+            });
+        }
+
+        // ── Pass 1: validate shape + re-check every row against its
+        // CURRENT quantity. Nothing is written to the database in this
+        // pass — a failure here means the request is rejected wholesale
+        // with zero side effects, satisfying §13 for the common case
+        // (bad input) without needing any rollback logic at all.
+        const seenIds = new Set();
+        const plan = [];
+
+        for (let i = 0; i < reductions.length; i++) {
+            const row = reductions[i] || {};
+            const { itemId, quantity } = row;
+
+            if (!itemId || !mongoose.Types.ObjectId.isValid(itemId)) {
+                return res.status(400).json({ success: false, message: `Row ${i + 1}: invalid item.` });
+            }
+            if (seenIds.has(itemId)) {
+                return res.status(400).json({ success: false, message: `Row ${i + 1}: this item was selected more than once.` });
+            }
+            seenIds.add(itemId);
+
+            const qty = Number(quantity);
+            if (!Number.isFinite(qty) || qty <= 0) {
+                return res.status(400).json({ success: false, message: `Row ${i + 1}: reduction quantity must be greater than 0.` });
+            }
+
+            const batch = await Inventory.findById(itemId);
+            if (!batch) {
+                return res.status(404).json({ success: false, message: `Row ${i + 1}: item not found.` });
+            }
+
+            // Never allow negative stock, and never allow reducing more
+            // than what's actually on hand right now.
+            if (qty > batch.quantity) {
+                return res.status(400).json({
+                    success: false,
+                    message: `"${batch.name}" (Batch #${batch.batchNumber || '—'}): cannot reduce ${qty} ${batch.unit} — only ${batch.quantity} ${batch.unit} available.`,
+                });
+            }
+
+            plan.push({
+                itemId,
+                quantity: qty,
+                previousQuantity: batch.quantity,
+                name: batch.name,
+                batchNumber: batch.batchNumber,
+                unit: batch.unit,
+            });
+        }
+
+        // ── Pass 2: apply the actual writes as a saga. Each $inc is
+        // guarded by `quantity: { $gte: step.quantity }` so a batch can
+        // never be driven negative even if its stock changed underneath
+        // us since Pass 1 (rare race — e.g. a concurrent stock-request
+        // approval also drawing down the same batch). If that guard ever
+        // fails partway through, every deduction already applied in THIS
+        // request is undone before responding, so the inventory is never
+        // left partially updated.
+        const deductions = [];
+        const auditRecords = [];
+
+        for (const step of plan) {
+            const updated = await Inventory.findOneAndUpdate(
+                { _id: step.itemId, quantity: { $gte: step.quantity } },
+                { $inc: { quantity: -step.quantity } },
+                { new: true }
+            );
+
+            if (!updated) {
+                await restoreBatchDeductions(deductions);
+                return res.status(409).json({
+                    success: false,
+                    message: `Stock for "${step.name}" changed while processing this reduction. No changes were saved — please review the current stock and try again.`,
+                });
+            }
+
+            // Re-run the same status auto-calc models/Inventory.js does in
+            // its pre('save') hook, which findOneAndUpdate never triggers,
+            // so Total Stock / Low Stock / Out of Stock counts (derived
+            // from `status`) are correct immediately, not just after the
+            // next full re-save.
+            await recomputeBatchStatus(updated._id);
+            deductions.push({ batchId: updated._id, amount: step.quantity });
+
+            auditRecords.push({
+                action: 'bulk_reduction',
+                inventoryItemId: updated._id,
+                itemName: step.name,
+                batchNumber: step.batchNumber,
+                unit: step.unit,
+                quantityReduced: step.quantity,
+                previousQuantity: step.previousQuantity,
+                newQuantity: updated.quantity,
+                reason: reason ? String(reason).trim() : '',
+                performedBy: req.user._id,
+            });
+        }
+
+        // §6 — one audit row per batch, written only after every deduction
+        // in this submission has already committed successfully. A log
+        // entry should never exist for a reduction that didn't actually
+        // happen; conversely, since the stock changes above are already
+        // fully committed real data by this point, a failure writing the
+        // audit trail itself must never roll those back or tell the admin
+        // the reduction didn't happen — it's logged loudly instead so it
+        // can be investigated/backfilled without lying about live stock.
+        try {
+            await InventoryAuditLog.insertMany(auditRecords);
+        } catch (auditErr) {
+            console.error('Bulk reduction committed but audit log write failed:', auditErr);
+        }
+
+        // §8 — Note: HCAssignedStock is never read or written anywhere in
+        // this route. §9 — StockRequest and MedicationLog documents are
+        // never read or written here either. §10 — only Inventory.quantity
+        // is ever modified; nothing here touches medication schedules.
+        const updatedItems = await Inventory.find({ _id: { $in: plan.map(p => p.itemId) } });
+
+        res.json({
+            success: true,
+            data: updatedItems,
+            count: updatedItems.length,
+            message: `Stock reduced for ${updatedItems.length} item(s).`,
+        });
+
+    } catch (error) {
+        console.error('Bulk reduction error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error processing bulk reduction: ' + error.message,
+        });
+    }
+});
+
+// GET bulk-reduction audit trail (optionally scoped to one batch)
+router.get('/inventory/audit-log', async (req, res) => {
+    try {
+        const { itemId, limit = 200 } = req.query;
+        const query = {};
+        if (itemId) {
+            if (!mongoose.Types.ObjectId.isValid(itemId)) {
+                return res.status(400).json({ success: false, message: 'Invalid item id.' });
+            }
+            query.inventoryItemId = itemId;
+        }
+
+        const logs = await InventoryAuditLog.find(query)
+            .populate('performedBy', 'firstName lastName role')
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit));
+
+        res.json({ success: true, data: logs, count: logs.length });
+
+    } catch (error) {
+        console.error('Get inventory audit log error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching audit log' });
     }
 });
 
