@@ -12,6 +12,7 @@
         "concurrently": "^8.2.2"
     },
     "dependencies": {
+        "exceljs": "^4.4.0",
         "resend": "^6.18.1"
     }
 }
