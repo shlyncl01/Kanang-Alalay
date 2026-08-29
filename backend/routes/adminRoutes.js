@@ -496,12 +496,82 @@ router.post('/inventory/bulk-import', async (req, res) => {
             });
         }
 
-        const result = await Inventory.insertMany(items, { ordered: false });
+        // Previously this ran a raw Inventory.insertMany(items) with NO
+        // validation at all — category, unit, and category/unit
+        // compatibility could all be bypassed by posting a hand-built
+        // payload directly to this endpoint (the current frontend bulk
+        // importer doesn't even use this route; it POSTs to /inventory
+        // once per row instead, which already gets this same validation).
+        // This now runs every row through the exact same
+        // validateInventoryInput + findOrCreateProduct + getNextBatchNumber
+        // pipeline as the single-item POST /inventory route above, so the
+        // two paths can never disagree on what's a valid item.
+        const results = [];
+        let successCount = 0;
+        let failedCount = 0;
+
+        for (let i = 0; i < items.length; i++) {
+            const row = items[i] || {};
+            const { name, category, quantity, unit, minThreshold, expirationDate, notes, supplier, doesNotExpire, brand, dosage } = row;
+
+            const validationError = validateInventoryInput({
+                name, category, quantity, unit, minThreshold, expirationDate, doesNotExpire, brand, dosage,
+            });
+            if (validationError) {
+                failedCount++;
+                results.push({ row: i + 1, name, success: false, message: validationError });
+                continue;
+            }
+
+            try {
+                const { product, created } = await findOrCreateProduct(Product, {
+                    name, category, unit, minimumStockLevel: minThreshold,
+                });
+
+                if (!created && (product.category !== category || product.unit !== unit)) {
+                    failedCount++;
+                    results.push({
+                        row: i + 1,
+                        name,
+                        success: false,
+                        message: `"${product.name}" already exists as a product with category "${product.category}" and unit "${product.unit}". Use the same category and unit, or a different item name if this is actually a different product.`,
+                    });
+                    continue;
+                }
+
+                const batchNumber = await getNextBatchNumber(Inventory, product._id);
+
+                const item = new Inventory({
+                    productId: product._id,
+                    name: product.name,
+                    batchNumber,
+                    quantity: quantity || 0,
+                    unit: product.unit,
+                    category: product.category,
+                    minThreshold: Number(minThreshold),
+                    expirationDate: doesNotExpire ? null : (expirationDate || null),
+                    doesNotExpire: !!doesNotExpire,
+                    supplier: supplier || undefined,
+                    brand: brand ? String(brand).trim() : undefined,
+                    dosage: dosage ? String(dosage).trim() : undefined,
+                    notes: notes || '',
+                });
+
+                await item.save();
+                successCount++;
+                results.push({ row: i + 1, name, success: true, data: item });
+            } catch (err) {
+                failedCount++;
+                results.push({ row: i + 1, name, success: false, message: err.message });
+            }
+        }
 
         res.status(201).json({
             success: true,
-            count: result.length,
-            message: `${result.length} items imported successfully.`
+            count: successCount,
+            failed: failedCount,
+            results,
+            message: `${successCount} item(s) imported successfully${failedCount ? `, ${failedCount} failed` : ''}.`
         });
 
     } catch (error) {

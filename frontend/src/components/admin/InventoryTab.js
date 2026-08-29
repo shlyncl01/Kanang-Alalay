@@ -7,7 +7,7 @@ import {
     FaDownload, FaCloudUploadAlt, FaBoxOpen, FaSyncAlt,
     FaEye, FaLayerGroup,
 } from 'react-icons/fa';
-import { CATEGORY_OPTIONS, getUnitsForCategory } from '../../constants/inventoryOptions';
+import { CATEGORY_OPTIONS, CATEGORY_UNITS, getUnitsForCategory } from '../../constants/inventoryOptions';
 import {
     groupInventoryByProduct, summarizeProductRows, EXPIRING_SOON_DAYS,
 } from '../../utils/inventoryGrouping';
@@ -66,22 +66,38 @@ const BATCH_STATUS_STYLE = {
 };
 
 // ── Bulk CSV Import Modal ──────────────────────────────────────────────────────
-const CSV_TEMPLATE_HEADERS = 'name,category,quantity,unit,minThreshold,expirationDate,notes';
+// Category/unit values below come from constants/inventoryOptions.js — the
+// SAME source of truth used by the Add/Edit Inventory form — so the bulk
+// importer can never drift out of sync with what the backend actually
+// accepts (see inventoryFormValidation.js / inventoryCategoryUnits.js).
+const VALID_CATEGORIES = CATEGORY_OPTIONS.map(c => c.value);
+
+// `doesNotExpire` is included because the backend's shared
+// validateInventoryInput (used by both the single-item Add/Edit form and,
+// after this fix, bulk import) already requires an expirationDate for
+// EVERY category unless doesNotExpire is explicitly true — that's the
+// app's real, existing rule (see inventoryFormValidation.js), not just a
+// medication-only rule. Without this column, any non-medication row with
+// no expiration date would silently fail on import.
+const CSV_TEMPLATE_HEADERS = 'name,category,quantity,unit,minThreshold,expirationDate,doesNotExpire,notes';
 const CSV_TEMPLATE_EXAMPLE = [
-    'Paracetamol 500mg,medication,100,pcs,20,2026-12-31,Keep in cool dry place',
-    'Face Masks,medical_supplies,500,pcs,50,,Surgical grade',
-    'Rice (5kg bag),food,30,bag,10,2026-06-30,Store away from moisture',
-    'Hand Sanitizer,hygiene,50,bottle,15,,70% alcohol',
+    'Paracetamol 500mg,medication,100,tablet,20,2026-12-31,FALSE,Keep in cool dry place',
+    'Face Masks,medical_supplies,500,pcs,50,,TRUE,Surgical grade',
+    'Rice (5kg bag),food,30,bag,10,2026-06-30,FALSE,Store away from moisture',
+    'Hand Sanitizer,hygiene,50,bottle,15,,TRUE,70% alcohol',
 ].join('\n');
 
-const VALID_CATEGORIES = ['medication', 'medical_supplies', 'food', 'hygiene', 'General'];
-const VALID_UNITS = ['pcs', 'box', 'bottle', 'pack', 'bag', 'kg', 'liters', 'set', 'roll', 'pair'];
+const YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/;
+const isTruthyFlag = (v) => ['true', 'yes', '1'].includes(String(v).trim().toLowerCase());
 
 const parseCSV = (text) => {
     const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 2) return { rows: [], error: 'CSV must have a header row and at least one data row.' };
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const required = ['name', 'quantity', 'unit'];
+    // name, category, quantity, and unit are all required — this matches
+    // the Add/Edit Inventory form, which requires all four (see
+    // AddInventoryModal.js validate()).
+    const required = ['name', 'category', 'quantity', 'unit'];
     const missing = required.filter(r => !headers.includes(r));
     if (missing.length) return { rows: [], error: `Missing required columns: ${missing.join(', ')}` };
 
@@ -102,21 +118,52 @@ const parseCSV = (text) => {
 
         const errors = [];
         if (!row.name) errors.push('Name is required');
+
+        const categoryValid = VALID_CATEGORIES.includes(row.category);
+        if (!row.category) errors.push('Category is required');
+        else if (!categoryValid) errors.push(`Category "${row.category}" is not valid. Valid categories: ${VALID_CATEGORIES.join(', ')}`);
+        // Fall back to 'General' only so we have SOME category to check the
+        // unit against below and to render in the preview table — rows
+        // with an invalid/missing category are still marked invalid above
+        // and will never be imported.
+        const resolvedCategory = categoryValid ? row.category : 'General';
+        const allowedUnits = getUnitsForCategory(resolvedCategory);
+
         const qty = Number(row.quantity);
-        if (isNaN(qty) || qty < 0) errors.push('Quantity must be a non-negative number');
+        if (row.quantity === '' || isNaN(qty) || qty < 0) errors.push('Quantity must be a non-negative number');
+
         if (!row.unit) errors.push('Unit is required');
-        if (row.category && !VALID_CATEGORIES.includes(row.category)) errors.push(`Category "${row.category}" invalid`);
-        if (row.minthreshold && isNaN(Number(row.minthreshold))) errors.push('minThreshold must be a number');
-        if (row.expirationdate && isNaN(Date.parse(row.expirationdate))) errors.push('Expiration date must be YYYY-MM-DD');
+        else if (!allowedUnits.includes(row.unit)) {
+            errors.push(`Unit "${row.unit}" is not valid for category "${resolvedCategory}". Valid units: ${allowedUnits.join(', ')}`);
+        }
+
+        const hasMinThreshold = row.minthreshold !== undefined && row.minthreshold !== '';
+        if (hasMinThreshold && (isNaN(Number(row.minthreshold)) || Number(row.minthreshold) < 0)) {
+            errors.push('minThreshold must be a non-negative number');
+        }
+
+        const doesNotExpire = isTruthyFlag(row.doesnotexpire);
+        const expirationDate = row.expirationdate || '';
+        if (expirationDate && !YYYY_MM_DD.test(expirationDate)) {
+            errors.push('Expiration date must be in YYYY-MM-DD format');
+        } else if (expirationDate && isNaN(Date.parse(expirationDate))) {
+            errors.push('Expiration date is not a valid date');
+        } else if (!expirationDate && !doesNotExpire) {
+            // Mirrors validateInventoryInput on the backend: every category
+            // needs an expiration date unless explicitly marked as not
+            // expiring.
+            errors.push('Expiration date is required, or set doesNotExpire to TRUE');
+        }
 
         rows.push({
             _raw: row,
             name: row.name,
-            category: VALID_CATEGORIES.includes(row.category) ? row.category : 'General',
+            category: resolvedCategory,
             quantity: isNaN(qty) ? 0 : qty,
-            unit: row.unit || 'pcs',
-            minThreshold: Number(row.minthreshold) || 10,
-            expirationDate: row.expirationdate || '',
+            unit: row.unit || '',
+            minThreshold: hasMinThreshold ? Number(row.minthreshold) : 10,
+            expirationDate,
+            doesNotExpire,
             notes: row.notes || '',
             errors,
             valid: errors.length === 0,
@@ -154,11 +201,112 @@ const BulkImportModal = ({ onClose, onImported }) => {
         handleFile(e.dataTransfer.files[0]);
     };
 
-    const downloadTemplate = () => {
+    const downloadCSVTemplate = () => {
         const blob = new Blob([CSV_TEMPLATE_HEADERS + '\n' + CSV_TEMPLATE_EXAMPLE], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = 'inventory_template.csv'; a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const [excelError, setExcelError] = useState('');
+    const [excelBusy, setExcelBusy]   = useState(false);
+
+    // A normal .csv file can't carry real dropdown/data-validation, so this
+    // builds an .xlsx template where Category is a dropdown (from
+    // CATEGORY_OPTIONS) and Unit is a dropdown that's dependent on
+    // whichever Category is selected on that row (from CATEGORY_UNITS) —
+    // both driven by the exact same constants/inventoryOptions.js values
+    // used everywhere else, so the dropdowns can never offer a
+    // category/unit combination the backend would reject.
+    const downloadExcelTemplate = async () => {
+        setExcelError('');
+        setExcelBusy(true);
+        try {
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+
+            // Sanitizes a category value into a valid Excel defined-name
+            // fragment (letters/digits/underscore only) — used both when
+            // creating the named range and in the row-level INDIRECT()
+            // formula below, so the two always agree.
+            const rangeKey = (category) =>
+                'Units_' + category.replace(/&/g, 'and').replace(/[^a-zA-Z0-9]+/g, '_');
+
+            // Hidden "Lists" sheet: column A holds every category value
+            // (for the Category dropdown); one further column per
+            // category holds that category's valid units (for the
+            // dependent Unit dropdown).
+            const lists = workbook.addWorksheet('Lists', { state: 'veryHidden' });
+            lists.getColumn(1).values = ['Category', ...VALID_CATEGORIES];
+            workbook.definedNames.add(`Lists!$A$2:$A$${VALID_CATEGORIES.length + 1}`, 'Category_List');
+
+            VALID_CATEGORIES.forEach((category, idx) => {
+                const col = idx + 2; // column B, C, D, ...
+                const units = CATEGORY_UNITS[category] || [];
+                lists.getColumn(col).values = [category, ...units];
+                if (units.length) {
+                    const colLetter = lists.getColumn(col).letter;
+                    workbook.definedNames.add(
+                        `Lists!$${colLetter}$2:$${colLetter}$${units.length + 1}`,
+                        rangeKey(category)
+                    );
+                }
+            });
+
+            const sheet = workbook.addWorksheet('Inventory Import');
+            const headers = ['name *', 'category *', 'quantity *', 'unit *', 'minThreshold', 'expirationDate', 'doesNotExpire', 'notes'];
+            sheet.columns = headers.map((h) => ({ header: h, width: h === 'notes' ? 30 : 18 }));
+            sheet.getRow(1).font = { bold: true };
+            sheet.getRow(1).eachCell((cell) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8D6CC' } };
+            });
+            sheet.getCell('B1').note = `Must be one of: ${VALID_CATEGORIES.join(', ')}`;
+            sheet.getCell('D1').note = 'Valid options depend on the Category chosen in this row.';
+            sheet.getCell('F1').note = 'Format: YYYY-MM-DD. Required unless doesNotExpire is TRUE.';
+            sheet.getCell('G1').note = 'TRUE if this item has no expiration date, otherwise FALSE.';
+
+            // A couple of example rows so the format is obvious, styled
+            // distinctly and called out as examples to delete.
+            const exampleRows = [
+                ['Paracetamol 500mg', 'medication', 100, 'tablet', 20, '2026-12-31', false, 'Keep in cool dry place'],
+                ['Face Masks', 'medical_supplies', 500, 'pcs', 50, '', true, 'Surgical grade — example row, delete before importing'],
+            ];
+            exampleRows.forEach((r) => {
+                const row = sheet.addRow(r);
+                row.eachCell((cell) => { cell.font = { italic: true, color: { argb: 'FF7A5C4E' } }; });
+            });
+
+            // Apply dropdown validation down through row 300 so pasted-in
+            // data keeps working, not just the two example rows.
+            const LAST_ROW = 300;
+            for (let r = 2; r <= LAST_ROW; r++) {
+                sheet.getCell(`B${r}`).dataValidation = {
+                    type: 'list', allowBlank: true, formulae: ['=Category_List'],
+                    showErrorMessage: true, errorTitle: 'Invalid category',
+                    error: 'Please choose a category from the dropdown.',
+                };
+                sheet.getCell(`D${r}`).dataValidation = {
+                    type: 'list', allowBlank: true,
+                    formulae: [`=INDIRECT("Units_" & SUBSTITUTE(SUBSTITUTE($B${r},"&","and")," ","_"))`],
+                    showErrorMessage: true, errorTitle: 'Invalid unit',
+                    error: 'Choose a Category first, then pick one of the units valid for it.',
+                };
+                sheet.getCell(`G${r}`).dataValidation = {
+                    type: 'list', allowBlank: true, formulae: ['"TRUE,FALSE"'],
+                };
+            }
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'inventory_template.xlsx'; a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Excel template generation failed:', err);
+            setExcelError('Could not generate the Excel template. Please try the CSV template instead.');
+        } finally {
+            setExcelBusy(false);
+        }
     };
 
     const handleImport = async () => {
@@ -176,7 +324,9 @@ const BulkImportModal = ({ onClose, onImported }) => {
                     body: JSON.stringify({
                         name: row.name, category: row.category, quantity: row.quantity,
                         unit: row.unit, minThreshold: row.minThreshold,
-                        expirationDate: row.expirationDate || undefined, notes: row.notes,
+                        expirationDate: row.doesNotExpire ? undefined : (row.expirationDate || undefined),
+                        doesNotExpire: row.doesNotExpire,
+                        notes: row.notes,
                     }),
                 });
                 const data = await res.json();
@@ -209,7 +359,7 @@ const BulkImportModal = ({ onClose, onImported }) => {
                         <FaCloudUploadAlt style={{ color: '#fff', fontSize: '1.1rem' }} />
                     </div>
                     <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: 0, color: '#fff', fontFamily: "'Playfair Display', serif", fontSize: '1.05rem' }}>Bulk Import via CSV</h4>
+                        <h4 style={{ margin: 0, color: '#fff', fontFamily: "'Playfair Display', serif", fontSize: '1.05rem' }}>Bulk Import Inventory</h4>
                         <small style={{ color: 'rgba(255,255,255,.7)', fontSize: '.76rem' }}>
                             {step === 'upload' && 'Upload a .csv file to add multiple items at once'}
                             {step === 'preview' && `Previewing ${rows.length} row${rows.length !== 1 ? 's' : ''} from ${fileName}`}
@@ -244,13 +394,29 @@ const BulkImportModal = ({ onClose, onImported }) => {
                                 <FaFileAlt style={{ color: '#fff' }} />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <p style={{ margin: 0, fontWeight: 700, color: '#1A0A00', fontSize: '.9rem' }}>Download CSV Template</p>
+                                <p style={{ margin: 0, fontWeight: 700, color: '#1A0A00', fontSize: '.9rem' }}>Download Inventory Template</p>
                                 <p style={{ margin: '4px 0 10px', color: '#7A5C4E', fontSize: '.82rem', lineHeight: 1.5 }}>
-                                    Use our template to ensure correct formatting. Required columns: <strong>name, quantity, unit</strong>. Optional: category, minThreshold, expirationDate (YYYY-MM-DD), notes.
+                                    Required columns: <strong>name, category, quantity, unit</strong>. Optional: minThreshold, expirationDate (YYYY-MM-DD), doesNotExpire, notes.
                                 </p>
-                                <button onClick={downloadTemplate} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 16px', borderRadius: 8, border: '1.5px solid #F96B38', background: 'transparent', color: '#D94E1B', fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                                    <FaDownload size={11} /> Download Template
-                                </button>
+                                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                                    <div>
+                                        <button onClick={downloadCSVTemplate} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 16px', borderRadius: 8, border: '1.5px solid #F96B38', background: 'transparent', color: '#D94E1B', fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                                            <FaDownload size={11} /> Download CSV Template
+                                        </button>
+                                        <p style={{ margin: '4px 0 0', color: '#7A5C4E', fontSize: '.72rem', maxWidth: 220 }}>For standard CSV imports.</p>
+                                    </div>
+                                    <div>
+                                        <button onClick={downloadExcelTemplate} disabled={excelBusy} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 16px', borderRadius: 8, border: '1.5px solid #F96B38', background: 'transparent', color: '#D94E1B', fontWeight: 700, fontSize: '.82rem', cursor: excelBusy ? 'wait' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: excelBusy ? 0.6 : 1 }}>
+                                            <FaDownload size={11} /> {excelBusy ? 'Preparing…' : 'Download Excel Template'}
+                                        </button>
+                                        <p style={{ margin: '4px 0 0', color: '#7A5C4E', fontSize: '.72rem', maxWidth: 220 }}>
+                                            Recommended — has Category/Unit dropdowns. Save as CSV before uploading here.
+                                        </p>
+                                    </div>
+                                </div>
+                                {excelError && (
+                                    <p style={{ margin: '10px 0 0', color: '#b71c1c', fontSize: '.78rem' }}>{excelError}</p>
+                                )}
                             </div>
                         </div>
 
@@ -292,7 +458,7 @@ const BulkImportModal = ({ onClose, onImported }) => {
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
                                     <thead>
                                         <tr style={{ background: '#FFF8F3' }}>
-                                            {['name *', 'category', 'quantity *', 'unit *', 'minThreshold', 'expirationDate', 'notes'].map(h => (
+                                            {['name *', 'category *', 'quantity *', 'unit *', 'minThreshold', 'expirationDate', 'doesNotExpire', 'notes'].map(h => (
                                                 <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#7A5C4E', fontWeight: 700, borderBottom: '1px solid #E8D6CC', whiteSpace: 'nowrap' }}>{h}</th>
                                             ))}
                                         </tr>
@@ -302,18 +468,32 @@ const BulkImportModal = ({ onClose, onImported }) => {
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>Paracetamol</td>
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>medication</td>
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>100</td>
-                                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>pcs</td>
+                                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>tablet</td>
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>20</td>
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>2026-12-31</td>
+                                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#1A0A00' }}>FALSE</td>
                                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0E8E0', color: '#7A5C4E', fontStyle: 'italic' }}>optional</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
                             <div style={{ padding: '10px 14px', background: '#FFF8F3', borderTop: '1.5px solid #E8D6CC' }}>
-                                <small style={{ color: '#7A5C4E', fontSize: '.75rem' }}>
-                                    Valid categories: <code style={{ background: '#E8D6CC', padding: '1px 5px', borderRadius: 4 }}>{VALID_CATEGORIES.join(', ')}</code>&nbsp;&nbsp;
-                                    Valid units: <code style={{ background: '#E8D6CC', padding: '1px 5px', borderRadius: 4 }}>{VALID_UNITS.join(', ')}</code>
+                                <small style={{ color: '#7A5C4E', fontSize: '.75rem', display: 'block', marginBottom: 6 }}>
+                                    Required fields: name, category, quantity, unit. Valid categories:{' '}
+                                    <code style={{ background: '#E8D6CC', padding: '1px 5px', borderRadius: 4 }}>{VALID_CATEGORIES.join(', ')}</code>
+                                </small>
+                                <small style={{ color: '#7A5C4E', fontSize: '.75rem', display: 'block', marginBottom: 6 }}>
+                                    Unit depends on the category chosen for that row:
+                                </small>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+                                    {VALID_CATEGORIES.map(cat => (
+                                        <small key={cat} style={{ color: '#7A5C4E', fontSize: '.72rem' }}>
+                                            <code style={{ background: '#E8D6CC', padding: '1px 5px', borderRadius: 4 }}>{cat}</code>: {CATEGORY_UNITS[cat]?.join(', ')}
+                                        </small>
+                                    ))}
+                                </div>
+                                <small style={{ color: '#7A5C4E', fontSize: '.75rem', display: 'block', marginTop: 6 }}>
+                                    Expiration date format: <code style={{ background: '#E8D6CC', padding: '1px 5px', borderRadius: 4 }}>YYYY-MM-DD</code>. Required unless doesNotExpire is TRUE.
                                 </small>
                             </div>
                         </div>
@@ -371,7 +551,7 @@ const BulkImportModal = ({ onClose, onImported }) => {
                                                 <td style={{ padding: '8px 12px', fontWeight: 700, color: row.quantity === 0 ? '#dc3545' : '#1A0A00' }}>{row.quantity}</td>
                                                 <td style={{ padding: '8px 12px', color: '#7A5C4E' }}>{row.unit}</td>
                                                 <td style={{ padding: '8px 12px', color: '#7A5C4E' }}>{row.minThreshold}</td>
-                                                <td style={{ padding: '8px 12px', color: '#7A5C4E', whiteSpace: 'nowrap', fontSize: '.74rem' }}>{row.expirationDate || '—'}</td>
+                                                <td style={{ padding: '8px 12px', color: '#7A5C4E', whiteSpace: 'nowrap', fontSize: '.74rem' }}>{row.expirationDate || (row.doesNotExpire ? 'No Expiry' : '—')}</td>
                                                 <td style={{ padding: '8px 12px' }}>
                                                     {row.valid
                                                         ? <span style={pill('#0d6b4f', '#e0faf4')}><FaCheckCircle size={9} /> Valid</span>
