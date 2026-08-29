@@ -1340,6 +1340,13 @@ const HeadCaregiverDashboard = () => {
     // HC Assigned Stock — this HC's own stock balance. Single source of
     // truth for both "My Assigned Stock" and "Medication Inventory Status".
     const [assignedStock, setAssignedStock] = useState([]);
+    // Guards the Administer button against a fast double-click/double-tap
+    // firing two overlapping PUT /schedule/:id/status requests for the
+    // same dose before the first one has come back. The backend now
+    // protects the data either way (atomic claim on the MedicationLog),
+    // but disabling the button here avoids a needless second request and
+    // the confusing "already administered" toast it would produce.
+    const [pendingScheduleIds, setPendingScheduleIds] = useState(() => new Set());
     // Product catalog (Parts 1–3), used only to populate the Request Stock
     // "Select Item" dropdown — carries no quantity of its own.
     const [products, setProducts] = useState([]);
@@ -1619,6 +1626,14 @@ const HeadCaregiverDashboard = () => {
     const confirmLogout = () => { logout(); navigate('/'); };
 
     const markStatus = async (id, status, method = 'manual') => {
+        // Already have a request in flight for this exact dose — ignore
+        // the extra click instead of firing a second PUT. This is a UX
+        // nicety on top of the backend's atomic guard, not a substitute
+        // for it: the backend must (and does) reject a genuine duplicate
+        // on its own, since two clicks can still originate from two
+        // different tabs/devices where this in-memory guard can't help.
+        if (pendingScheduleIds.has(id)) return;
+
         const log = schedule.find(l => l._id === id);
         const resName = log?.residentName || 'this resident';
         const medName = log?.medicationName || 'this medication';
@@ -1635,21 +1650,52 @@ const HeadCaregiverDashboard = () => {
             if (!confirmed) return;
         }
 
-        const r = await doFetch(`/head-caregiver/schedule/${id}/status`, {
-            method: 'PUT',
-            body: JSON.stringify({ status, verificationMethod: method })
-        });
+        setPendingScheduleIds(prev => new Set(prev).add(id));
+        try {
+            const r = await doFetch(`/head-caregiver/schedule/${id}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ status, verificationMethod: method })
+            });
 
-        if (r.success) {
-            setSchedule(prev => prev.map(l => l._id === id ? {
-                ...l,
-                status,
-                ...(status === 'completed' || status === 'administered' ? { administeredTime: new Date().toISOString() } : {})
-            } : l));
-            refreshStats();
-            toast(`${medName} marked as ${status} for ${resName}.`);
-        } else {
-            toast(r.message || 'Update failed.', 'error');
+            if (r.success) {
+                setSchedule(prev => prev.map(l => l._id === id ? {
+                    ...l,
+                    status,
+                    ...(status === 'completed' || status === 'administered' ? { administeredTime: new Date().toISOString() } : {})
+                } : l));
+
+                const isAdministerAction = status === 'completed' || status === 'administered';
+                if (isAdministerAction) {
+                    // The dose that just went through drew down this HC's
+                    // HCAssignedStock on the server (see PUT
+                    // /schedule/:id/status). Re-pull the same two
+                    // endpoints the Stock page reads from — /inventory and
+                    // /assigned-stock — so "My Stock" and "Medication
+                    // Inventory Status" reflect the new balance right away
+                    // instead of only after a manual refresh or a full
+                    // reload of the page.
+                    const [invR, assignedR] = await Promise.all([
+                        doFetch('/head-caregiver/inventory'),
+                        doFetch('/head-caregiver/assigned-stock'),
+                    ]);
+                    if (invR.success) setInventory(invR.data || []);
+                    if (assignedR.success) setAssignedStock(assignedR.data || []);
+                }
+
+                // Compliance rate and the Total/On-Time/Delayed/Missed/
+                // Pending cards are server-computed from MedicationLog, so
+                // this always needs a refresh after any status change.
+                await refreshStats();
+                toast(`${medName} marked as ${status} for ${resName}.`);
+            } else {
+                toast(r.message || 'Update failed.', 'error');
+            }
+        } finally {
+            setPendingScheduleIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
@@ -1764,15 +1810,16 @@ const HeadCaregiverDashboard = () => {
     const getMinutesSince = iso => iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60000) : null;
 
     const SchedActionBtn = ({ item }) => {
+        const isPending = pendingScheduleIds.has(item._id);
         if (item.status === 'overdue')
-            return <button className="sched-btn-verify" onClick={() => markStatus(item._id, 'completed', 'manual')}>Verify Now</button>;
+            return <button className="sched-btn-verify" disabled={isPending} onClick={() => markStatus(item._id, 'completed', 'manual')}>{isPending ? 'Verifying…' : 'Verify Now'}</button>;
         if (item.status === 'scheduled' || item.status === 'upcoming')
-            return <button className="sched-btn-prepare" onClick={() => markStatus(item._id, 'pending', 'manual')}>Prepare</button>;
+            return <button className="sched-btn-prepare" disabled={isPending} onClick={() => markStatus(item._id, 'pending', 'manual')}>{isPending ? 'Preparing…' : 'Prepare'}</button>;
         if (item.status === 'pending')
             return <button className="sched-btn-view" disabled style={{ opacity: 0.7 }}>Prepared — Awaiting Caregiver</button>;
         if (item.status === 'completed' || item.status === 'administered')
             return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === item.residentName) || { _id: item.residentId, name: item.residentName } })}>View</button>;
-        return <button className="btn-success-sm sched-btn-administer" onClick={() => markStatus(item._id, 'completed')}>Administer</button>;
+        return <button className="btn-success-sm sched-btn-administer" disabled={isPending} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
     };
 
     // ── SCREEN 1: HOME DASHBOARD ────────────────────────────────────────

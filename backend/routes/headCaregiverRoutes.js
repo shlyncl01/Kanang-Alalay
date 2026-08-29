@@ -802,132 +802,189 @@ router.put('/schedule/:id/status', async (req, res) => {
         if (!log) return res.status(404).json({ success: false, message: 'Log not found.' });
 
         const isAdministering = status === 'administered' || status === 'completed';
-        // Guard against double-deduction from a duplicate/repeat call (e.g.
-        // an accidental second click) — once a dose is already recorded as
-        // given, marking it "administered" again must not draw down stock a
-        // second time for the same dose.
-        const alreadyAdministered = log.status === 'administered' || log.status === 'completed';
 
-        let deductedProduct = null; // set below if we perform a deduction, used for the response message
-
-        if (isAdministering && !alreadyAdministered) {
-            // §1/§3 — Medication must exist.
-            const medication = await Medication.findById(log.medicationId);
-            if (!medication) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'The medication for this dose no longer exists. Administration was not recorded.',
-                });
-            }
-
-            // Resolve the clinical Medication to its Admin Central Inventory
-            // Product (see normalizeProductName above for why this is a name
-            // match rather than a stored foreign key).
-            const normalizedName = normalizeProductName(medication.name);
-            const product = await Product.findOne({
-                normalizedName,
-                category: { $in: ['medication', 'medical_supplies'] },
-            });
-            if (!product) {
-                return res.status(400).json({
-                    success: false,
-                    message: `"${medication.name}" is not linked to a product in Admin Central Inventory yet. Ask an Admin to add it before this dose can be administered.`,
-                });
-            }
-
-            // §3 — HC must have the medication assigned, with enough of it.
-            const assigned = await HCAssignedStock.findOne({ headCaregiverId: req.user._id, productId: product._id });
-            const available = assigned ? assigned.quantity : 0;
-            if (available < administeredQuantity) {
-                return res.status(409).json({
-                    success: false,
-                    message: assigned
-                        ? `Insufficient stock: you have ${available} ${product.unit} of ${product.name} assigned, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
-                        : `${product.name} is not in your assigned stock. Administration was not recorded.`,
-                });
-            }
-
-            // §2/§6 — deduct atomically. The quantity:{$gte:...} guard means
-            // this can never drive the balance negative, and if concurrent
-            // requests raced past the check above, exactly one of them will
-            // fail here instead of both succeeding.
-            const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
-                { headCaregiverId: req.user._id, productId: product._id, quantity: { $gte: administeredQuantity } },
-                { $inc: { quantity: -administeredQuantity } },
+        if (isAdministering) {
+            // ── ROOT CAUSE OF THE DOUBLE-DEDUCTION BUG ──────────────────
+            // The old guard here was `const alreadyAdministered =
+            // log.status === 'administered' || log.status === 'completed'`
+            // computed from the plain `findById` above, then checked in
+            // plain JS before doing the stock deduction. That is a
+            // classic read-then-write race: if two Administer requests
+            // for the same dose land close together (a double-click before
+            // the button disables, a retried request after a slow
+            // network response, two browser tabs, etc.), BOTH requests can
+            // call findById and both see status:'scheduled' before either
+            // one has written anything back. Both then pass the "not
+            // already administered" check and both deduct stock — so one
+            // real dose could silently draw down HCAssignedStock twice.
+            //
+            // The fix: make the MedicationLog status transition itself
+            // the atomic gate, enforced by MongoDB (not by JS reading a
+            // value moments earlier). findOneAndUpdate's filter + update
+            // execute as one atomic operation on the server — of two
+            // simultaneous requests for the same log, only one can ever
+            // match `status: { $nin: [...] }` and flip it; the other is
+            // guaranteed to get back `null`. This is checked and claimed
+            // BEFORE stock is touched, so a losing request never reaches
+            // the deduction step at all.
+            const claimed = await MedicationLog.findOneAndUpdate(
+                { _id: log._id, status: { $nin: ['administered', 'completed'] } },
+                {
+                    $set: {
+                        status,
+                        administeredTime: new Date(),
+                        administeredQuantity,
+                        ...(notes !== undefined ? { notes } : {}),
+                        ...(verificationMethod !== undefined ? { verificationMethod } : {}),
+                    },
+                },
                 { new: true }
             );
-            if (!updatedAssignedStock) {
+
+            if (!claimed) {
+                // Either genuinely already administered earlier, or we
+                // lost the race to a concurrent duplicate request that
+                // claimed it a moment ago. Either way, no stock is
+                // touched — this is what makes duplicate clicks/refreshes
+                // safe (req. §5).
                 return res.status(409).json({
                     success: false,
-                    message: 'Your assigned stock changed while processing this administration. Please try again.',
+                    message: 'This dose has already been marked as administered.',
                 });
             }
-            deductedProduct = product;
 
-            // §6 — administration must not be recorded as successful if
-            // anything below throws. Since the deduction above already
-            // committed, a failure here is compensated by crediting the
-            // same amount straight back before the error response goes out.
+            // From here on we own this dose exclusively. If anything
+            // below fails, we roll the claim back so the log ends up
+            // exactly as if this request never happened (req. §6/§8: the
+            // record and the deduction succeed or fail together).
+            const rollbackClaim = () => MedicationLog.findByIdAndUpdate(claimed._id, {
+                $set: {
+                    status: log.status,
+                    administeredTime: log.administeredTime,
+                    administeredQuantity: log.administeredQuantity,
+                    notes: log.notes,
+                    verificationMethod: log.verificationMethod,
+                },
+            });
+
             try {
-                log.status = status;
-                log.administeredTime = new Date();
-                log.administeredQuantity = administeredQuantity;
-                if (log.residentId) {
+                // §1/§3 — Medication must exist.
+                const medication = await Medication.findById(claimed.medicationId);
+                if (!medication) {
+                    await rollbackClaim();
+                    return res.status(404).json({
+                        success: false,
+                        message: 'The medication for this dose no longer exists. Administration was not recorded.',
+                    });
+                }
+
+                // Resolve the clinical Medication to its Admin Central
+                // Inventory Product (see normalizeProductName above for
+                // why this is a name match rather than a stored foreign
+                // key).
+                const normalizedName = normalizeProductName(medication.name);
+                const product = await Product.findOne({
+                    normalizedName,
+                    category: { $in: ['medication', 'medical_supplies'] },
+                });
+                if (!product) {
+                    await rollbackClaim();
+                    return res.status(400).json({
+                        success: false,
+                        message: `"${medication.name}" is not linked to a product in Admin Central Inventory yet. Ask an Admin to add it before this dose can be administered.`,
+                    });
+                }
+
+                // §3 — HC must have the medication assigned, with enough
+                // of it. Reported ahead of the atomic decrement purely so
+                // the error message can include the actual available
+                // quantity.
+                const assigned = await HCAssignedStock.findOne({ headCaregiverId: req.user._id, productId: product._id });
+                const available = assigned ? assigned.quantity : 0;
+                if (available < administeredQuantity) {
+                    await rollbackClaim();
+                    return res.status(409).json({
+                        success: false,
+                        message: assigned
+                            ? `Insufficient stock: you have ${available} ${product.unit} of ${product.name} assigned, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
+                            : `${product.name} is not in your assigned stock. Administration was not recorded.`,
+                    });
+                }
+
+                // §2/§7 — deduct atomically. The quantity:{$gte:...} guard
+                // means this can never drive the balance negative. Because
+                // the log claim above already serialized concurrent
+                // requests for the SAME dose down to a single winner, this
+                // guard now exists to protect against a DIFFERENT kind of
+                // race — e.g. this HC's stock being spent from another
+                // dose/administration at the same moment.
+                const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
+                    { headCaregiverId: req.user._id, productId: product._id, quantity: { $gte: administeredQuantity } },
+                    { $inc: { quantity: -administeredQuantity } },
+                    { new: true }
+                );
+                if (!updatedAssignedStock) {
+                    await rollbackClaim();
+                    return res.status(409).json({
+                        success: false,
+                        message: 'Your assigned stock changed while processing this administration. Please try again.',
+                    });
+                }
+
+                if (claimed.residentId) {
                     const stillOverdue = await MedicationLog.findOne({
-                        residentId: log.residentId,
+                        residentId: claimed.residentId,
                         status: 'overdue',
-                        _id: { $ne: log._id }
+                        _id: { $ne: claimed._id }
                     });
                     if (!stillOverdue) {
-                        await Resident.findByIdAndUpdate(log.residentId, {
+                        await Resident.findByIdAndUpdate(claimed.residentId, {
                             medicationOverdue: false,
                             overdueMed: '',
                             overdueAt: null,
                         });
                     }
                 }
-                if (notes !== undefined) log.notes = notes;
-                if (verificationMethod !== undefined) log.verificationMethod = verificationMethod;
-                await log.save();
+
+                // Part 8 §3 — notify the administering caregiver (the
+                // same person whose HCAssignedStock was just deducted
+                // above) that the dose went through. Uses the project's
+                // existing Alert system (models/Alert.js,
+                // routes/alertRoutes.js) rather than a separate
+                // notification store — "medication-administered" was
+                // already a valid Alert type before Part 8. Best-effort:
+                // the administration itself already succeeded and
+                // committed, so a failure here is only logged, never
+                // surfaced as a failed administration.
+                try {
+                    await Alert.create({
+                        type: 'medication-administered',
+                        title: 'Medication Administered',
+                        message: `${medication.name} was administered successfully.`,
+                        relatedUser: req.user._id,
+                        details: { medicationLogId: claimed._id, medicationId: medication._id, quantity: administeredQuantity },
+                    });
+                } catch (notifyErr) {
+                    console.error('Failed to create medication administration alert:', notifyErr);
+                }
+
+                return res.json({
+                    success: true,
+                    data: shapeLog(claimed),
+                    message: `Medication marked as ${status}. ${administeredQuantity} ${product.unit} deducted from your assigned stock.`,
+                });
             } catch (innerErr) {
-                await HCAssignedStock.updateOne(
-                    { headCaregiverId: req.user._id, productId: product._id },
-                    { $inc: { quantity: administeredQuantity } }
-                );
+                await rollbackClaim();
                 throw innerErr;
             }
-
-            // Part 8 §3 — notify the administering caregiver (the same
-            // person whose HCAssignedStock was just deducted above) that
-            // the dose went through. Uses the project's existing Alert
-            // system (models/Alert.js, routes/alertRoutes.js) rather than
-            // a separate notification store — "medication-administered"
-            // was already a valid Alert type before Part 8. Best-effort:
-            // the administration itself already succeeded and committed,
-            // so a failure here is only logged, never surfaced as a
-            // failed administration.
-            try {
-                await Alert.create({
-                    type: 'medication-administered',
-                    title: 'Medication Administered',
-                    message: `${medication.name} was administered successfully.`,
-                    relatedUser: req.user._id,
-                    details: { medicationLogId: log._id, medicationId: medication._id, quantity: administeredQuantity },
-                });
-            } catch (notifyErr) {
-                console.error('Failed to create medication administration alert:', notifyErr);
-            }
-
-            return res.json({
-                success: true,
-                data: shapeLog(log),
-                message: `Medication marked as ${status}. ${administeredQuantity} ${deductedProduct.unit} deducted from your assigned stock.`,
-            });
         }
 
-        // ── Every other status transition (scheduled/overdue/missed/skipped/
-        // pending, or re-marking an already-administered dose) — unchanged
-        // from before, no stock is ever touched here. ────────────────────
+        // ── Every other status transition (to scheduled/overdue/missed/
+        // skipped/pending) — unchanged from before, no stock is ever
+        // touched here. Re-marking an already-administered/completed dose
+        // as administered/completed again is handled above and never
+        // reaches this point — it returns a 409 as soon as the atomic
+        // claim fails. ─────────────────────────────────────────────────
         log.status = status;
         if (notes !== undefined) log.notes = notes;
         if (verificationMethod !== undefined) log.verificationMethod = verificationMethod;
