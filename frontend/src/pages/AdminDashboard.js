@@ -1440,6 +1440,26 @@ const AdminDashboard = () => {
         setApprovalModal(prev => ({ ...prev, availability: { ...prev.availability, [field]: value } }));
     };
 
+    // Fixed visiting windows the org offers - times can be narrowed within these, but not moved outside them
+    const SLOT_BOUNDS = {
+        morningStart: { min: '09:00', max: '11:00' },
+        morningEnd: { min: '09:00', max: '11:00' },
+        afternoonStart: { min: '15:00', max: '17:00' },
+        afternoonEnd: { min: '15:00', max: '17:00' }
+    };
+
+    const clampToSlotBounds = (field, value) => {
+        const bounds = SLOT_BOUNDS[field];
+        if (!bounds || !value) return value;
+        if (value < bounds.min) return bounds.min;
+        if (value > bounds.max) return bounds.max;
+        return value;
+    };
+
+    const updateSlotTimeField = (field, value) => {
+        updateAvailabilityField(field, clampToSlotBounds(field, value));
+    };
+
     const availInputStyle = (enabled, width) => ({
         width: width || 130,
         padding: '7px 10px',
@@ -2567,7 +2587,7 @@ const AdminDashboard = () => {
                                     <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#7A5C4E' }}>
                                         {approvalModal.editTimeSlots
                                             ? 'Manual override is on — you can enable/disable either slot.'
-                                            : `Locked to the visitor's requested slot (${isMorningBooking(approvalModal.booking) ? 'Morning' : 'Afternoon'}). Turn on "Edit time slots" to override.`}
+                                            : `Locked to the visitor's requested slot (${isMorningBooking(approvalModal.booking) ? 'Morning, 9:00 AM–11:00 AM' : 'Afternoon, 3:00 PM–5:00 PM'}). You can still fine-tune the time within that window. Turn on "Edit time slots" to switch to the other slot.`}
                                     </p>
                                 </div>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#E65100', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}>
@@ -2612,17 +2632,21 @@ const AdminDashboard = () => {
                                     <input
                                         type="time"
                                         value={approvalModal.availability.morningStart}
-                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.morningEnabled}
-                                        onChange={e => updateAvailabilityField('morningStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.morningEnabled)}
+                                        min={SLOT_BOUNDS.morningStart.min}
+                                        max={SLOT_BOUNDS.morningStart.max}
+                                        disabled={!approvalModal.availability.morningEnabled}
+                                        onChange={e => updateSlotTimeField('morningStart', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
                                     <input
                                         type="time"
                                         value={approvalModal.availability.morningEnd}
-                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.morningEnabled}
-                                        onChange={e => updateAvailabilityField('morningEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.morningEnabled)}
+                                        min={SLOT_BOUNDS.morningEnd.min}
+                                        max={SLOT_BOUNDS.morningEnd.max}
+                                        disabled={!approvalModal.availability.morningEnabled}
+                                        onChange={e => updateSlotTimeField('morningEnd', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
                                     />
                                 </div>
 
@@ -2640,19 +2664,24 @@ const AdminDashboard = () => {
                                     <input
                                         type="time"
                                         value={approvalModal.availability.afternoonStart}
-                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.afternoonEnabled}
-                                        onChange={e => updateAvailabilityField('afternoonStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.afternoonEnabled)}
+                                        min={SLOT_BOUNDS.afternoonStart.min}
+                                        max={SLOT_BOUNDS.afternoonStart.max}
+                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        onChange={e => updateSlotTimeField('afternoonStart', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
                                     <input
                                         type="time"
                                         value={approvalModal.availability.afternoonEnd}
-                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.afternoonEnabled}
-                                        onChange={e => updateAvailabilityField('afternoonEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.afternoonEnabled)}
+                                        min={SLOT_BOUNDS.afternoonEnd.min}
+                                        max={SLOT_BOUNDS.afternoonEnd.max}
+                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        onChange={e => updateSlotTimeField('afternoonEnd', e.target.value)}
+                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
                                     />
                                 </div>
+
 
                                 {/* Max per slot + arrival note */}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
