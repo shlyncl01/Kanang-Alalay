@@ -368,12 +368,17 @@ const BookingManagementTab = ({ bookings, handleRejectWithReason, handleApproveW
                                             </td>
                                             <td><span className={`status ${booking.status}`}>{booking.status}</span></td>
                                             <td className="actions">
-                                                {booking.status === 'pending' && (
-                                                    <>
-                                                        <button className="btn-success-sm" onClick={() => handleApproveWithDetails(booking._id)} style={{ marginRight: '5px' }}>Approve</button>
-                                                        <button className="btn-outline-sm" onClick={() => handleRejectWithReason(booking._id)} style={{ color: '#dc3545', borderColor: '#dc3545' }}>Reject</button>
-                                                    </>
-                                                )}
+                                                {/* Fixed-width slot so Approve/Reject reserve their space even
+                                                    when not rendered — keeps the View/Edit icons lined up in
+                                                    the same column position across every row/status. */}
+                                                <div className="actions-approve-reject">
+                                                    {booking.status === 'pending' && (
+                                                        <>
+                                                            <button className="btn-success-sm" onClick={() => handleApproveWithDetails(booking._id)}>Approve</button>
+                                                            <button className="btn-outline-sm" onClick={() => handleRejectWithReason(booking._id)} style={{ color: '#dc3545', borderColor: '#dc3545' }}>Reject</button>
+                                                        </>
+                                                    )}
+                                                </div>
                                                 {/* Approved/Completed: no manual "Complete" action — status auto-flips
                                                     to "completed" server-side once the booked visiting window passes. */}
                                                 <span className="view" onClick={() => handleViewDetails && handleViewDetails('booking', booking)} title="View Details"><FaEye /></span>

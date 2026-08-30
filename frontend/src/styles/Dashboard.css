@@ -894,6 +894,17 @@ body {
 .actions .delete           { background: #FFF0F0; color: #C0392B; }
 .actions .delete:hover     { background: #FFD7D7; }
 
+/* Reserves space for Approve/Reject in the Bookings table Actions column so
+   the View/Edit icons stay in a fixed horizontal position whether or not
+   Approve/Reject are rendered for a given row's status. */
+.actions-approve-reject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 172px;
+  flex-shrink: 0;
+}
+
 /* ── SEARCH / FILTER ──────────────────────────────────────────
    search-input bg: --d-cream → --d-white on focus
    border focus: --d-orange  ring: rgba(249,107,56,.1)
