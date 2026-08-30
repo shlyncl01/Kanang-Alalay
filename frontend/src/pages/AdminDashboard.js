@@ -517,6 +517,158 @@ const EditUserModal = ({ user, onSave, onClose }) => {
     );
 };
 
+// ---- Custom time picker for the "Visiting Hours" fields ----
+// Renders a native-look dropdown (Hour / Minute / AM-PM columns) where any
+// hour/period outside the slot's allowed window is greyed out and unclickable,
+// so admins can only pick a time inside the visitor's booked window
+// (9:00 AM-11:00 AM for Morning, 3:00 PM-5:00 PM for Afternoon).
+const to24 = (str) => {
+    const [h, m] = (str || '00:00').split(':').map(Number);
+    return h * 60 + m;
+};
+const from12 = (hour12, period, minute) => {
+    let h24 = hour12 % 12;
+    if (period === 'PM') h24 += 12;
+    return `${String(h24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+const to12Parts = (str) => {
+    const [h24, m] = (str || '00:00').split(':').map(Number);
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    let hour12 = h24 % 12;
+    if (hour12 === 0) hour12 = 12;
+    return { hour12, minute: m, period };
+};
+const formatDisplay = (str) => {
+    const { hour12, minute, period } = to12Parts(str);
+    return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+};
+
+const SlotTimePicker = ({ value, onChange, min, max, disabled }) => {
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef(null);
+    const minTotal = to24(min);
+    const maxTotal = to24(max);
+    const { hour12, minute, period } = to12Parts(value);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDocClick = (e) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('mousedown', onDocClick);
+        return () => document.removeEventListener('mousedown', onDocClick);
+    }, [open]);
+
+    const hourAllowed = (h12, p) => {
+        const h24 = (h12 % 12) + (p === 'PM' ? 12 : 0);
+        const start = h24 * 60;
+        const end = h24 * 60 + 59;
+        return end >= minTotal && start <= maxTotal;
+    };
+    const minuteAllowed = (m, h12 = hour12, p = period) => {
+        const h24 = (h12 % 12) + (p === 'PM' ? 12 : 0);
+        const total = h24 * 60 + m;
+        return total >= minTotal && total <= maxTotal;
+    };
+    const periodAllowed = (p) => [1,2,3,4,5,6,7,8,9,10,11,12].some(h => hourAllowed(h, p));
+
+    const commit = (h12, p, m) => {
+        let candidateMinute = m;
+        if (!minuteAllowed(candidateMinute, h12, p)) {
+            candidateMinute = [0, 15, 30, 45].find(mm => minuteAllowed(mm, h12, p)) ?? 0;
+        }
+        onChange(from12(h12, p, candidateMinute));
+    };
+
+    const pickHour = (h12) => { if (hourAllowed(h12, period)) commit(h12, period, minute); };
+    const pickMinute = (m) => { if (minuteAllowed(m)) commit(hour12, period, m); };
+    const pickPeriod = (p) => {
+        if (!periodAllowed(p)) return;
+        const newHour = hourAllowed(hour12, p) ? hour12 : [1,2,3,4,5,6,7,8,9,10,11,12].find(h => hourAllowed(h, p));
+        commit(newHour, p, minute);
+    };
+
+    const colStyle = { display: 'flex', flexDirection: 'column', overflowY: 'auto', maxHeight: 168, padding: '4px 0' };
+    const itemStyle = (active, allowed) => ({
+        padding: '5px 12px',
+        fontSize: '0.85rem',
+        textAlign: 'center',
+        cursor: allowed ? 'pointer' : 'default',
+        color: !allowed ? '#D8CFC4' : (active ? '#E65100' : '#1A0A00'),
+        fontWeight: active && allowed ? 700 : 500,
+        background: active && allowed ? '#FFF3E0' : 'transparent',
+        userSelect: 'none'
+    });
+
+    return (
+        <div ref={wrapRef} style={{ position: 'relative', flex: '1 1 auto', minWidth: 110 }}>
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => !disabled && setOpen(o => !o)}
+                style={{
+                    width: '100%',
+                    padding: '7px 10px',
+                    borderRadius: 7,
+                    border: '1.5px solid #FFB74D',
+                    background: disabled ? '#F5EFE8' : '#fff',
+                    color: disabled ? '#B3A99C' : '#1A0A00',
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 6,
+                    boxSizing: 'border-box'
+                }}
+            >
+                {formatDisplay(value)}
+                <FaClock size={11} style={{ opacity: 0.6, flexShrink: 0 }} />
+            </button>
+
+            {open && !disabled && (
+                <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 4px)',
+                    left: 0,
+                    zIndex: 20,
+                    background: '#fff',
+                    border: '1.5px solid #E8D6CC',
+                    borderRadius: 10,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                    display: 'flex',
+                    minWidth: 170
+                }}>
+                    <div style={{ ...colStyle, borderRight: '1px solid #F0E5DA' }}>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+                            <div key={h} style={itemStyle(h === hour12, hourAllowed(h, period))} onClick={() => pickHour(h)}>
+                                {String(h).padStart(2, '0')}
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ ...colStyle, borderRight: '1px solid #F0E5DA' }}>
+                        {[0, 15, 30, 45].map(m => (
+                            <div key={m} style={itemStyle(m === minute, minuteAllowed(m))} onClick={() => pickMinute(m)}>
+                                {String(m).padStart(2, '0')}
+                            </div>
+                        ))}
+                    </div>
+                    <div style={colStyle}>
+                        {['AM', 'PM'].map(p => (
+                            <div key={p} style={itemStyle(p === period, periodAllowed(p))} onClick={() => pickPeriod(p)}>
+                                {p}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const AdminDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -2629,24 +2781,20 @@ const AdminDashboard = () => {
                                         />
                                         Morning Slot
                                     </label>
-                                    <input
-                                        type="time"
+                                    <SlotTimePicker
                                         value={approvalModal.availability.morningStart}
                                         min={SLOT_BOUNDS.morningStart.min}
                                         max={SLOT_BOUNDS.morningStart.max}
                                         disabled={!approvalModal.availability.morningEnabled}
-                                        onChange={e => updateSlotTimeField('morningStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                        onChange={val => updateSlotTimeField('morningStart', val)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
-                                    <input
-                                        type="time"
+                                    <SlotTimePicker
                                         value={approvalModal.availability.morningEnd}
                                         min={SLOT_BOUNDS.morningEnd.min}
                                         max={SLOT_BOUNDS.morningEnd.max}
                                         disabled={!approvalModal.availability.morningEnabled}
-                                        onChange={e => updateSlotTimeField('morningEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                        onChange={val => updateSlotTimeField('morningEnd', val)}
                                     />
                                 </div>
 
@@ -2661,24 +2809,20 @@ const AdminDashboard = () => {
                                         />
                                         Afternoon Slot
                                     </label>
-                                    <input
-                                        type="time"
+                                    <SlotTimePicker
                                         value={approvalModal.availability.afternoonStart}
                                         min={SLOT_BOUNDS.afternoonStart.min}
                                         max={SLOT_BOUNDS.afternoonStart.max}
                                         disabled={!approvalModal.availability.afternoonEnabled}
-                                        onChange={e => updateSlotTimeField('afternoonStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                        onChange={val => updateSlotTimeField('afternoonStart', val)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
-                                    <input
-                                        type="time"
+                                    <SlotTimePicker
                                         value={approvalModal.availability.afternoonEnd}
                                         min={SLOT_BOUNDS.afternoonEnd.min}
                                         max={SLOT_BOUNDS.afternoonEnd.max}
                                         disabled={!approvalModal.availability.afternoonEnabled}
-                                        onChange={e => updateSlotTimeField('afternoonEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                        onChange={val => updateSlotTimeField('afternoonEnd', val)}
                                     />
                                 </div>
 
