@@ -217,7 +217,7 @@ const BookingCalendar = ({ bookings, onSelectBooking }) => {
     );
 };
 
-const BookingManagementTab = ({ bookings, updateBookingStatus, handleRejectWithReason, handleApproveWithDetails, handleViewDetails, handleEditBooking, handleExportPDF }) => {
+const BookingManagementTab = ({ bookings, handleRejectWithReason, handleApproveWithDetails, handleViewDetails, handleEditBooking, handleExportPDF }) => {
     const [search, setSearch]         = useState('');
     const [statusFilter, setStatus]   = useState('all');
     const [purposeFilter, setPurpose] = useState('All');
@@ -374,9 +374,8 @@ const BookingManagementTab = ({ bookings, updateBookingStatus, handleRejectWithR
                                                         <button className="btn-outline-sm" onClick={() => handleRejectWithReason(booking._id)} style={{ color: '#dc3545', borderColor: '#dc3545' }}>Reject</button>
                                                     </>
                                                 )}
-                                                {booking.status === 'approved' && (
-                                                    <button className="btn-primary-sm" onClick={() => updateBookingStatus(booking._id, 'completed')}>Complete</button>
-                                                )}
+                                                {/* Approved/Completed: no manual "Complete" action — status auto-flips
+                                                    to "completed" server-side once the booked visiting window passes. */}
                                                 <span className="view" onClick={() => handleViewDetails && handleViewDetails('booking', booking)} title="View Details"><FaEye /></span>
                                                 <span className="edit" onClick={() => handleEditBooking && handleEditBooking(booking)} title="Edit Status"><FaEdit /></span>
                                             </td>

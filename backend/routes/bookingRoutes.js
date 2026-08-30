@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Booking = require('../models/Booking');
 const { sendEmail, generateBookingTemplate, generateBookingConfirmationTemplate, generateBookingRejectionTemplate, generateBookingCancelledTemplate } = require('../models/mailer');
+const { autoCompletePastBookings } = require('../utils/bookingAutoComplete');
 
 // Validation helper function
 const validateBookingInput = (data) => {
@@ -133,6 +134,11 @@ router.post('/', async (req, res) => {
 // GET all bookings with pagination and filtering
 router.get('/', async (req, res) => {
     try {
+        // Lazily flip any 'approved' booking whose scheduled visiting window has
+        // already passed to 'completed', so the list is accurate even if the
+        // periodic server-side check hasn't ticked recently (e.g. cold start).
+        await autoCompletePastBookings();
+
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const status = req.query.status;
         const startDate = req.query.startDate;

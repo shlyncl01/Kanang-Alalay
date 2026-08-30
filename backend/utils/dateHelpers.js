@@ -31,4 +31,17 @@ function parseManilaDateTime(value) {
     return new Date(hasOffset ? value : `${value}+08:00`);
 }
 
-module.exports = { startOfManilaDay, getManilaDayBounds, parseManilaDateTime };
+// Combines a date (only the calendar date matters — any time-of-day on it is
+// discarded) with an "HH:MM" 24-hour Manila wall-clock time, returning the
+// equivalent UTC instant. Used to compare "now" against a scheduled slot's
+// end time regardless of what timezone the server process runs in.
+function manilaDateAndTimeToUTC(dateOnly, hhmm) {
+    const shifted = new Date(dateOnly.getTime() + MANILA_OFFSET_MS);
+    const y = shifted.getUTCFullYear();
+    const m = shifted.getUTCMonth();
+    const d = shifted.getUTCDate();
+    const [hh, mm] = hhmm.split(':').map(Number);
+    return new Date(Date.UTC(y, m, d, hh, mm, 0) - MANILA_OFFSET_MS);
+}
+
+module.exports = { startOfManilaDay, getManilaDayBounds, parseManilaDateTime, manilaDateAndTimeToUTC };

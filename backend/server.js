@@ -553,6 +553,22 @@ setInterval(async () => {
     }
 }, 60 * 1000);
 
+// Auto-complete approved bookings whose scheduled visiting window has passed —
+// keeps booking status accurate without any admin having to click "Complete".
+const { autoCompletePastBookings } = require('./utils/bookingAutoComplete');
+const runBookingAutoComplete = async () => {
+    try {
+        const completedIds = await autoCompletePastBookings();
+        if (completedIds.length) {
+            console.log(`[Booking auto-complete] Marked ${completedIds.length} booking(s) completed: ${completedIds.join(', ')}`);
+        }
+    } catch (e) {
+        console.error('[Booking auto-complete] Error:', e.message);
+    }
+};
+runBookingAutoComplete(); // catch anything that passed while the server was down
+setInterval(runBookingAutoComplete, 60 * 1000);
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Socket.io ready for connections at port ${PORT}`);
