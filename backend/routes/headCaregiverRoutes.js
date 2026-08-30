@@ -581,10 +581,121 @@ router.patch('/residents/:id/assign-caregiver', assignCaregiverToResident);
 router.put('/residents/:id/assign-caregiver', assignCaregiverToResident);
 
 // ─────────────────────────────────────────────────────────────
+// FIX — MEDICATION INVENTORY ↔ SCHEDULE INTEGRATION
+//
+// This dropdown has always listed rows from the clinical Medication
+// catalog only (below). Admin Central Inventory (Product + Batch,
+// categorized "Medicine") is a separate catalog with no foreign key to
+// Medication — the only existing link between them is the
+// normalized-name match Part 7 already uses (see normalizeProductName
+// further down this file) to resolve a Medication back to its Product
+// for stock deduction.
+//
+// Bug: an Admin can add a Medicine to Inventory (Product + Batch)
+// without separately also adding it to the Medication catalog, so it
+// exists in Admin Inventory but never appears here — nothing kept the
+// two catalogs in sync in that direction.
+//
+// Fix: before listing, make sure every Inventory Product categorized as
+// Medicine that doesn't already have a matching Medication catalog
+// entry (matched the same way Part 7 matches them — normalized name)
+// gets exactly one Medication document, sourced entirely from that
+// Product's own existing Batch data already in the database. No fields
+// are invented, nothing is created for a Product that's already
+// represented (so this never duplicates a medication record), and the
+// Product/Batch collections themselves are never read from in write
+// mode nor modified. This mirrors the "auto-provision on first sight"
+// pattern the codebase already uses for Product itself (see Product.js
+// doc comment / utils/inventoryProductService.js findOrCreateProduct),
+// just applied in the other direction — from Inventory into the
+// Medication catalog — so it's additive, not a redesign.
+//
+// Sentinel used only for the rare "doesNotExpire" Medicine batch, where
+// Inventory intentionally has no expirationDate but Medication.expiryDate
+// is a hard-required field with no equivalent flag. A far-future date
+// avoids fabricating a real expiry for an item explicitly marked as not
+// expiring.
+const NO_EXPIRY_SENTINEL_DATE = new Date('2099-12-31');
+
+// Best-effort "500mg" -> { value: 500, unit: 'mg' } parse for display
+// only; Medication.dosage is not a required field, so any batch dosage
+// string that doesn't match this simple shape is just left unset rather
+// than guessed at.
+function parseBatchDosageString(dosage) {
+    if (!dosage || typeof dosage !== 'string') return undefined;
+    const match = dosage.trim().match(/^([\d.]+)\s*([^\d\s]+)$/);
+    if (!match) return undefined;
+    return { value: Number(match[1]), unit: match[2] };
+}
+
+// Inventory's packaging Unit (CATEGORY_UNITS.medication in
+// constants/inventoryOptions.js: tablet/capsule/bottle/vial/tube/box/pack)
+// and Medication's clinical `form` (DOSAGE_UNITS in
+// HeadCaregiverDashboard.js: 'Tablet', 'Capsule', ...) are two different
+// vocabularies for two different concerns. Only map the unambiguous 1:1
+// cases — a "tablet" is unambiguously a Tablet, a "capsule" unambiguously
+// a Capsule — and deliberately leave the rest (bottle/vial/tube/box/pack)
+// unset rather than guess a clinical form that isn't actually on record;
+// the schedule form already handles "form not recognized" for those.
+const UNIT_TO_DOSAGE_FORM = { tablet: 'Tablet', capsule: 'Capsule' };
+
+async function syncMedicationCatalogFromInventory() {
+    const medicineProducts = await Product.find({ category: 'medication' });
+    if (medicineProducts.length === 0) return;
+
+    const existingMeds = await Medication.find({}, 'name').lean();
+    const existingNormalizedNames = new Set(existingMeds.map(m => normalizeProductName(m.name)));
+
+    for (const product of medicineProducts) {
+        const normalizedName = normalizeProductName(product.name);
+        if (existingNormalizedNames.has(normalizedName)) continue; // already represented — never duplicate
+
+        // Source the clinical fields Medication requires (brand,
+        // batchNumber, expiryDate) from one of this Product's existing
+        // Batches — never invented. Prefer the most recent batch that
+        // has a real expiration date; fall back to the most recent batch
+        // of any kind (covers the rare "doesNotExpire" Medicine batch).
+        const batches = await Inventory.find({ productId: product._id }).sort({ createdAt: -1 });
+        if (batches.length === 0) continue; // no batch data yet to source required fields from
+        const sourceBatch = batches.find(b => b.expirationDate) || batches[0];
+
+        // Deterministic, product-derived ID — makes this idempotent and
+        // race-safe (findOneAndUpdate + upsert) without needing a
+        // separate "already synced" flag.
+        const derivedMedicationId = `MED-INV-${product._id.toString()}`.toUpperCase();
+        try {
+            await Medication.findOneAndUpdate(
+                { medicationId: derivedMedicationId },
+                {
+                    $setOnInsert: {
+                        medicationId: derivedMedicationId,
+                        name: product.name,
+                        brand: sourceBatch.brand || product.name,
+                        batchNumber: sourceBatch.batchNumber || 'N/A',
+                        dosage: parseBatchDosageString(sourceBatch.dosage),
+                        form: UNIT_TO_DOSAGE_FORM[product.unit] || undefined,
+                        expiryDate: sourceBatch.expirationDate || NO_EXPIRY_SENTINEL_DATE,
+                        isActive: true,
+                        phAvailability: 'available',
+                    },
+                },
+                { upsert: true, setDefaultsOnInsert: true }
+            );
+            existingNormalizedNames.add(normalizedName); // guard against re-processing within this same pass
+        } catch (err) {
+            // Non-fatal — one bad/duplicate product shouldn't break the
+            // whole dropdown for every other medication.
+            console.error(`Failed to sync inventory Medicine "${product.name}" into Medication catalog:`, err.message);
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
 // GET MEDICATIONS
 // ─────────────────────────────────────────────────────────────
 router.get('/medications', async (req, res) => {
     try {
+        await syncMedicationCatalogFromInventory();
         const meds = await Medication.find({ isActive: true }).sort({ name: 1 });
         res.json({ success: true, data: meds });
     } catch (err) {
