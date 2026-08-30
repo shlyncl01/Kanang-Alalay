@@ -59,15 +59,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// TEMPORARY diagnostic logger — added to trace which endpoint the
-// caregiver mobile/scan app calls when administering a dose, since that
-// app's source isn't in this repo. Safe to remove once that's confirmed;
-// does not touch any business logic, stock deduction, or routing.
-app.use((req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.originalUrl}`);
-    next();
-});
-
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
