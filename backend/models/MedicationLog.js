@@ -61,6 +61,20 @@ const medicationLogSchema = new mongoose.Schema({
     // schedule yet, so this is additive and never breaks older log entries.
     administeredQuantity: { type: Number, default: 1, min: 1 },
 
+    // Which Head Caregiver's HCAssignedStock this dose should be drawn
+    // from on administration. Set once, at the moment the HC clicks
+    // "Prepare" (PUT /head-caregiver/schedule/:id/status with
+    // status:'pending' — see routes/headCaregiverRoutes.js), since that's
+    // the only point where we know for certain which HC's physical stock
+    // the dose was pulled from. Needed because administration can later
+    // happen from a different actor/device (e.g. the caregiver mobile
+    // app's POST /medications/administer/:logId) whose req.user is the
+    // administering caregiver, not the HC who holds the stock — unlike
+    // the web "Administer" flow, where the same person prepares and
+    // administers so req.user._id alone was always enough. Optional/unset
+    // on logs created or prepared before this field existed.
+    preparingHeadCaregiverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
 }, { timestamps: true });
 
 // ── Indexes for performance ───────────────────────────────────────────────────

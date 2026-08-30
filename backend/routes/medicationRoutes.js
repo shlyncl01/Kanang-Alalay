@@ -4,6 +4,8 @@ const router = express.Router();
 const MedicationLog = require('../models/MedicationLog');
 const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
+const Product = require('../models/Product');
+const HCAssignedStock = require('../models/HCAssignedStock');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 const { getManilaDayBounds, parseManilaDateTime } = require('../utils/dateHelpers');
 const { notifyCaregiverAndOverseers } = require('../services/alertService');
@@ -451,7 +453,25 @@ router.get('/log/:logId', authMiddleware, async (req, res) => {
     }
 });
 
+// Same normalization used by Product.normalizedName and by the Part 7
+// deduction in routes/headCaregiverRoutes.js — duplicated here (rather
+// than imported) so this file has no dependency on that route module;
+// it's a small pure string function, nothing stateful.
+const normalizeProductName = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
 // Administer medication (with optional scanning)
+//
+// This is the endpoint the caregiver mobile app calls to finalize a dose
+// the HC already "Prepared" on the web dashboard. It previously only
+// decremented a legacy, unused Medication.stock.current field and never
+// touched HCAssignedStock — the same Part 7 balance shown on the HC's
+// "My Stock" page — so mobile administrations always recorded
+// successfully but never actually reduced the HC's assigned stock. This
+// mirrors the deduction already working in routes/headCaregiverRoutes.js
+// PUT /schedule/:id/status (same atomic-claim/rollback shape), but reads
+// log.preparingHeadCaregiverId for whose stock to draw from, since the
+// person hitting this endpoint (the caregiver) is not necessarily the HC
+// who holds the stock the way it is on the web "Administer" flow.
 router.post('/administer/:logId', authMiddleware, async (req, res) => {
     try {
         const { verificationMethod, scanData, notes } = req.body;
@@ -479,38 +499,111 @@ router.post('/administer/:logId', authMiddleware, async (req, res) => {
                 scanTime: new Date(),
                 match: true
             };
+            await log.save();
         }
 
-        // Update inventory
-        await Medication.findByIdAndUpdate(log.medicationId, {
-            $inc: { 'stock.current': -1 }
+        // Atomic claim, same pattern as headCaregiverRoutes.js — of two
+        // concurrent administer requests for the same log, only one can
+        // ever flip status away from administered/completed and proceed
+        // to deduct stock.
+        const claimed = await MedicationLog.findOneAndUpdate(
+            { _id: log._id, status: { $nin: ['administered', 'completed'] } },
+            {
+                $set: {
+                    status: 'administered',
+                    administeredTime: new Date(),
+                    verificationMethod,
+                    administeredBy: req.user._id,
+                    ...(notes ? { notes } : {}),
+                },
+            },
+            { new: true }
+        );
+
+        if (!claimed) {
+            return res.status(409).json({ message: 'This dose has already been marked as administered.' });
+        }
+
+        const rollbackClaim = () => MedicationLog.findByIdAndUpdate(claimed._id, {
+            $set: {
+                status: log.status,
+                administeredTime: log.administeredTime,
+                verificationMethod: log.verificationMethod,
+                administeredBy: log.administeredBy,
+                notes: log.notes,
+            },
         });
 
-        // Update log
-        log.status = 'administered';
-        log.administeredTime = new Date();
-        log.verificationMethod = verificationMethod;
-        log.administeredBy = req.user._id;
-        if (notes) log.notes = notes;
+        let deductionNote = '';
+        try {
+            const medication = await Medication.findById(claimed.medicationId);
 
-        await log.save();
+            // Only attempt a Part 7 deduction when we know whose stock to
+            // draw from. Doses prepared before this field existed have no
+            // preparingHeadCaregiverId — administration still succeeds
+            // for those (unchanged from prior behavior), it just can't
+            // deduct anything, same as before this fix.
+            if (medication && claimed.preparingHeadCaregiverId) {
+                const normalizedName = normalizeProductName(medication.name);
+                const product = await Product.findOne({
+                    normalizedName,
+                    category: { $in: ['medication', 'medical_supplies'] },
+                });
+
+                if (!product) {
+                    await rollbackClaim();
+                    return res.status(400).json({
+                        message: `"${medication.name}" is not linked to a product in Admin Central Inventory yet. Ask an Admin to add it before this dose can be administered.`,
+                    });
+                }
+
+                const administeredQuantity = 1; // one dose unit, same as the web Administer flow's default
+                const assigned = await HCAssignedStock.findOne({ headCaregiverId: claimed.preparingHeadCaregiverId, productId: product._id });
+                const available = assigned ? assigned.quantity : 0;
+                if (available < administeredQuantity) {
+                    await rollbackClaim();
+                    return res.status(409).json({
+                        message: assigned
+                            ? `Insufficient stock: only ${available} ${product.unit} of ${product.name} assigned to the preparing head caregiver. Administration was not recorded.`
+                            : `${product.name} is not in the preparing head caregiver's assigned stock. Administration was not recorded.`,
+                    });
+                }
+
+                const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
+                    { headCaregiverId: claimed.preparingHeadCaregiverId, productId: product._id, quantity: { $gte: administeredQuantity } },
+                    { $inc: { quantity: -administeredQuantity } },
+                    { new: true }
+                );
+                if (!updatedAssignedStock) {
+                    await rollbackClaim();
+                    return res.status(409).json({
+                        message: 'The assigned stock changed while processing this administration. Please try again.',
+                    });
+                }
+
+                deductionNote = ` ${administeredQuantity} ${product.unit} deducted from the preparing head caregiver's assigned stock.`;
+            }
+        } catch (deductionErr) {
+            await rollbackClaim();
+            throw deductionErr;
+        }
 
         notifyCaregiverAndOverseers(req.app.get('io'), {
             type: 'medication-administered',
             title: 'Medication Administered',
-            message: `${log.medicationName || 'Medication'} for ${log.residentName || 'resident'}`,
-            caregiverId: log.caregiverId,
+            message: `${claimed.medicationName || 'Medication'} for ${claimed.residentName || 'resident'}`,
+            caregiverId: claimed.caregiverId,
             details: {
                 subMessage: `Given by ${[req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.username || 'caregiver'}`,
-                residentId: log.residentId,
-                medicationId: log.medicationId,
-                logId: log._id,
+                residentId: claimed.residentId,
+                medicationId: claimed.medicationId,
+                logId: claimed._id,
             },
         }).catch((err) => console.error('[Alert] Failed to notify administered:', err.message));
 
         res.json({
-            message: 'Medication administered successfully',
-            log
+            message: `Medication administered successfully.${deductionNote}`,
+            log: claimed
         });
 
     } catch (error) {

@@ -1112,6 +1112,13 @@ router.put('/schedule/:id/status', async (req, res) => {
         log.status = status;
         if (notes !== undefined) log.notes = notes;
         if (verificationMethod !== undefined) log.verificationMethod = verificationMethod;
+        // Record which HC's physical/assigned stock this dose is being
+        // prepared from, so a later administration — possibly by a
+        // different caregiver via the mobile app — knows whose
+        // HCAssignedStock to deduct from. See the field comment on
+        // MedicationLog.preparingHeadCaregiverId for why this can't just
+        // be inferred from req.user at administer time.
+        if (status === 'pending') log.preparingHeadCaregiverId = req.user._id;
         await log.save();
 
         res.json({ success: true, data: shapeLog(log), message: `Medication marked as ${status}.` });
