@@ -2612,17 +2612,17 @@ const AdminDashboard = () => {
                                     <input
                                         type="time"
                                         value={approvalModal.availability.morningStart}
-                                        disabled={!approvalModal.availability.morningEnabled}
+                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.morningEnabled}
                                         onChange={e => updateAvailabilityField('morningStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.morningEnabled)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
                                     <input
                                         type="time"
                                         value={approvalModal.availability.morningEnd}
-                                        disabled={!approvalModal.availability.morningEnabled}
+                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.morningEnabled}
                                         onChange={e => updateAvailabilityField('morningEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.morningEnabled)}
+                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.morningEnabled)}
                                     />
                                 </div>
 
@@ -2640,17 +2640,17 @@ const AdminDashboard = () => {
                                     <input
                                         type="time"
                                         value={approvalModal.availability.afternoonStart}
-                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.afternoonEnabled}
                                         onChange={e => updateAvailabilityField('afternoonStart', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.afternoonEnabled)}
                                     />
                                     <span style={{ fontSize: '0.85rem', color: '#7A5C4E' }}>to</span>
                                     <input
                                         type="time"
                                         value={approvalModal.availability.afternoonEnd}
-                                        disabled={!approvalModal.availability.afternoonEnabled}
+                                        disabled={!approvalModal.editTimeSlots || !approvalModal.availability.afternoonEnabled}
                                         onChange={e => updateAvailabilityField('afternoonEnd', e.target.value)}
-                                        style={availInputStyle(approvalModal.availability.afternoonEnabled)}
+                                        style={availInputStyle(approvalModal.editTimeSlots && approvalModal.availability.afternoonEnabled)}
                                     />
                                 </div>
 
