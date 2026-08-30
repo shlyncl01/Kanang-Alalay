@@ -3,12 +3,14 @@ import { FaSun, FaCloudSun, FaMoon, FaPrint, FaSync, FaPhone, FaEnvelope, FaTime
 
 console.log('✅ StaffRosterTab component loaded - NEW VERSION');
 const SHIFTS = [
-  { key: 'morning', label: 'Morning', time: '6:00 AM – 2:00 PM', icon: <FaSun /> },
-  { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun /> },
-  { key: 'night', label: 'Night', time: '10:00 PM – 6:00 AM', icon: <FaMoon /> },
+  { key: 'DAY', label: 'Day Shift', time: '7:00 AM – 7:00 PM', icon: <FaSun /> },
+  { key: 'NIGHT', label: 'Night Shift', time: '7:00 PM – 7:00 AM', icon: <FaMoon /> },
+  { key: 'FLEXIBLE', label: 'Flexible', time: 'Variable hours', icon: <FaSync /> },
 ];
 
-const getShift = (index) => SHIFTS[index % 3];
+const getShift = (shiftKey) => {
+  return SHIFTS.find(s => s.key === shiftKey) || SHIFTS[0];
+};
 
 const getAccountStatus = (m) => {
   if (m.status === 'active') return 'active';
@@ -30,7 +32,7 @@ const ShiftModal = ({ shift, members, onClose }) => {
         
         <div style={{ padding: 16, borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <strong>{shift.label} Shift</strong>
+            <strong>{shift.icon} {shift.label}</strong>
             <div style={{ fontSize: 12, color: '#7A5C4E' }}>{shift.time}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}><FaTimes /></button>
@@ -60,14 +62,14 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
   const activeStaff = useMemo(() => {
     return staff
       .filter(m => getAccountStatus(m) === 'active')
-      .map((m, idx) => ({ ...m, shift: getShift(idx) }));
+      .map((m) => ({ ...m, shiftData: getShift(m.shift || 'DAY') }));
   }, [staff]);
 
   const shiftCounts = useMemo(() => {
     return SHIFTS.map(s => ({
       ...s,
-      count: activeStaff.filter(m => m.shift.key === s.key).length,
-      members: activeStaff.filter(m => m.shift.key === s.key),
+      count: activeStaff.filter(m => m.shiftData.key === s.key).length,
+      members: activeStaff.filter(m => m.shiftData.key === s.key),
     }));
   }, [activeStaff]);
 
@@ -98,7 +100,7 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                 <tr>
                   <td>${m.firstName} ${m.lastName}</td>
                   <td>${m.role || 'staff'}</td>
-                  <td>${m.shift.label}</td>
+                  <td>${m.shiftData.label} (${m.shiftData.time})</td>
                   <td>${m.email || '—'}</td>
                   <td>${m.phone || '—'}</td>
                 </tr>
@@ -173,8 +175,8 @@ const StaffRosterTab = ({ staff = [], onRefresh }) => {
                   </td>
                   <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>{m.role || 'staff'}</td>
                   <td style={{ padding: '14px 16px' }}>
-                    {m.shift.icon} {m.shift.label}
-                    <div style={{ fontSize: 11, color: '#7A5C4E' }}>{m.shift.time}</div>
+                    {m.shiftData.icon} {m.shiftData.label}
+                    <div style={{ fontSize: 11, color: '#7A5C4E' }}>{m.shiftData.time}</div>
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     {m.phone && <div><FaPhone size={10} style={{ marginRight: 5 }} />{m.phone}</div>}
