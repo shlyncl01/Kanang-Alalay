@@ -669,6 +669,19 @@ async function syncMedicationCatalogFromInventory() {
                 {
                     $setOnInsert: {
                         medicationId: derivedMedicationId,
+                        // The `medications` collection carries a legacy
+                        // unique index on uniqueCode from an earlier schema
+                        // version (the current Medication schema no longer
+                        // marks it unique/required, but the physical index
+                        // was never dropped). That index still only allows
+                        // ONE document with uniqueCode: null — and plenty
+                        // of pre-existing Medication docs already hold that
+                        // null. Leaving this field unset on a new doc trips
+                        // that legacy index (E11000 on the second insert),
+                        // so it's set here to the same value as
+                        // medicationId, which is already guaranteed unique
+                        // per Product.
+                        uniqueCode: derivedMedicationId,
                         name: product.name,
                         brand: sourceBatch.brand || product.name,
                         batchNumber: sourceBatch.batchNumber || 'N/A',
