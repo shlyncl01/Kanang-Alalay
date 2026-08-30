@@ -613,8 +613,11 @@ const AdminDashboard = () => {
 
     const [editStatusModal, setEditStatusModal] = useState({ isOpen: false, booking: null, newStatus: '' });
     const [stockRequests, setStockRequests] = useState([]);
-    const [rejectionModal, setRejectionModal] = useState({ isOpen: false, bookingId: null, reason: '' });
-    const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY });
+    const [rejectionModal, setRejectionModal] = useState({ isOpen: false, bookingId: null, booking: null, reason: '' });
+    const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false });
+
+    // A booking's visitTime is stored raw as '09:00' (morning) or '15:00' (afternoon) - see BookingPage TIME_SLOTS
+    const isMorningBooking = (booking) => booking?.visitTime === '09:00';
     const [openDropdown, setOpenDropdown] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -1401,7 +1404,8 @@ const AdminDashboard = () => {
     };
 
     const handleRejectWithReason = (bookingId) => {
-        setRejectionModal({ isOpen: true, bookingId, reason: '' });
+        const booking = bookings.find(b => b._id === bookingId);
+        setRejectionModal({ isOpen: true, bookingId, booking, reason: '' });
     };
 
     const confirmRejection = async () => {
@@ -1410,12 +1414,26 @@ const AdminDashboard = () => {
             return;
         }
         await updateBookingStatus(rejectionModal.bookingId, 'rejected', rejectionModal.reason);
-        setRejectionModal({ isOpen: false, bookingId: null, reason: '' });
+        setRejectionModal({ isOpen: false, bookingId: null, booking: null, reason: '' });
     };
 
     const handleApproveWithDetails = (bookingId) => {
         const booking = bookings.find(b => b._id === bookingId);
-        setApprovalModal({ isOpen: true, bookingId, booking, availability: { ...DEFAULT_AVAILABILITY, rules: [...DEFAULT_AVAILABILITY.rules] } });
+        const bookedMorning = isMorningBooking(booking);
+        setApprovalModal({
+            isOpen: true,
+            bookingId,
+            booking,
+            editTimeSlots: false,
+            availability: {
+                ...DEFAULT_AVAILABILITY,
+                rules: [...DEFAULT_AVAILABILITY.rules],
+                // Only the slot the visitor actually requested is enabled/checked by default.
+                // The non-matching slot stays disabled until the admin explicitly turns on "Edit time slots".
+                morningEnabled: bookedMorning,
+                afternoonEnabled: !bookedMorning
+            }
+        });
     };
 
     const updateAvailabilityField = (field, value) => {
@@ -1455,7 +1473,7 @@ const AdminDashboard = () => {
         };
 
         await updateBookingStatus(approvalModal.bookingId, 'approved', '', { facilityAvailability });
-        setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY });
+        setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false });
     };
 
     const updateDonationStatus = async (id, paymentStatus) => {
@@ -2484,7 +2502,7 @@ const AdminDashboard = () => {
                                 <FaCheckCircle size={20} color="#28a745" />
                                 Approve Booking
                             </h4>
-                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
+                            <button onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
                                 <FaTimes />
                             </button>
                         </div>
@@ -2543,21 +2561,50 @@ const AdminDashboard = () => {
 
                         {/* FACILITY AVAILABILITY - EDITABLE, GOES OUT IN THE APPROVAL EMAIL */}
                         <div style={{ marginBottom: 24 }}>
-                            <h5 style={{ margin: '0 0 4px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visiting Hours for Visitor Email</h5>
-                            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#7A5C4E' }}>
-                                Set the available time slots and rules to include in the approval email sent to the visitor.
-                            </p>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                <div>
+                                    <h5 style={{ margin: '0 0 4px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visiting Hours for Visitor Email</h5>
+                                    <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#7A5C4E' }}>
+                                        {approvalModal.editTimeSlots
+                                            ? 'Manual override is on — you can enable/disable either slot.'
+                                            : `Locked to the visitor's requested slot (${isMorningBooking(approvalModal.booking) ? 'Morning' : 'Afternoon'}). Turn on "Edit time slots" to override.`}
+                                    </p>
+                                </div>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#E65100', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={approvalModal.editTimeSlots}
+                                        onChange={e => {
+                                            const editOn = e.target.checked;
+                                            setApprovalModal(prev => ({
+                                                ...prev,
+                                                editTimeSlots: editOn,
+                                                // Turning override off snaps back to the visitor's actual requested slot
+                                                availability: editOn
+                                                    ? prev.availability
+                                                    : {
+                                                        ...prev.availability,
+                                                        morningEnabled: isMorningBooking(prev.booking),
+                                                        afternoonEnabled: !isMorningBooking(prev.booking)
+                                                    }
+                                            }));
+                                        }}
+                                    />
+                                    Edit time slots
+                                </label>
+                            </div>
                             <div style={{ background: '#FFF3E0', padding: 16, borderRadius: 12, border: '1.5px solid #FF9800' }}>
                                 <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#E65100', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <FaMapMarkerAlt size={14} /> Available Visiting Hours
                                 </p>
 
                                 {/* Morning slot row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', opacity: (!approvalModal.editTimeSlots && !approvalModal.availability.morningEnabled) ? 0.5 : 1 }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
                                         <input
                                             type="checkbox"
                                             checked={approvalModal.availability.morningEnabled}
+                                            disabled={!approvalModal.editTimeSlots}
                                             onChange={e => updateAvailabilityField('morningEnabled', e.target.checked)}
                                         />
                                         Morning Slot
@@ -2580,11 +2627,12 @@ const AdminDashboard = () => {
                                 </div>
 
                                 {/* Afternoon slot row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap', opacity: (!approvalModal.editTimeSlots && !approvalModal.availability.afternoonEnabled) ? 0.5 : 1 }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
                                         <input
                                             type="checkbox"
                                             checked={approvalModal.availability.afternoonEnabled}
+                                            disabled={!approvalModal.editTimeSlots}
                                             onChange={e => updateAvailabilityField('afternoonEnabled', e.target.checked)}
                                         />
                                         Afternoon Slot
@@ -2662,7 +2710,7 @@ const AdminDashboard = () => {
                         {/* ACTION BUTTONS */}
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexShrink: 0, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' }}>
                             <button
-                                onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY })}
+                                onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false })}
                                 style={{
                                     padding: '10px 24px',
                                     borderRadius: 8,
@@ -2702,18 +2750,88 @@ const AdminDashboard = () => {
             )}
 
             {rejectionModal.isOpen && (
-                <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="registration-modal" style={{ maxWidth: 450, padding: 32, background: '#fff', borderRadius: 20 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18, borderBottom: '1.5px solid #E8D6CC', paddingBottom: 14 }}>
+                <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                    <div
+                        className="registration-modal"
+                        style={{
+                            maxWidth: 600,
+                            width: '100%',
+                            maxHeight: '85vh',
+                            padding: 32,
+                            background: '#fff',
+                            borderRadius: 20,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18, borderBottom: '1.5px solid #E8D6CC', paddingBottom: 14, flexShrink: 0 }}>
                             <h4 style={{ margin: 0, color: '#1A0A00', display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <FaExclamationTriangle color="#dc3545" />
                                 Reject Booking
                             </h4>
-                            <button onClick={() => setRejectionModal({ isOpen: false, bookingId: null, reason: '' })}
+                            <button onClick={() => setRejectionModal({ isOpen: false, bookingId: null, booking: null, reason: '' })}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4E', fontSize: '1.2rem' }}>
                                 <FaTimes />
                             </button>
                         </div>
+
+                        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
+
+                        {rejectionModal.booking && (
+                            <>
+                                {/* VISITOR DETAILS */}
+                                <div style={{ marginBottom: 24 }}>
+                                    <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visitor Details</h5>
+                                    <div style={{ background: '#FFF8F3', padding: 16, borderRadius: 12, border: '1.5px solid #E8D6CC' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Full Name</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00', fontWeight: 600 }}>{rejectionModal.booking.name}</span>
+                                            </div>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Email</span>
+                                                <span style={{ display: 'block', fontSize: '0.85rem', color: '#1A0A00', wordBreak: 'break-all' }}>{rejectionModal.booking.email}</span>
+                                            </div>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Phone</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00' }}>{rejectionModal.booking.phone}</span>
+                                            </div>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Purpose</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#1A0A00', textTransform: 'capitalize' }}>{rejectionModal.booking.purpose?.replace('_', ' ')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* VISIT SCHEDULE */}
+                                <div style={{ marginBottom: 24 }}>
+                                    <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visit Schedule</h5>
+                                    <div style={{ background: '#FDEDED', padding: 16, borderRadius: 12, border: '1.5px solid #dc3545' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#c0392b', fontWeight: 600, marginBottom: 4 }}>Date</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#c0392b', fontWeight: 600 }}>
+                                                    {new Date(rejectionModal.booking.visitDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#c0392b', fontWeight: 600, marginBottom: 4 }}>Time Slot</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#c0392b', fontWeight: 600 }}>
+                                                    {rejectionModal.booking.visitTime === '09:00' ? '9:00 AM - 11:00 AM' : '3:00 PM - 5:00 PM'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span style={{ display: 'block', fontSize: '0.8rem', color: '#c0392b', fontWeight: 600, marginBottom: 4 }}>Number of Visitors</span>
+                                                <span style={{ display: 'block', fontSize: '0.95rem', color: '#c0392b', fontWeight: 600 }}>{rejectionModal.booking.numberOfVisitors} visitor{rejectionModal.booking.numberOfVisitors > 1 ? 's' : ''}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         <p style={{ fontSize: '.88rem', color: '#7A5C4E', marginBottom: 16 }}>
                             Please provide a reason for rejecting this booking. The visitor will be notified via email.
@@ -2738,12 +2856,13 @@ const AdminDashboard = () => {
                                 color: '#1A0A00',
                                 outline: 'none',
                                 resize: 'vertical',
-                                marginBottom: 22,
+                                marginBottom: 4,
                             }}
                         />
+                        </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                            <button className="btn-outline-sm" onClick={() => setRejectionModal({ isOpen: false, bookingId: null, reason: '' })} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E8D6CC', background: 'transparent', cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' }}>
+                            <button className="btn-outline-sm" onClick={() => setRejectionModal({ isOpen: false, bookingId: null, booking: null, reason: '' })} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E8D6CC', background: 'transparent', cursor: 'pointer' }}>
                                 Cancel
                             </button>
                             <button
