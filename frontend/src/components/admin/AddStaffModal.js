@@ -63,11 +63,20 @@ const ROLE_OPTIONS = [
 ];
 
 const SHIFTS = [
-    { key: 'morning',   label: 'Morning',   time: '6:00 AM – 2:00 PM'  },
-    { key: 'afternoon', label: 'Afternoon', time: '2:00 PM – 10:00 PM' },
-    { key: 'night',     label: 'Night',     time: '10:00 PM – 6:00 AM' },
-    { key: 'flexible',  label: 'Flexible',  time: 'Variable hours'     },
+    { key: 'DAY',      label: 'Day Shift',   time: '7:00 AM – 7:00 PM',   icon: '☀️' },
+    { key: 'NIGHT',    label: 'Night Shift', time: '7:00 PM – 7:00 AM',   icon: '🌙' },
+    { key: 'FLEXIBLE', label: 'Flexible',    time: 'Variable hours',     icon: '🔄' },
 ];
+
+// ─── shift filtering (role-based) ─────────────────────────────────────────────
+
+const getAvailableShifts = (roleKey) => {
+    if (roleKey === 'admin') {
+        return SHIFTS.filter(s => s.key === 'FLEXIBLE');
+    }
+    // head_caregiver and caregiver can choose Day or Night
+    return SHIFTS.filter(s => s.key !== 'FLEXIBLE');
+};
 
 // ─── validation helpers ───────────────────────────────────────────────────────
 
@@ -134,12 +143,22 @@ const errMsg = { color: '#dc3545', fontSize: '.75rem', marginTop: 4, display: 'b
 const AddStaffModal = ({ onClose, onAdded, existingPhones = [] }) => {
     const [step, setStep]     = useState(1);   // 1 | 2 | 3 | 4(success)
     const [role, setRole]     = useState('');
-    const [form, setForm]     = useState({ firstName: '', lastName: '', email: '', phone: '', shift: 'morning' });
+    const [form, setForm]     = useState({ firstName: '', lastName: '', email: '', phone: '', shift: 'DAY' });
     const [errors, setErrors] = useState({});
     const [touched, setTouched] = useState({});
     const [saving, setSaving] = useState(false);
     const [apiErr, setApiErr] = useState('');
     const [created, setCreated] = useState(null);
+
+    // ── auto-set shift based on role ──────────────────────────────────────────
+
+    React.useEffect(() => {
+        if (role === 'admin') {
+            setForm(p => ({ ...p, shift: 'FLEXIBLE' }));
+        } else {
+            setForm(p => ({ ...p, shift: 'DAY' }));
+        }
+    }, [role]);
 
     // ── real-time validation ──────────────────────────────────────────────────
 
@@ -435,29 +454,36 @@ const AddStaffModal = ({ onClose, onAdded, existingPhones = [] }) => {
                             <div style={{ marginBottom: 6 }}>
                                 <label style={lbl}>Assigned Shift</label>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                    {SHIFTS.map(s => (
+                                    {getAvailableShifts(role).map(s => (
                                         <button
                                             key={s.key}
                                             type="button"
                                             onClick={() => setForm(p => ({ ...p, shift: s.key }))}
+                                            disabled={role === 'admin'} // Admins can't change shift
                                             style={{
                                                 padding: '9px 12px',
                                                 borderRadius: 10,
                                                 border: `1.5px solid ${form.shift === s.key ? '#b85c2d' : '#E8D6CC'}`,
                                                 background: form.shift === s.key ? '#fff8f3' : '#FFF8F3',
-                                                cursor: 'pointer',
+                                                cursor: role === 'admin' ? 'not-allowed' : 'pointer',
                                                 textAlign: 'left',
                                                 fontFamily: "'DM Sans',sans-serif",
                                                 transition: 'border-color .15s, background .15s',
+                                                opacity: role === 'admin' ? 0.7 : 1,
                                             }}
                                         >
                                             <div style={{ fontWeight: 700, fontSize: '.82rem', color: form.shift === s.key ? '#b85c2d' : '#1A0A00' }}>
-                                                {s.label}
+                                                {s.icon} {s.label}
                                             </div>
                                             <div style={{ fontSize: '.72rem', color: '#7A5C4E' }}>{s.time}</div>
                                         </button>
                                     ))}
                                 </div>
+                                {role === 'admin' && (
+                                    <div style={{ fontSize: '.75rem', color: '#28a745', marginTop: 8, fontStyle: 'italic' }}>
+                                        ℹ️ Admin accounts are automatically assigned Flexible schedules.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
