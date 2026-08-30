@@ -81,6 +81,116 @@ const timeAgo = (iso) => {
     return `${Math.floor(diff / 86400)}d ago`;
 };
 
+// ── Admin Alerts & Notifications — filters (added alongside the existing
+// notification system, not replacing it) ───────────────────────────────
+//
+// Two independent alert sources already exist in this component:
+//   1. `notifications` — built client-side by buildNotifications() from
+//      real bookings/donations/staff/inventory data. Real data, but never
+//      persisted as its own record — its read/unread state lives only in
+//      the browser (readIds, backed by localStorage).
+//   2. `dbAlerts` — actual models/Alert.js documents from GET /api/alerts.
+//      Real, backend-persisted records with their own _id, isRead, and
+//      createdAt that survive a refresh regardless of browser/session.
+//
+// The Admin previously saw these as two separately-rendered blocks in the
+// same list ("Notifications" then a "System Alerts" divider). Search,
+// Type/Status/Date filtering, and pagination need one consistent ordering
+// to paginate correctly, so both are normalized into ONE combined,
+// time-sorted list here — but each row still renders with its original
+// icon/color and still performs its original click action (see
+// buildUnifiedAlerts below), so nothing existing is removed, only made
+// filterable/searchable/paginated together.
+const ALERT_TYPE_OPTIONS = ['All', 'Medication', 'Inventory', 'Stock Request', 'Resident', 'System'];
+const ALERT_STATUS_OPTIONS = ['All', 'Unread', 'Read'];
+const ALERT_DATE_OPTIONS = ['All', 'Today', 'This Week', 'This Month'];
+const alertSelectStyle = { padding: '8px 10px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.83rem', background: '#fff', color: '#1A0A00', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" };
+
+// Alert.type has never been an enforced enum anywhere in this codebase
+// (routes/alertRoutes.js POST / accepts any string, and real values seen
+// in the wild include 'medication-administered', 'stock-request-approved',
+// 'stock-request-rejected', 'OTP', 'Booking', 'Inventory', 'System', plus
+// the client-only notification types booking/donation/personnel/inventory/
+// system) — so the 5 filter categories the spec asks for are matched by
+// keyword rather than exact equality, with 'System' as the catch-all for
+// anything that doesn't clearly belong to one of the other four.
+const bucketizeAlertType = (rawType) => {
+    const t = (rawType || '').toLowerCase();
+    if (t.includes('medication')) return 'Medication';
+    if (t.includes('stock-request') || t.includes('stock_request') || t.includes('stockrequest')) return 'Stock Request';
+    if (t.includes('inventory')) return 'Inventory';
+    if (t.includes('resident')) return 'Resident';
+    return 'System';
+};
+
+// Same-day/week/month check used by the Date filter. Written against the
+// alert's real timestamp (n.time / a.createdAt) — never a stored/derived
+// "day bucket" field — so it stays correct no matter when it's evaluated.
+const matchesAlertDateFilter = (isoTime, filterValue) => {
+    if (filterValue === 'All') return true;
+    const t = new Date(isoTime);
+    const now = new Date();
+    if (filterValue === 'Today') {
+        return t.toDateString() === now.toDateString();
+    }
+    if (filterValue === 'This Week') {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        return t >= startOfWeek;
+    }
+    if (filterValue === 'This Month') {
+        return t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth();
+    }
+    return true;
+};
+
+// The typeColors map dbAlerts have always used for their pill/icon color —
+// pulled out here (unchanged) so buildUnifiedAlerts can reuse it exactly.
+const DB_ALERT_TYPE_COLORS = { OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d' };
+
+const buildUnifiedAlerts = (notifications, dbAlerts, readIds) => {
+    const fromNotifications = notifications.map(n => {
+        const meta = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
+        return {
+            uid: `n-${n.id}`,
+            source: 'notification',
+            raw: n,
+            rawType: n.type,
+            bucket: bucketizeAlertType(n.type),
+            title: n.title,
+            message: n.body,
+            time: n.time,
+            isRead: readIds.has(n.id),
+            color: meta.color,
+            icon: meta.icon,
+            typeLabel: meta.label,
+            section: meta.section,
+        };
+    });
+
+    const fromDbAlerts = dbAlerts.map(a => {
+        const color = DB_ALERT_TYPE_COLORS[a.type] || '#6c757d';
+        return {
+            uid: `a-${a._id}`,
+            source: 'db',
+            raw: a,
+            rawType: a.type,
+            bucket: bucketizeAlertType(a.type),
+            title: a.title,
+            message: a.message,
+            time: a.createdAt,
+            isRead: !!a.isRead,
+            color,
+            icon: null, // rendered with FaBell, same as before
+            typeLabel: a.type,
+            section: null,
+        };
+    });
+
+    return [...fromNotifications, ...fromDbAlerts].sort((x, y) => new Date(y.time) - new Date(x.time));
+};
+
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmLabel = 'Confirm', danger = false }) => {
     if (!isOpen) return null;
     return (
@@ -439,6 +549,13 @@ const AdminDashboard = () => {
     const [inventoryPage, setInventoryPage] = useState(1);
     const itemsPerPage = 10;
 
+    // Admin Alerts & Notifications page — filters + pagination state.
+    const [alertSearch, setAlertSearch] = useState('');
+    const [alertTypeFilter, setAlertTypeFilter] = useState('All');
+    const [alertStatusFilter, setAlertStatusFilter] = useState('All');
+    const [alertDateFilter, setAlertDateFilter] = useState('All');
+    const [alertPage, setAlertPage] = useState(1);
+
     const [bookings, setBookings] = useState([]);
     const [donations, setDonations] = useState([]);
     const [staff, setStaff] = useState([]);
@@ -646,6 +763,85 @@ const AdminDashboard = () => {
             try { localStorage.setItem('admin_read_notif_ids', JSON.stringify([...next])); } catch {}
             return next;
         });
+    };
+
+    // ── Admin Alerts & Notifications page ───────────────────────────────
+    // One combined, time-sorted list built from the real `notifications`
+    // (derived from bookings/donations/staff/inventory) and real `dbAlerts`
+    // (models/Alert.js documents) — never hardcoded/mock rows. See
+    // buildUnifiedAlerts above for why these two are merged.
+    const unifiedAlerts = useMemo(
+        () => buildUnifiedAlerts(notifications, dbAlerts, readIds),
+        [notifications, dbAlerts, readIds]
+    );
+
+    const filteredAlerts = useMemo(() => {
+        const q = alertSearch.trim().toLowerCase();
+        return unifiedAlerts.filter(a => {
+            const searchMatch = !q
+                || a.title?.toLowerCase().includes(q)
+                || a.message?.toLowerCase().includes(q)
+                || a.rawType?.toLowerCase().includes(q)
+                || (a.raw?.details && JSON.stringify(a.raw.details).toLowerCase().includes(q));
+
+            const typeMatch = alertTypeFilter === 'All' || a.bucket === alertTypeFilter;
+
+            const statusMatch = alertStatusFilter === 'All'
+                || (alertStatusFilter === 'Unread' && !a.isRead)
+                || (alertStatusFilter === 'Read' && a.isRead);
+
+            const dateMatch = matchesAlertDateFilter(a.time, alertDateFilter);
+
+            return searchMatch && typeMatch && statusMatch && dateMatch;
+        });
+    }, [unifiedAlerts, alertSearch, alertTypeFilter, alertStatusFilter, alertDateFilter]);
+
+    const pagedAlerts = filteredAlerts.slice((alertPage - 1) * itemsPerPage, alertPage * itemsPerPage);
+
+    // Reset to page 1 whenever a filter/search changes, so the admin never
+    // lands on a now-empty page after narrowing the results.
+    useEffect(() => { setAlertPage(1); }, [alertSearch, alertTypeFilter, alertStatusFilter, alertDateFilter]);
+    // Clamp back into range if the result set shrinks out from under the
+    // current page (e.g. an alert gets marked read while "Unread" is active).
+    useEffect(() => {
+        const maxPage = Math.max(1, Math.ceil(filteredAlerts.length / itemsPerPage));
+        if (alertPage > maxPage) setAlertPage(maxPage);
+    }, [filteredAlerts.length, alertPage]);
+
+    const clearAlertFilters = () => {
+        setAlertSearch('');
+        setAlertTypeFilter('All');
+        setAlertStatusFilter('All');
+        setAlertDateFilter('All');
+    };
+
+    const combinedUnreadCount = useMemo(
+        () => unifiedAlerts.filter(a => !a.isRead).length,
+        [unifiedAlerts]
+    );
+
+    // Marks a single real Alert document read via the existing (previously
+    // unused by this UI) PUT /api/alerts/:id/read route, then reflects it
+    // in local state so the row + counts update immediately without
+    // waiting for the next Refresh.
+    const markDbAlertRead = async (alertId) => {
+        const res = await fetchApi(`/alerts/${alertId}/read`, { method: 'PUT' });
+        if (res.success) {
+            setDbAlerts(prev => prev.map(a => a._id === alertId ? { ...a, isRead: true } : a));
+        }
+    };
+
+    // "Mark All Read" on the Alerts page marks BOTH sources: the existing
+    // client-side markAllRead() for notifications, plus the existing
+    // (previously unused) PUT /api/alerts/mark-all-read route for real
+    // Alert documents. The topbar bell dropdown's own "Mark all read"
+    // button is untouched and still only affects `notifications`.
+    const markAllAlertsRead = async () => {
+        markAllRead();
+        const res = await fetchApi('/alerts/mark-all-read', { method: 'PUT' });
+        if (res.success) {
+            setDbAlerts(prev => prev.map(a => ({ ...a, isRead: true })));
+        }
     };
 
     const filteredStaff = useMemo(() => {
@@ -1592,110 +1788,114 @@ const AdminDashboard = () => {
     // Alerts Tab
     const renderAlerts = () => (
         <div className="card-white" style={{ background: 'white', borderRadius: 16, overflow: 'hidden' }}>
-            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <h5 style={{ margin: 0 }}>
                     Alerts &amp; Notifications
-                    {unreadCount > 0 && <span style={{ marginLeft: 10, background: '#dc3545', color: '#fff', padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem' }}>{unreadCount}</span>}
+                    {combinedUnreadCount > 0 && <span style={{ marginLeft: 10, background: '#dc3545', color: '#fff', padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem' }}>{combinedUnreadCount}</span>}
                 </h5>
                 <div style={{ display: 'flex', gap: 8 }}>
-                    {unreadCount > 0 && (
-                        <button className="btn-outline-sm" onClick={markAllRead} style={{ padding: '6px 12px' }}><FaCheck /> Mark All Read</button>
+                    {combinedUnreadCount > 0 && (
+                        <button className="btn-outline-sm" onClick={markAllAlertsRead} style={{ padding: '6px 12px' }}><FaCheck /> Mark All Read</button>
                     )}
                     <button className="btn-primary-sm" onClick={handleRefresh} style={{ padding: '6px 12px' }}><FaSync /> Refresh</button>
                 </div>
             </div>
 
-            {notifications.length === 0 && dbAlerts.length === 0 ? (
+            {/* Filters — search, type, status, date. Work together (AND), and
+                operate over the real combined alert list above, never a
+                hardcoded set. */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: '#FFF8F3' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+                    <FaSearch style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#B58968', fontSize: '.8rem' }} />
+                    <input
+                        value={alertSearch}
+                        onChange={e => setAlertSearch(e.target.value)}
+                        placeholder="Search by title, message, medication, resident…"
+                        style={{ width: '100%', padding: '8px 12px 8px 32px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.85rem', background: '#fff', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" }}
+                    />
+                </div>
+                <select value={alertTypeFilter} onChange={e => setAlertTypeFilter(e.target.value)} style={alertSelectStyle}>
+                    {ALERT_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o === 'All' ? 'All Types' : o}</option>)}
+                </select>
+                <select value={alertStatusFilter} onChange={e => setAlertStatusFilter(e.target.value)} style={alertSelectStyle}>
+                    {ALERT_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o === 'All' ? 'All Status' : o}</option>)}
+                </select>
+                <select value={alertDateFilter} onChange={e => setAlertDateFilter(e.target.value)} style={alertSelectStyle}>
+                    {ALERT_DATE_OPTIONS.map(o => <option key={o} value={o}>{o === 'All' ? 'All Dates' : o}</option>)}
+                </select>
+                <button className="btn-outline-sm" onClick={clearAlertFilters} style={{ padding: '7px 14px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FaFilter size={11} /> Clear Filters
+                </button>
+            </div>
+
+            {filteredAlerts.length === 0 ? (
                 <div className="empty-state" style={{ textAlign: 'center', padding: '60px 20px' }}>
                     <FaBell style={{ fontSize: '3rem', color: '#E8D6CC', marginBottom: 12 }} />
-                    <p style={{ color: '#7A5C4E' }}>System is running smoothly. No alerts at this time.</p>
+                    <p style={{ color: '#7A5C4E' }}>
+                        {unifiedAlerts.length === 0
+                            ? 'System is running smoothly. No alerts at this time.'
+                            : 'No alerts match your current filters.'}
+                    </p>
+                    {unifiedAlerts.length > 0 && (
+                        <button className="btn-outline-sm" onClick={clearAlertFilters} style={{ marginTop: 12 }}>Clear Filters</button>
+                    )}
                 </div>
             ) : (
-                <div className="alerts-list-full">
-                    {notifications.map(n => {
-                        const meta = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
-                        const isRead = readIds.has(n.id);
-                        const targetSection = meta.section;
-                        return (
-                            <div key={n.id}
-                                className={`alert-row ${isRead ? 'read' : 'unread'}`}
-                                style={{
-                                    cursor: targetSection ? 'pointer' : 'default',
-                                    padding: '16px 20px',
-                                    borderBottom: '1px solid #E8D6CC',
-                                    background: isRead ? '#fff' : '#FFF8F3',
-                                    transition: 'background 0.2s',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 12
-                                }}
-                                onClick={() => {
-                                    markRead(n.id);
-                                    if (targetSection) {
-                                        setActiveSection(targetSection);
+                <>
+                    <div className="alerts-list-full">
+                        {pagedAlerts.map(a => {
+                            const isRead = a.isRead;
+                            const isClickable = (a.source === 'notification' && a.section) || (a.source === 'db' && !isRead);
+                            const handleRowClick = () => {
+                                if (a.source === 'notification') {
+                                    markRead(a.raw.id);
+                                    if (a.section) {
+                                        setActiveSection(a.section);
                                         setNotifOpen(false);
                                         setSearchQuery('');
                                     }
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.background = '#FFF0E6'}
-                                onMouseLeave={e => e.currentTarget.style.background = isRead ? '#fff' : '#FFF8F3'}
-                            >
-                                <div className="alert-row-icon" style={{ background: meta.color + '20', color: meta.color, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                                    {meta.icon}
-                                </div>
-                                <div className="alert-row-body" style={{ flex: 1 }}>
-                                    <strong style={{ display: 'block', marginBottom: 4 }}>{n.title}</strong>
-                                    <span style={{ fontSize: '0.85rem', color: '#555' }}>{n.body}</span>
-                                    {targetSection && <small style={{ color: meta.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to view →</small>}
-                                </div>
-                                <div className="alert-row-meta" style={{ textAlign: 'right' }}>
-                                    <span className="alert-type-tag" style={{ background: meta.color + '18', color: meta.color, padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', display: 'inline-block', marginBottom: 6 }}>{meta.label}</span>
-                                    <br />
-                                    <span className="alert-time" style={{ fontSize: '0.7rem', color: '#999' }}>{timeAgo(n.time)}</span>
-                                </div>
-                                {!isRead && <div className="unread-dot" style={{ width: 8, height: 8, background: meta.color, borderRadius: '50%' }} />}
-                            </div>
-                        );
-                    })}
-
-                    {dbAlerts.length > 0 && (
-                        <>
-                            <div style={{ padding: '8px 20px', background: '#F5F0EB', fontSize: '0.72rem', fontWeight: 700, color: '#7A5C4E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                System Alerts
-                            </div>
-                            {dbAlerts.map(a => {
-                                const typeColors = { OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d' };
-                                const color = typeColors[a.type] || '#6c757d';
-                                return (
-                                    <div key={a._id}
-                                        style={{
-                                            padding: '16px 20px',
-                                            borderBottom: '1px solid #E8D6CC',
-                                            background: a.isRead ? '#fff' : '#FFF8F3',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12,
-                                        }}
-                                    >
-                                        <div style={{ background: color + '20', color, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
-                                            <FaBell />
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <strong style={{ display: 'block', marginBottom: 4 }}>{a.title}</strong>
-                                            <span style={{ fontSize: '0.85rem', color: '#555' }}>{a.message}</span>
-                                        </div>
-                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                            <span style={{ background: color + '18', color, padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', display: 'inline-block', marginBottom: 6 }}>{a.type}</span>
-                                            <br />
-                                            <span style={{ fontSize: '0.7rem', color: '#999' }}>{timeAgo(a.createdAt)}</span>
-                                        </div>
-                                        {!a.isRead && <div style={{ width: 8, height: 8, background: color, borderRadius: '50%', flexShrink: 0 }} />}
+                                } else if (!isRead) {
+                                    markDbAlertRead(a.raw._id);
+                                }
+                            };
+                            return (
+                                <div key={a.uid}
+                                    className={`alert-row ${isRead ? 'read' : 'unread'}`}
+                                    style={{
+                                        cursor: isClickable ? 'pointer' : 'default',
+                                        padding: '16px 20px',
+                                        borderBottom: '1px solid #E8D6CC',
+                                        background: isRead ? '#fff' : '#FFF8F3',
+                                        transition: 'background 0.2s',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 12
+                                    }}
+                                    onClick={handleRowClick}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#FFF0E6'}
+                                    onMouseLeave={e => e.currentTarget.style.background = isRead ? '#fff' : '#FFF8F3'}
+                                >
+                                    <div className="alert-row-icon" style={{ background: a.color + '20', color: a.color, width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
+                                        {a.icon || <FaBell />}
                                     </div>
-                                );
-                            })}
-                        </>
-                    )}
-                </div>
+                                    <div className="alert-row-body" style={{ flex: 1, minWidth: 0 }}>
+                                        <strong style={{ display: 'block', marginBottom: 4 }}>{a.title}</strong>
+                                        <span style={{ fontSize: '0.85rem', color: '#555' }}>{a.message}</span>
+                                        {a.source === 'notification' && a.section && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to view →</small>}
+                                        {a.source === 'db' && !isRead && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to mark as read</small>}
+                                    </div>
+                                    <div className="alert-row-meta" style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        <span className="alert-type-tag" style={{ background: a.color + '18', color: a.color, padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', display: 'inline-block', marginBottom: 6 }}>{a.typeLabel}</span>
+                                        <br />
+                                        <span className="alert-time" style={{ fontSize: '0.7rem', color: '#999' }}>{timeAgo(a.time)}</span>
+                                    </div>
+                                    {!isRead && <div className="unread-dot" style={{ width: 8, height: 8, background: a.color, borderRadius: '50%', flexShrink: 0 }} />}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {renderPagination(filteredAlerts.length, alertPage, setAlertPage, itemsPerPage)}
+                </>
             )}
         </div>
     );
