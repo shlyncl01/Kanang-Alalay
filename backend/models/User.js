@@ -18,8 +18,30 @@ const userSchema = new mongoose.Schema({
     },
     shift: {
         type: String,
-        enum: ['morning', 'afternoon', 'night', 'flexible', 'rotating'],
-        default: 'morning'
+        enum: ['DAY', 'NIGHT', 'FLEXIBLE'],
+        default: 'DAY',
+        validate: {
+            validator: function(value) {
+                // Admins must have FLEXIBLE shift
+                if (this.role === 'admin' && value !== 'FLEXIBLE') {
+                    throw new Error('Admin users must be assigned FLEXIBLE shift');
+                }
+                // Non-admins (HC, CG) cannot have FLEXIBLE shift
+                if (this.role !== 'admin' && value === 'FLEXIBLE') {
+                    throw new Error('Only Admin users can have FLEXIBLE shift');
+                }
+                return true;
+            },
+            message: 'Invalid shift assignment for this role'
+        }
+    },
+    shiftStartTime: {
+        type: String,
+        default: null
+    },
+    shiftEndTime: {
+        type: String,
+        default: null
     },
     employeeId: { type: String, sparse: true },
     hireDate: { type: Date, default: Date.now },
@@ -77,7 +99,7 @@ const userSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Auto-generate staffId before saving
+// Auto-generate staffId and set shift times before saving
 userSchema.pre('save', async function() {
     if (!this.staffId) {
         const year = new Date().getFullYear();
@@ -89,6 +111,18 @@ userSchema.pre('save', async function() {
         const prefix = prefixMap[this.role] || 'CG';
         const count = await mongoose.model('User').countDocuments({ role: this.role });
         this.staffId = `${prefix}-${year}-${String(count + 1).padStart(4, '0')}`;
+    }
+    
+    // Set shift start/end times based on shift type
+    const shiftTimes = {
+        'DAY': { start: '07:00', end: '19:00' },
+        'NIGHT': { start: '19:00', end: '07:00' },
+        'FLEXIBLE': { start: null, end: null }
+    };
+    
+    if (this.shift && shiftTimes[this.shift]) {
+        this.shiftStartTime = shiftTimes[this.shift].start;
+        this.shiftEndTime = shiftTimes[this.shift].end;
     }
 });
 
