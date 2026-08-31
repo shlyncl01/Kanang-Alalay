@@ -88,7 +88,7 @@ mongoose.connect(process.env.MONGODB_URI, {
                 isFirstLogin: false,
                 needsProfileUpdate: false,
                 status: 'active',
-                shift: 'morning',
+                shift: 'FLEXIBLE',
                 department: 'Head Office'
             },
             {
@@ -104,7 +104,7 @@ mongoose.connect(process.env.MONGODB_URI, {
                 isFirstLogin: false,
                 needsProfileUpdate: false,
                 status: 'active',
-                shift: 'morning',
+                shift: 'DAY',
                 department: 'Care Management'
             },
             {
@@ -120,7 +120,7 @@ mongoose.connect(process.env.MONGODB_URI, {
                 isFirstLogin: false,
                 needsProfileUpdate: false,
                 status: 'active',
-                shift: 'morning',
+                shift: 'DAY',
                 department: 'Ward A'
             }
         ];

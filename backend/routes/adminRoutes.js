@@ -206,7 +206,7 @@ router.post('/create-user-enhanced', async (req, res) => {
             email,
             phone = '',
             role = 'caregiver',
-            shift = 'morning',
+            shift = 'DAY',
             assignedFloor = '',
             assignedRoom = ''
         } = req.body;
