@@ -63,9 +63,9 @@ const ROLE_OPTIONS = [
 ];
 
 const SHIFTS = [
-    { key: 'DAY',      label: 'Day Shift',   time: '7:00 AM – 7:00 PM',   icon: '☀️' },
-    { key: 'NIGHT',    label: 'Night Shift', time: '7:00 PM – 7:00 AM',   icon: '🌙' },
-    { key: 'FLEXIBLE', label: 'Flexible',    time: 'Variable hours',     icon: '🔄' },
+    { key: 'DAY',      label: 'Day Shift',   time: '7:00 AM – 7:00 PM' },
+    { key: 'NIGHT',    label: 'Night Shift', time: '7:00 PM – 7:00 AM' },
+    { key: 'FLEXIBLE', label: 'Flexible',    time: 'Variable hours' },
 ];
 
 // ─── shift filtering (role-based) ─────────────────────────────────────────────
@@ -473,7 +473,7 @@ const AddStaffModal = ({ onClose, onAdded, existingPhones = [] }) => {
                                             }}
                                         >
                                             <div style={{ fontWeight: 700, fontSize: '.82rem', color: form.shift === s.key ? '#b85c2d' : '#1A0A00' }}>
-                                                {s.icon} {s.label}
+                                                {s.label}
                                             </div>
                                             <div style={{ fontSize: '.72rem', color: '#7A5C4E' }}>{s.time}</div>
                                         </button>
@@ -481,7 +481,7 @@ const AddStaffModal = ({ onClose, onAdded, existingPhones = [] }) => {
                                 </div>
                                 {role === 'admin' && (
                                     <div style={{ fontSize: '.75rem', color: '#28a745', marginTop: 8, fontStyle: 'italic' }}>
-                                        ℹ️ Admin accounts are automatically assigned Flexible schedules.
+                                        Admin accounts are automatically assigned Flexible schedules.
                                     </div>
                                 )}
                             </div>
@@ -498,7 +498,7 @@ const AddStaffModal = ({ onClose, onAdded, existingPhones = [] }) => {
                                     marginBottom: 16, fontSize: '.85rem',
                                     display: 'flex', gap: 8, alignItems: 'center',
                                 }}>
-                                    ⚠️ {apiErr}
+                                    {apiErr}
                                 </div>
                             )}
 
