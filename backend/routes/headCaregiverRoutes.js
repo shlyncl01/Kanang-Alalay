@@ -1042,39 +1042,43 @@ router.put('/schedule/:id/status', async (req, res) => {
                     });
                 }
 
-                // §3 — HC must have the medication assigned, with enough
-                // of it. Reported ahead of the atomic decrement purely so
-                // the error message can include the actual available
-                // quantity.
-                const assigned = await HCAssignedStock.findOne({ headCaregiverId: req.user._id, productId: product._id });
+                // §3 — the SHARED pool must have enough of this product.
+                // HCAssignedStock is now one row per productId, shared by
+                // every head_caregiver account (see models/HCAssignedStock.js)
+                // — this is no longer scoped to req.user._id. Reported ahead
+                // of the atomic decrement purely so the error message can
+                // include the actual available quantity.
+                const assigned = await HCAssignedStock.findOne({ productId: product._id });
                 const available = assigned ? assigned.quantity : 0;
                 if (available < administeredQuantity) {
                     await rollbackClaim();
                     return res.status(409).json({
                         success: false,
                         message: assigned
-                            ? `Insufficient stock: you have ${available} ${product.unit} of ${product.name} assigned, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
-                            : `${product.name} is not in your assigned stock. Administration was not recorded.`,
+                            ? `Insufficient stock: the shared pool has ${available} ${product.unit} of ${product.name}, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
+                            : `${product.name} is not in the shared stock pool. Administration was not recorded.`,
                     });
                 }
 
-                // §2/§7 — deduct atomically. The quantity:{$gte:...} guard
-                // means this can never drive the balance negative. Because
-                // the log claim above already serialized concurrent
-                // requests for the SAME dose down to a single winner, this
-                // guard now exists to protect against a DIFFERENT kind of
-                // race — e.g. this HC's stock being spent from another
-                // dose/administration at the same moment.
+                // §2/§7 — deduct atomically from the SHARED pool (keyed by
+                // productId only, no headCaregiverId). The
+                // quantity:{$gte:...} guard means this can never drive the
+                // balance negative. Because the log claim above already
+                // serialized concurrent requests for the SAME dose down to
+                // a single winner, this guard now exists to protect
+                // against a DIFFERENT kind of race — e.g. the pool being
+                // spent from another dose/administration, by this HC or
+                // any other HC, at the same moment.
                 const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
-                    { headCaregiverId: req.user._id, productId: product._id, quantity: { $gte: administeredQuantity } },
-                    { $inc: { quantity: -administeredQuantity } },
+                    { productId: product._id, quantity: { $gte: administeredQuantity } },
+                    { $inc: { quantity: -administeredQuantity }, $set: { lastUpdatedBy: req.user._id } },
                     { new: true }
                 );
                 if (!updatedAssignedStock) {
                     await rollbackClaim();
                     return res.status(409).json({
                         success: false,
-                        message: 'Your assigned stock changed while processing this administration. Please try again.',
+                        message: 'The shared stock pool changed while processing this administration. Please try again.',
                     });
                 }
 
@@ -1093,9 +1097,9 @@ router.put('/schedule/:id/status', async (req, res) => {
                     }
                 }
 
-                // Part 8 §3 — notify the administering caregiver (the
-                // same person whose HCAssignedStock was just deducted
-                // above) that the dose went through. Uses the project's
+                // Part 8 §3 — notify the administering caregiver (whose
+                // action just deducted from the shared HCAssignedStock
+                // pool above) that the dose went through. Uses the project's
                 // existing Alert system (models/Alert.js,
                 // routes/alertRoutes.js) rather than a separate
                 // notification store — "medication-administered" was
@@ -1199,7 +1203,7 @@ router.delete('/schedule/:id', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// HC ASSIGNED STOCK — SINGLE SOURCE OF TRUTH  (Part 4, unified)
+// HC ASSIGNED STOCK — SINGLE SHARED POOL  (Part 4, unified + shared)
 // ─────────────────────────────────────────────────────────────
 // PART 4 FIX: there used to be two competing numbers for "how much stock
 // does this HC have" — HCAssignedStock (new, Part 4) and a filtered read
@@ -1208,14 +1212,22 @@ router.delete('/schedule/:id', async (req, res) => {
 // meant the same real-world quantity could show two different values in
 // the same dashboard, and neither was authoritative.
 //
-// HCAssignedStock is now the ONLY place an HC's own quantity is stored or
-// read from anywhere in this router. shapeAssignedStockRow()/loadAssigned
-// Stock() below are the single code path both /assigned-stock (full
-// balance) and /inventory (medication/medical_supplies subset, same rows)
-// go through — there is no second query, no second stored quantity, and
-// no independent status calculation. Admin Central Stock (Inventory)
-// remains a completely separate concept and is intentionally never read
-// by either of these two routes.
+// LATER CHANGE (shared pool): HCAssignedStock was originally ALSO scoped
+// per headCaregiverId — i.e. each HC had a private balance for a given
+// Product. Per updated requirements, it is now ONE POOL PER PRODUCT
+// shared by every head_caregiver account: there is no headCaregiverId
+// filter anywhere below, so every HC's dashboard reads and draws from the
+// exact same row/quantity for a given Product (see
+// models/HCAssignedStock.js for the schema-level change).
+//
+// HCAssignedStock is still the ONLY place this stock quantity is stored
+// or read from anywhere in this router. shapeAssignedStockRow()/
+// loadAssignedStock() below are the single code path both /assigned-stock
+// (full pool) and /inventory (medication/medical_supplies subset, same
+// rows) go through — there is no second query, no second stored
+// quantity, and no independent status calculation. Admin Central Stock
+// (Inventory) remains a completely separate concept and is intentionally
+// never read by either of these two routes.
 function shapeAssignedStockRow(row) {
     const p = row.productId;
     return {
@@ -1230,8 +1242,11 @@ function shapeAssignedStockRow(row) {
     };
 }
 
-async function loadAssignedStock(headCaregiverId, categories) {
-    const rows = await HCAssignedStock.find({ headCaregiverId })
+// No headCaregiverId parameter anymore — every HC sees the same shared
+// rows. `categories` still filters which Product categories are included
+// (used by /inventory below to show only medication/medical_supplies).
+async function loadAssignedStock(categories) {
+    const rows = await HCAssignedStock.find({})
         .populate('productId', 'name category unit minimumStockLevel')
         .sort({ createdAt: 1 });
 
@@ -1243,24 +1258,27 @@ async function loadAssignedStock(headCaregiverId, categories) {
         .map(shapeAssignedStockRow);
 }
 
-// GET HC ASSIGNED STOCK — "My Assigned Stock" on the HC dashboard.
-// Every category, scoped to ONLY the logged-in HC's own balances. Never
-// another HC's rows, and never Admin Central Stock.
+// GET HC ASSIGNED STOCK — "Shared Stock" on the HC dashboard.
+// Every category, shared across ALL head_caregiver accounts — every HC
+// sees and draws from the exact same quantity per Product. Never scoped
+// to req.user._id, and never Admin Central Stock.
 //
 // Read-only by design: there is no POST/PUT/PATCH/DELETE on
 // /assigned-stock anywhere in this router, so a head_caregiver can never
-// manually change their own quantity from here. Quantities will only ever
-// move automatically once the stock request/approval/transfer workflow
-// (Part 5 and Part 6) is built — that future handler would look like:
+// manually change the shared quantity from here. Quantities move
+// automatically via medication administration (PUT /schedule/:id/status
+// above) and, once built, the stock request/approval/transfer workflow
+// (Part 5 and Part 6) — that future handler would look like:
 //   await HCAssignedStock.findOneAndUpdate(
-//     { headCaregiverId, productId },
-//     { $inc: { quantity: approvedAmount } },
+//     { productId },
+//     { $inc: { quantity: approvedAmount }, $set: { lastUpdatedBy: headCaregiverId } },
 //     { upsert: true }
 //   );
-// which is intentionally NOT implemented yet.
+// which is intentionally NOT implemented yet. Note the absence of
+// headCaregiverId in the filter — that's what keeps this a shared pool.
 router.get('/assigned-stock', async (req, res) => {
     try {
-        const data = await loadAssignedStock(req.user._id);
+        const data = await loadAssignedStock();
         res.json({ success: true, data });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -1269,15 +1287,16 @@ router.get('/assigned-stock', async (req, res) => {
 
 // GET INVENTORY — "Medication Inventory Status" on the HC dashboard.
 // PART 4 FIX: this used to independently query Admin Central Stock
-// (Inventory batches). It now reads the exact same HCAssignedStock rows
-// as /assigned-stock above (via the same loadAssignedStock() call),
+// (Inventory batches). It now reads the exact same shared HCAssignedStock
+// rows as /assigned-stock above (via the same loadAssignedStock() call),
 // filtered down to medication/medical_supplies — i.e. this is a VIEW over
-// the single HC Assigned Stock source, not a second stock number. If an
-// item exists in HC Assigned Stock, its quantity here is always identical
-// to its quantity in "My Assigned Stock", because it's the same row.
+// the single shared HC Assigned Stock pool, not a second stock number. If
+// an item exists in HC Assigned Stock, its quantity here is always
+// identical to its quantity in "Shared Stock", because it's the same row,
+// and identical across every HC's dashboard.
 router.get('/inventory', async (req, res) => {
     try {
-        const data = await loadAssignedStock(req.user._id, ['medication', 'medical_supplies']);
+        const data = await loadAssignedStock(['medication', 'medical_supplies']);
         res.json({ success: true, data });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

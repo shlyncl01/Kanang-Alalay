@@ -1337,8 +1337,9 @@ const HeadCaregiverDashboard = () => {
     // GET /head-caregiver/inventory route). It and `assignedStock` are two
     // views of the exact same underlying rows, never two separate numbers.
     const [inventory, setInventory] = useState([]);
-    // HC Assigned Stock — this HC's own stock balance. Single source of
-    // truth for both "My Assigned Stock" and "Medication Inventory Status".
+    // HC Assigned Stock — SHARED pool balance (same quantity across every
+    // head_caregiver account, not this HC's own). Single source of
+    // truth for both "Shared Stock" and "Medication Inventory Status".
     const [assignedStock, setAssignedStock] = useState([]);
     // Guards the Administer button against a fast double-click/double-tap
     // firing two overlapping PUT /schedule/:id/status requests for the
@@ -2328,7 +2329,7 @@ const HeadCaregiverDashboard = () => {
     };
 
     // ── SCREEN 4: HC ASSIGNED STOCK (Part 4) ────────────────────────────
-    // Read-only view of this HC's own stock balance. The "Medication
+    // Read-only view of the SHARED stock pool (same for every HC). The "Medication
     // Inventory Status" table (medication/medical_supplies subset of this
     // same HC Assigned Stock data) lives ONLY here on My Stock as of
     // Part 9 — it used to also be duplicated on the Medicines tab
@@ -2358,13 +2359,14 @@ const HeadCaregiverDashboard = () => {
             <div>
                 <div className="card-white mb-18">
                     <div className="card-header">
-                        <h5>My Assigned Stock</h5>
+                        <h5>Shared Stock</h5>
                         <RefreshBtn onClick={refreshStockPage} title="Refresh stock tables" />
                     </div>
                     <p style={{ margin: '0 0 14px', padding: '0 2px', color: '#7A5C4E', fontSize: '.85rem' }}>
-                        Your own stock balance, separate from Admin Central Stock. This is
-                        view-only — quantities change automatically once a stock request
-                        you submit is approved.
+                        One shared pool, visible to and drawn from by every Head Caregiver
+                        account — separate from Admin Central Stock. This is view-only —
+                        quantities change automatically when any HC administers a dose, or
+                        once a submitted stock request is approved.
                     </p>
                     <div className="table-scroll">
                         <table className="custom-table">
@@ -2383,7 +2385,7 @@ const HeadCaregiverDashboard = () => {
                                     <tr><td colSpan="6" className="text-center no-data-italic">
                                         {searchQuery
                                             ? `No results for "${searchQuery}".`
-                                            : 'No stock has been assigned to you yet.'}
+                                            : 'The shared stock pool is empty right now.'}
                                     </td></tr>
                                 ) : (
                                     pagedStock.map(item => {
@@ -2435,7 +2437,7 @@ const HeadCaregiverDashboard = () => {
                             <tbody>
                                 {filteredInventory.length === 0 ? (
                                     <tr><td colSpan="4" className="text-center no-data-italic">
-                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock assigned to you yet.'}
+                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock in the shared pool yet.'}
                                     </td></tr>
                                 ) : (
                                     pagedInventory2.map(item => {
@@ -2554,7 +2556,7 @@ const HeadCaregiverDashboard = () => {
                             { key: 'home', icon: <FaHome />, label: 'Home' },
                             { key: 'residents', icon: <FaUsers />, label: 'Residents' },
                             { key: 'medicines', icon: <FaPills />, label: 'Medicines', badge: stats.overdue },
-                            { key: 'stock', icon: <FaBoxOpen />, label: 'My Stock' },
+                            { key: 'stock', icon: <FaBoxOpen />, label: 'Shared Stock' },
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => { setSection(key); setMobileMenuOpen(false); }}>
                                 {icon} {label}
@@ -2579,7 +2581,7 @@ const HeadCaregiverDashboard = () => {
                                         placeholder={
                                             activeSection === 'residents' ? 'Search residents, rooms, nickname, conditions…' :
                                                 activeSection === 'medicines' ? 'Search medications, residents…' :
-                                                    activeSection === 'stock' ? 'Search your assigned stock…' :
+                                                    activeSection === 'stock' ? 'Search the shared stock pool…' :
                                                         'Search…'
                                         }
                                         value={searchQuery}
