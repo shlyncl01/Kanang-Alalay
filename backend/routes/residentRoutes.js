@@ -6,6 +6,22 @@ const MedicationLog = require('../models/MedicationLog');
 const VitalsLog = require('../models/VitalsLog');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { notifyCaregiverAndOverseers } = require('../services/alertService');
+const { isOnDuty } = require('../utils/shiftUtils');
+
+// A caregiver may only administer medication while on duty — re-checked
+// fresh against the real clock on every request. Scanning a medication for
+// info is unaffected; this only guards the actual administer action.
+function requireOnDuty(req, res) {
+    if (!isOnDuty(req.user?.shift)) {
+        res.status(403).json({
+            success: false,
+            message: 'This action is not available while off duty.',
+            accountStatus: 'off_duty'
+        });
+        return false;
+    }
+    return true;
+}
 
 function parseVitalNumber(value, label, min, max, errors) {
     if (value === undefined || value === null) return null;
@@ -189,6 +205,7 @@ router.delete('/:id/care-notes/:noteId', protect, async (req, res) => {
 
 router.post('/:id/administer/:medId', protect, async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const resident = await Resident.findById(req.params.id);
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
 

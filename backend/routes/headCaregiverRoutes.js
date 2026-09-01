@@ -21,6 +21,7 @@ const ComplianceHistory = require('../models/ComplianceHistory');
 const { getStockStatus } = require('../utils/stockStatus');
 const { protect } = require('../middleware/authMiddleware');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
+const { isOnDuty } = require('../utils/shiftUtils');
 
 router.use(protect);
 
@@ -33,6 +34,23 @@ function requireHeadCaregiver(req, res) {
         res.status(403).json({
             success: false,
             message: 'Only a head caregiver can assign caregivers to residents.'
+        });
+        return false;
+    }
+    return true;
+}
+
+// Blocks the actions a head caregiver is only allowed to do while on duty
+// (residents CRUD, caregiver assignment, medication scheduling, stock
+// requests) — re-checked fresh against the real clock on every request
+// rather than something decided once at login, so it can't go stale if a
+// session outlives the caregiver's shift.
+function requireOnDuty(req, res) {
+    if (!isOnDuty(req.user?.shift)) {
+        res.status(403).json({
+            success: false,
+            message: 'This action is not available while off duty.',
+            accountStatus: 'off_duty'
         });
         return false;
     }
@@ -236,8 +254,9 @@ router.get('/residents', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.post('/residents', async (req, res) => {
     try {
-        const { 
-            firstName, lastName, middleName, nickname, age, gender, 
+        if (!requireOnDuty(req, res)) return;
+        const {
+            firstName, lastName, middleName, nickname, age, gender,
             roomNumber, floor, bed, conditions, 
             primaryCaregiverId,  // ← ADD THIS - the ObjectId from frontend
             primaryCaregiver,    // ← Keep for backward compatibility
@@ -364,6 +383,7 @@ router.post('/residents', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.put('/residents/:id', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         // primaryCaregiver arrives from the client as a display NAME, not an
         // ID — it must never be used to look up a caregiver. primaryCaregiverId
         // is the actual reference. Both are pulled out of `rest` so neither
@@ -454,6 +474,7 @@ function statusForDischargeReason(reason) {
 
 router.put('/residents/:id/discharge', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const { reason, causeOfDeath, destination, notes } = req.body;
 
         if (!DISCHARGE_REASONS.includes(reason)) {
@@ -523,6 +544,7 @@ router.get('/residents/discharged', async (req, res) => {
 async function assignCaregiverToResident(req, res) {
     try {
         if (!requireHeadCaregiver(req, res)) return;
+        if (!requireOnDuty(req, res)) return;
 
         const { caregiverId } = req.body;
         if (!caregiverId) {
@@ -791,6 +813,7 @@ router.get('/schedule/all', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.post('/schedule', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const {
             residentId, medicationId, scheduledTime,
             dosage, frequency, nextDose, notes
@@ -1132,6 +1155,7 @@ router.put('/schedule/:id/status', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.put('/schedule/:id', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const { scheduledTime, dosage, notes, nextDose, frequency } = req.body;
         if (dosage !== undefined && !String(dosage).trim()) {
             return res.status(400).json({ success: false, message: 'Dosage is required.' });
@@ -1159,6 +1183,7 @@ router.put('/schedule/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.delete('/schedule/:id', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const log = await MedicationLog.findById(req.params.id);
         if (!log) return res.status(404).json({ success: false, message: 'Medication log not found.' });
 
@@ -1309,6 +1334,7 @@ router.get('/products', async (req, res) => {
 // Admin catalog, by bypassing the frontend dropdown.
 router.post('/inventory/request', async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const { productId, quantity, reason } = req.body;
 
         // ── Validation (backend copy — frontend also validates, but per

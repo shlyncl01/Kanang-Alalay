@@ -1383,12 +1383,46 @@ const HeadCaregiverDashboard = () => {
     const PER = 5; // rows per page, applied to every paginated table
 
     const shiftLabel = {
-        morning: 'Morning (6AM–2PM)',
-        afternoon: 'Afternoon (2PM–10PM)',
-        night: 'Night (10PM–6AM)',
-        flexible: 'Flexible',
-        rotating: 'Rotating'
-    }[user?.shift] || 'Morning (6AM–2PM)';
+        DAY: 'Day (7AM–7PM)',
+        NIGHT: 'Night (7PM–7AM)',
+        FLEXIBLE: 'Flexible',
+    }[user?.shift] || 'Day (7AM–7PM)';
+
+    // Matches backend/utils/shiftUtils.js — kept in sync manually since the
+    // frontend and backend are separate apps with no shared package. This is
+    // a UX convenience only (hides/disables buttons, shows the off-duty
+    // notice); the backend re-checks the same thing on every request, so it
+    // stays correct even if this copy ever drifts. Uses raw UTC-offset math
+    // rather than toLocaleString/hour12, which some ICU builds mis-render as
+    // hour "24" at midnight instead of "0".
+    const onDuty = (() => {
+        if (user?.shift !== 'DAY' && user?.shift !== 'NIGHT') return true;
+        const manilaNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        const minutes = manilaNow.getUTCHours() * 60 + manilaNow.getUTCMinutes();
+        const isDayWindow = minutes >= 7 * 60 && minutes < 19 * 60;
+        return user.shift === 'DAY' ? isDayWindow : !isDayWindow;
+    })();
+
+    // Actions a head caregiver may only take while on duty — attempting one
+    // off duty shows the notice instead of opening the modal. The backend
+    // enforces the same rule independently on each of these endpoints, so
+    // this is UX only, not the real security boundary.
+    const ON_DUTY_ONLY_MODALS = new Set([
+        'addResident', 'editResident', 'discharge', 'assignCaregiver',
+        'addSchedule', 'editSchedule', 'deleteMedication', 'requestStock',
+    ]);
+    const openModal = (next) => {
+        if (next?.type && ON_DUTY_ONLY_MODALS.has(next.type) && !onDuty) {
+            toast('Not available while off duty.', 'error');
+            return;
+        }
+        setModal(next);
+    };
+
+    // One-time notice for the current session — captured from onDuty at the
+    // moment the dashboard mounts, so dismissing it doesn't need to be
+    // re-shown just because a re-render happens to run this component again.
+    const [showOffDutyNotice, setShowOffDutyNotice] = useState(() => !onDuty);
 
     const toast = useCallback((msg, type = 'success') => {
         const id = Date.now();
@@ -1938,9 +1972,9 @@ const HeadCaregiverDashboard = () => {
                     <h6>Quick Actions</h6>
                     <div className="quick-actions-grid">
                         {[
-                            { icon: <FaPlus />, label: 'Add Medication', action: () => setModal({ type: 'addSchedule' }) },
-                            { icon: <FaUsers />, label: 'Add Resident', action: () => setModal({ type: 'addResident' }) },
-                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => setModal({ type: 'requestStock' }) },
+                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }) },
+                            { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }) },
+                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }) },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
                             { icon: <FaSync />, label: 'Refresh Data', action: handleRefresh },
                         ].map((a, i) => (
@@ -2005,7 +2039,7 @@ const HeadCaregiverDashboard = () => {
                             <option value="All">Caregiver: All</option>
                             {caregivers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                         </select>
-                        <button className="btn-primary-sm" onClick={() => setModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
                     </div>
                 </div>
 
@@ -2073,21 +2107,21 @@ const HeadCaregiverDashboard = () => {
                                             </button>
                                             <button
                                                 className="res-action-icon"
-                                                onClick={() => setModal({type:'assignCaregiver',data:r})}
+                                                onClick={() => openModal({type:'assignCaregiver',data:r})}
                                                 title="Assign Caregiver"
                                             >
                                                 <FaUserMd />
                                             </button>
                                             <button
                                                 className="res-action-icon"
-                                                onClick={() => setModal({type:'editResident',data:r})}
+                                                onClick={() => openModal({type:'editResident',data:r})}
                                                 title="Edit Resident"
                                             >
                                                 <FaEdit />
                                             </button>
                                             <button
                                                 className="res-action-icon res-action-icon-danger"
-                                                onClick={() => setModal({type:'discharge',data:r})}
+                                                onClick={() => openModal({type:'discharge',data:r})}
                                                 title="Remove Resident"
                                                 style={{ color: '#C0392B' }}
                                             >
@@ -2173,7 +2207,7 @@ const HeadCaregiverDashboard = () => {
                     </select>
                     <div className="med-action-btns">
                         <RefreshBtn onClick={refreshMedicinesPage} title="Refresh medication tables" />
-                        <button className="btn-primary-sm" onClick={() => setModal({ type: 'addSchedule' })}><FaPlus /> Add Medication</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })}><FaPlus /> Add Medication</button>
                     </div>
                 </div>
 
@@ -2266,9 +2300,9 @@ const HeadCaregiverDashboard = () => {
                                                 <td>
                                                     <ActionMenu
                                                         onViewHistory={() => setModal({ type: 'history', data: residents.find(r => r.name === grp.name) || { _id: m.residentId, name: grp.name } })}
-                                                        onAddMedication={() => setModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
-                                                        onEditSchedule={() => setModal({ type: 'editSchedule', data: m })}
-                                                        onDelete={() => setModal({ type: 'deleteMedication', data: m })}
+                                                        onAddMedication={() => openModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
+                                                        onEditSchedule={() => openModal({ type: 'editSchedule', data: m })}
+                                                        onDelete={() => openModal({ type: 'deleteMedication', data: m })}
                                                     />
                                                 </td>
                                             </tr>
@@ -2442,7 +2476,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>My Stock Requests</h5>
-                        <button className="btn-primary-sm" onClick={() => setModal({ type: 'requestStock' })}>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'requestStock' })}>
                             <FaBoxOpen /> Request Stock
                         </button>
                     </div>
@@ -2680,6 +2714,26 @@ const HeadCaregiverDashboard = () => {
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} onSubmitted={refreshStockRequests} />}
+
+            {/* Off Duty Notice */}
+            {showOffDutyNotice && (
+                <div className="modal-overlay" style={{ zIndex: 10002 }}>
+                    <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
+                        <div className="logout-confirm-header">
+                            <FaClock className="logout-confirm-icon" />
+                            <h4>You're Off Duty</h4>
+                        </div>
+                        <p className="logout-confirm-msg">
+                            You can still view residents, schedules, and inventory, but actions like adding/editing residents,
+                            assigning caregivers, scheduling medications, and requesting stock are only available while on duty
+                            ({shiftLabel}).
+                        </p>
+                        <div className="modal-footer" style={{ padding: '14px 0 0', margin: 0 }}>
+                            <button className="btn-logout-confirm" onClick={() => setShowOffDutyNotice(false)}>Got It</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Logout Confirm */}
             {showLogoutConfirm && (

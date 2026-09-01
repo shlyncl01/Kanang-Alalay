@@ -9,6 +9,23 @@ const HCAssignedStock = require('../models/HCAssignedStock');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 const { getManilaDayBounds, parseManilaDateTime } = require('../utils/dateHelpers');
 const { notifyCaregiverAndOverseers } = require('../services/alertService');
+const { isOnDuty } = require('../utils/shiftUtils');
+
+// A caregiver may only administer medication while on duty — re-checked
+// fresh against the real clock on every request. Looking up drug info via
+// the scanner/voice assistant is unaffected; this only guards the actual
+// administer action.
+function requireOnDuty(req, res) {
+    if (!isOnDuty(req.user?.shift)) {
+        res.status(403).json({
+            success: false,
+            message: 'This action is not available while off duty.',
+            accountStatus: 'off_duty'
+        });
+        return false;
+    }
+    return true;
+}
 
 // Get all medications
 router.get('/', authMiddleware, async (req, res) => {
@@ -474,6 +491,7 @@ const normalizeProductName = (name) => String(name || '').trim().toLowerCase().r
 // who holds the stock the way it is on the web "Administer" flow.
 router.post('/administer/:logId', authMiddleware, async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
         const { verificationMethod, scanData, notes } = req.body;
         const log = await MedicationLog.findById(req.params.logId);
 
