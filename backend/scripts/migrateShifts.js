@@ -71,8 +71,12 @@ const migrateShifts = async () => {
                 if (user.role === 'admin') {
                     newShift = 'FLEXIBLE';
                 } else {
-                    // Map old shift to new shift
+                    // Map old shift to new shift. A non-admin whose old
+                    // value was literally 'flexible' would map to FLEXIBLE
+                    // here, which the User model rejects (only Admins can be
+                    // FLEXIBLE) — fall back to DAY for non-admins instead.
                     newShift = SHIFT_MAP[oldShift] || 'DAY';
+                    if (newShift === 'FLEXIBLE') newShift = 'DAY';
                 }
 
                 // Set shift times
