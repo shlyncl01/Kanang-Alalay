@@ -1,16 +1,29 @@
 // StaffRosterTab.js - COMPLETE FIXED VERSION
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
-    FaSun, FaCloudSun, FaMoon, FaPrint, FaSync, FaPhone, FaEnvelope, 
+    FaSun, FaUserShield, FaMoon, FaPrint, FaSync, FaPhone, FaEnvelope, 
     FaTimes, FaCalendarAlt, FaFilter, FaSearch, FaChevronLeft, FaChevronRight,
     FaEye
 } from 'react-icons/fa';
 
+// The 3 shift types used across the Staff Roster page.
+// DAY and NIGHT are fixed 12-hour windows; FLEXIBLE is reserved for Admin
+// users, whose hours aren't a fixed block, so its "time" is shown as "Admin".
 const SHIFTS = [
-    { key: 'morning', label: 'Morning Shift', time: '6:00 AM – 2:00 PM', icon: <FaSun />, color: '#F96B38' },
-    { key: 'afternoon', label: 'Afternoon Shift', time: '2:00 PM – 10:00 PM', icon: <FaCloudSun />, color: '#17a2b8' },
-    { key: 'night', label: 'Night Shift', time: '10:00 PM – 6:00 AM', icon: <FaMoon />, color: '#6f42c1' },
+    { key: 'DAY', label: 'Day Shift', time: '7:00 AM – 7:00 PM', icon: <FaSun />, color: '#F96B38' },
+    { key: 'NIGHT', label: 'Night Shift', time: '7:00 PM – 7:00 AM', icon: <FaMoon />, color: '#6f42c1' },
+    { key: 'FLEXIBLE', label: 'Flexible Shift', time: 'Admin', icon: <FaUserShield />, color: '#17a2b8' },
 ];
+
+// NIGHT shift (7:00 PM – 7:00 AM) crosses midnight, so "is this shift active
+// right now" can't use a simple start < now < end check — it has to treat
+// the window as wrapping past 12:00 AM (i.e. hour >= 19 OR hour < 7).
+const isShiftActiveNow = (shiftKey, now = new Date()) => {
+    const hour = now.getHours();
+    if (shiftKey === 'DAY') return hour >= 7 && hour < 19;       // 7:00 AM – 7:00 PM
+    if (shiftKey === 'NIGHT') return hour >= 19 || hour < 7;     // 7:00 PM – 7:00 AM (wraps midnight)
+    return false; // FLEXIBLE has no fixed window
+};
 
 const ROLES = ['all', 'admin', 'head_caregiver', 'caregiver'];
 const ROLE_LABEL = { admin: 'Admin', head_caregiver: 'Head Caregiver', caregiver: 'Caregiver' };
@@ -137,14 +150,29 @@ const StaffRosterTab = ({ staff = [], onRefresh, currentUser }) => {
         return filtered;
     }, [staff, roleFilter, searchQuery]);
     
-    // Assign shifts based on index
+    // Assign each staff member to one of the 3 shift types, reusing the
+    // existing staff/role data rather than introducing new fields:
+    // - Admins are always FLEXIBLE, regardless of anything stored on the
+    //   record — Flexible is Admin-only, so role wins.
+    // - Everyone else uses their stored `shift` field (DAY/NIGHT) when it's
+    //   present and valid; otherwise they're distributed evenly across
+    //   DAY/NIGHT so the roster always has something to display.
+    const DAY_NIGHT_SHIFTS = useMemo(() => SHIFTS.filter(s => s.key !== 'FLEXIBLE'), []);
+    const FLEXIBLE_SHIFT = useMemo(() => SHIFTS.find(s => s.key === 'FLEXIBLE'), []);
+
     const staffWithShifts = useMemo(() => {
-        return filteredStaff.map((m, idx) => ({
-            ...m,
-            shift: SHIFTS[idx % 3],
-            scheduleTime: SHIFTS[idx % 3].time,
-        }));
-    }, [filteredStaff]);
+        let nonAdminIdx = 0;
+        return filteredStaff.map((m) => {
+            if (m.role === 'admin') {
+                return { ...m, shift: FLEXIBLE_SHIFT, scheduleTime: FLEXIBLE_SHIFT.time };
+            }
+            const stored = (m.shift || '').toUpperCase();
+            const matched = DAY_NIGHT_SHIFTS.find(s => s.key === stored);
+            const shift = matched || DAY_NIGHT_SHIFTS[nonAdminIdx % DAY_NIGHT_SHIFTS.length];
+            nonAdminIdx += 1;
+            return { ...m, shift, scheduleTime: shift.time };
+        });
+    }, [filteredStaff, DAY_NIGHT_SHIFTS, FLEXIBLE_SHIFT]);
     
     // Shift counts
     const shiftCounts = useMemo(() => {
@@ -517,6 +545,11 @@ const StaffRosterTab = ({ staff = [], onRefresh, currentUser }) => {
                             <div style={{ fontSize: 48, fontWeight: 'bold', color: '#1A0A00', marginBottom: 8 }}>{shift.count}</div>
                             <div style={{ fontWeight: 700, color: shift.color, marginBottom: 6, fontSize: '1.1rem' }}>{shift.label}</div>
                             <div style={{ fontSize: 12, color: '#7A5C4E' }}>{shift.time}</div>
+                            {isShiftActiveNow(shift.key) && (
+                                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: '#28a745' }}>
+                                    ● On duty now
+                                </div>
+                            )}
                             <div style={{ 
                                 marginTop: 18, 
                                 fontSize: 12, 
