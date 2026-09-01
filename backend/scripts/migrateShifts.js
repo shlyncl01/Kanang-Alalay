@@ -21,11 +21,11 @@ const User = require('../models/User');
 
 // Shift mappings
 const SHIFT_MAP = {
-    'morning': 'DAY',      // 6:00 AM – 2:00 PM → 7:00 AM – 7:00 PM
-    'afternoon': 'NIGHT',  // 2:00 PM – 10:00 PM → 7:00 PM – 7:00 AM
-    'night': 'NIGHT',      // 10:00 PM – 6:00 AM → 7:00 PM – 7:00 AM
+    'morning': 'DAY',      
+    'afternoon': 'NIGHT',
+    'night': 'NIGHT',      
     'flexible': 'FLEXIBLE',
-    'rotating': 'DAY',     // Default rotating to DAY
+    'rotating': 'DAY',
 };
 
 const SHIFT_TIMES = {
@@ -36,9 +36,8 @@ const SHIFT_TIMES = {
 
 const migrateShifts = async () => {
     try {
-        // Connect to MongoDB
         console.log('🔗 Connecting to MongoDB...');
-        await mongoose.connect(process.env.MONGO_URI);
+        await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
         console.log('✅ Connected to MongoDB\n');
 
         // Get all users
