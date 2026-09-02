@@ -1,7 +1,7 @@
-// AdminDashboard.js - COMPLETE FIXED VERSION
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { HIDDEN_LOGIN_PATH } from '../config/hiddenRoute';
 import {
     FaUserCircle, FaHome, FaUsers, FaBell, FaCalendarCheck,
     FaUserMd, FaExclamationTriangle, FaChartBar, FaFileAlt, FaUserPlus,
@@ -17,7 +17,7 @@ import UserRegistrationModal from '../components/UserRegistrationModal';
 import AddInventoryModal from '../components/AddInventoryModal';
 import InventoryTab from '../components/admin/InventoryTab';
 import mainLogo from '../assets/mainLogo.png';
-// ReportsTab removed — reports now embedded in OverviewTab
+
 import OverviewTab from '../components/admin/OverviewTab';
 import StaffRosterTab from '../components/admin/StaffRosterTab';
 import UserManagementTab from '../components/admin/UserManagementTab';
@@ -81,39 +81,11 @@ const timeAgo = (iso) => {
     return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// ── Admin Alerts & Notifications — filters (added alongside the existing
-// notification system, not replacing it) ───────────────────────────────
-//
-// Two independent alert sources already exist in this component:
-//   1. `notifications` — built client-side by buildNotifications() from
-//      real bookings/donations/staff/inventory data. Real data, but never
-//      persisted as its own record — its read/unread state lives only in
-//      the browser (readIds, backed by localStorage).
-//   2. `dbAlerts` — actual models/Alert.js documents from GET /api/alerts.
-//      Real, backend-persisted records with their own _id, isRead, and
-//      createdAt that survive a refresh regardless of browser/session.
-//
-// The Admin previously saw these as two separately-rendered blocks in the
-// same list ("Notifications" then a "System Alerts" divider). Search,
-// Type/Status/Date filtering, and pagination need one consistent ordering
-// to paginate correctly, so both are normalized into ONE combined,
-// time-sorted list here — but each row still renders with its original
-// icon/color and still performs its original click action (see
-// buildUnifiedAlerts below), so nothing existing is removed, only made
-// filterable/searchable/paginated together.
 const ALERT_TYPE_OPTIONS = ['All', 'Medication', 'Inventory', 'Stock Request', 'Resident', 'System'];
 const ALERT_STATUS_OPTIONS = ['All', 'Unread', 'Read'];
 const ALERT_DATE_OPTIONS = ['All', 'Today', 'This Week', 'This Month'];
 const alertSelectStyle = { padding: '8px 10px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.83rem', background: '#fff', color: '#1A0A00', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" };
 
-// Alert.type has never been an enforced enum anywhere in this codebase
-// (routes/alertRoutes.js POST / accepts any string, and real values seen
-// in the wild include 'medication-administered', 'stock-request-approved',
-// 'stock-request-rejected', 'OTP', 'Booking', 'Inventory', 'System', plus
-// the client-only notification types booking/donation/personnel/inventory/
-// system) — so the 5 filter categories the spec asks for are matched by
-// keyword rather than exact equality, with 'System' as the catch-all for
-// anything that doesn't clearly belong to one of the other four.
 const bucketizeAlertType = (rawType) => {
     const t = (rawType || '').toLowerCase();
     if (t.includes('medication')) return 'Medication';
@@ -123,9 +95,6 @@ const bucketizeAlertType = (rawType) => {
     return 'System';
 };
 
-// Same-day/week/month check used by the Date filter. Written against the
-// alert's real timestamp (n.time / a.createdAt) — never a stored/derived
-// "day bucket" field — so it stays correct no matter when it's evaluated.
 const matchesAlertDateFilter = (isoTime, filterValue) => {
     if (filterValue === 'All') return true;
     const t = new Date(isoTime);
@@ -145,8 +114,6 @@ const matchesAlertDateFilter = (isoTime, filterValue) => {
     return true;
 };
 
-// The typeColors map dbAlerts have always used for their pill/icon color —
-// pulled out here (unchanged) so buildUnifiedAlerts can reuse it exactly.
 const DB_ALERT_TYPE_COLORS = { OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d' };
 
 const buildUnifiedAlerts = (notifications, dbAlerts, readIds) => {
@@ -182,7 +149,7 @@ const buildUnifiedAlerts = (notifications, dbAlerts, readIds) => {
             time: a.createdAt,
             isRead: !!a.isRead,
             color,
-            icon: null, // rendered with FaBell, same as before
+            icon: null,
             typeLabel: a.type,
             section: null,
         };
@@ -222,7 +189,7 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmLabe
 
 const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReason, effectiveDate, setEffectiveDate, notes, setNotes, onConfirm, onCancel, loading }) => {
     if (!isOpen) return null;
-    
+
     const getActionTitle = () => {
         switch(action) {
             case 'restrict': return 'Restrict Access';
@@ -233,7 +200,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
             default: return 'Personnel Action';
         }
     };
-    
+
     const getActionColor = () => {
         switch(action) {
             case 'restrict': return '#E65100';
@@ -244,7 +211,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
             default: return '#7A5C4E';
         }
     };
-    
+
     const getActionDescription = () => {
         switch(action) {
             case 'restrict': return 'Temporarily restrict system access while keeping the account active.';
@@ -255,7 +222,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
             default: return '';
         }
     };
-    
+
     return (
         <div className="modal-overlay" style={{ zIndex: 10001 }}>
             <div className="registration-modal" style={{ maxWidth: 500, padding: 0 }}>
@@ -270,7 +237,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
                     <p style={{ color: getActionColor(), fontSize: '.88rem', marginBottom: 20, padding: '10px', background: `${getActionColor()}10`, borderRadius: 8 }}>
                         {getActionDescription()}
                     </p>
-                    
+
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: '.82rem', color: '#7A5C4E' }}>Reason *</label>
                         <textarea
@@ -284,7 +251,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
                             }}
                         />
                     </div>
-                    
+
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: '.82rem', color: '#7A5C4E' }}>Effective Date</label>
                         <input
@@ -294,7 +261,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
                             style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8D6CC', borderRadius: 10 }}
                         />
                     </div>
-                    
+
                     <div style={{ marginBottom: 20 }}>
                         <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: '.82rem', color: '#7A5C4E' }}>Additional Notes</label>
                         <textarea
@@ -308,7 +275,7 @@ const ReasonModal = ({ isOpen, action, userName, currentStatus, reason, setReaso
                             }}
                         />
                     </div>
-                    
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 10, borderTop: '1.5px solid #E8D6CC' }}>
                         <button className="btn-outline-sm" onClick={onCancel}>Cancel</button>
                         <button
@@ -517,11 +484,6 @@ const EditUserModal = ({ user, onSave, onClose }) => {
     );
 };
 
-// ---- Custom time picker for the "Visiting Hours" fields ----
-// Renders a native-look dropdown (Hour / Minute / AM-PM columns) where any
-// hour/period outside the slot's allowed window is greyed out and unclickable,
-// so admins can only pick a time inside the visitor's booked window
-// (9:00 AM-11:00 AM for Morning, 3:00 PM-5:00 PM for Afternoon).
 const to24 = (str) => {
     const [h, m] = (str || '00:00').split(':').map(Number);
     return h * 60 + m;
@@ -677,15 +639,13 @@ const AdminDashboard = () => {
     const dropdownRef = useRef(null);
     const searchRef = useRef(null);
 
-    // Support deep-linking into a specific tab, e.g. navigate('/admin', { state: { section: 'staff' } })
-    // from Help Center's Quick Navigation cards, notifications, etc.
     const [activeSection, setActiveSection] = useState(location.state?.section || 'overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
     const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
-    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false); // drawer toggle, <768px only
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [readIds, setReadIds] = useState(() => {
         try {
@@ -701,7 +661,6 @@ const AdminDashboard = () => {
     const [inventoryPage, setInventoryPage] = useState(1);
     const itemsPerPage = 10;
 
-    // Admin Alerts & Notifications page — filters + pagination state.
     const [alertSearch, setAlertSearch] = useState('');
     const [alertTypeFilter, setAlertTypeFilter] = useState('All');
     const [alertStatusFilter, setAlertStatusFilter] = useState('All');
@@ -739,7 +698,7 @@ const AdminDashboard = () => {
         isOpen: false, title: '', message: '', onConfirm: null, danger: false, confirmLabel: 'Confirm'
     });
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-    
+
     const [stats, setStats] = useState({
         totalResidents: 0, activeStaff: 0, pendingBookings: 0,
         totalDonations: 0, totalDonationAmount: 0, lowStockItems: 0,
@@ -768,7 +727,6 @@ const AdminDashboard = () => {
     const [rejectionModal, setRejectionModal] = useState({ isOpen: false, bookingId: null, booking: null, reason: '' });
     const [approvalModal, setApprovalModal] = useState({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false });
 
-    // A booking's visitTime is stored raw as '09:00' (morning) or '15:00' (afternoon) - see BookingPage TIME_SLOTS
     const isMorningBooking = (booking) => booking?.visitTime === '09:00';
     const [openDropdown, setOpenDropdown] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -848,9 +806,6 @@ const AdminDashboard = () => {
             setStats(p => ({ ...p, ...data }));
         };
 
-        // Backend emits this from residentRoutes.js on create/update/delete
-        // so the Total Residents card updates instantly instead of waiting
-        // for the next 30s poll.
         const handleResidentsUpdated = () => { fetchResidentStats(); };
 
         on('new_booking',          handleNewBooking);
@@ -892,7 +847,6 @@ const AdminDashboard = () => {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // Debounce the search query so filtering/searching doesn't run on every keystroke.
     useEffect(() => {
         const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 250);
         return () => clearTimeout(t);
@@ -920,11 +874,6 @@ const AdminDashboard = () => {
         });
     };
 
-    // ── Admin Alerts & Notifications page ───────────────────────────────
-    // One combined, time-sorted list built from the real `notifications`
-    // (derived from bookings/donations/staff/inventory) and real `dbAlerts`
-    // (models/Alert.js documents) — never hardcoded/mock rows. See
-    // buildUnifiedAlerts above for why these two are merged.
     const unifiedAlerts = useMemo(
         () => buildUnifiedAlerts(notifications, dbAlerts, readIds),
         [notifications, dbAlerts, readIds]
@@ -953,11 +902,8 @@ const AdminDashboard = () => {
 
     const pagedAlerts = filteredAlerts.slice((alertPage - 1) * itemsPerPage, alertPage * itemsPerPage);
 
-    // Reset to page 1 whenever a filter/search changes, so the admin never
-    // lands on a now-empty page after narrowing the results.
     useEffect(() => { setAlertPage(1); }, [alertSearch, alertTypeFilter, alertStatusFilter, alertDateFilter]);
-    // Clamp back into range if the result set shrinks out from under the
-    // current page (e.g. an alert gets marked read while "Unread" is active).
+
     useEffect(() => {
         const maxPage = Math.max(1, Math.ceil(filteredAlerts.length / itemsPerPage));
         if (alertPage > maxPage) setAlertPage(maxPage);
@@ -975,10 +921,6 @@ const AdminDashboard = () => {
         [unifiedAlerts]
     );
 
-    // Marks a single real Alert document read via the existing (previously
-    // unused by this UI) PUT /api/alerts/:id/read route, then reflects it
-    // in local state so the row + counts update immediately without
-    // waiting for the next Refresh.
     const markDbAlertRead = async (alertId) => {
         const res = await fetchApi(`/alerts/${alertId}/read`, { method: 'PUT' });
         if (res.success) {
@@ -986,11 +928,6 @@ const AdminDashboard = () => {
         }
     };
 
-    // "Mark All Read" on the Alerts page marks BOTH sources: the existing
-    // client-side markAllRead() for notifications, plus the existing
-    // (previously unused) PUT /api/alerts/mark-all-read route for real
-    // Alert documents. The topbar bell dropdown's own "Mark all read"
-    // button is untouched and still only affects `notifications`.
     const markAllAlertsRead = async () => {
         markAllRead();
         const res = await fetchApi('/alerts/mark-all-read', { method: 'PUT' });
@@ -1045,10 +982,6 @@ const AdminDashboard = () => {
         );
     }, [inventory, debouncedSearchQuery]);
 
-    // Instant cross-module results for the topbar global search dropdown.
-    // Searches Staff, Inventory, Bookings, Donations, and Notifications at once,
-    // case-insensitively, with partial matching. (Resident records are not
-    // fetched/available in this dashboard, so they're excluded from this list.)
     const globalSearchResults = useMemo(() => {
         const q = debouncedSearchQuery.toLowerCase().trim();
         if (!q) return null;
@@ -1118,26 +1051,15 @@ const AdminDashboard = () => {
         setInventoryPage(1);
     }, [activeSection, debouncedSearchQuery]);
 
-    // Re-apply a deep-linked section if we navigate here again while already mounted
-    // (e.g. clicking a Help Center Quick Navigation card while already on /admin).
     useEffect(() => {
         if (location.state?.section) {
             setActiveSection(location.state.section);
-            // Clear the state so a manual refresh doesn't keep forcing this tab.
+
             navigate(location.pathname, { replace: true, state: {} });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [location.state?.section]);
 
-    // ── Back navigation for Admin sub-pages ──────────────────────────────
-    // The Admin Panel is a single-route SPA (all sections live at /admin and
-    // are swapped via `activeSection` state rather than distinct router
-    // paths), so there's no browser history entry per section for
-    // navigate(-1) to use. Instead we keep a lightweight in-app history
-    // stack of visited sections — this is "the project's existing
-    // navigation mechanism" adapted to work with that architecture, and it
-    // still avoids hardcoding Back to always land on System Overview: it
-    // returns to whatever section was actually visited before.
     const sectionHistoryRef = useRef([]);
     const prevSectionRef = useRef(activeSection);
     useEffect(() => {
@@ -1149,9 +1071,7 @@ const AdminDashboard = () => {
 
     const handleBackNavigation = () => {
         const previous = sectionHistoryRef.current.pop();
-        // Falls back to System Overview only when there's nowhere else to
-        // go back to — e.g. the section was opened directly via a deep
-        // link/URL with no prior in-app navigation.
+
         setActiveSection(previous || 'overview');
     };
 
@@ -1174,14 +1094,6 @@ const AdminDashboard = () => {
         }
     }, []);
 
-    // Fetches the live resident headcount so the "Total Residents" stat card
-    // reflects real data instead of a hardcoded placeholder. Uses the
-    // lightweight /residents/statistics endpoint (a countDocuments-backed
-    // aggregate) rather than pulling every resident's full record — the
-    // dashboard only needs the count, and residents' medical data shouldn't
-    // be loaded into admin state just to render a number. Available to any
-    // authenticated role (protect only, no adminOnly), so this works for
-    // admin same as head caregiver.
     const fetchResidentStats = useCallback(async () => {
         const d = await fetchApi('/residents/statistics');
         if (d.success && d.data) {
@@ -1202,10 +1114,6 @@ const AdminDashboard = () => {
         if (d.success) setDbAlerts(d.data || []);
     }, [fetchApi]);
 
-    // Core data pull shared by the initial load, the manual "Refresh Data"
-    // button, and the background auto-refresh poller below. `silent` skips
-    // the full-page loading spinner so periodic background refreshes don't
-    // flicker the UI — only the small "Updating…" indicator shows.
     const loadAllData = useCallback(async (silent = false) => {
         if (silent) setIsAutoRefreshing(true); else setLoading(true);
         setApiError(null);
@@ -1214,14 +1122,13 @@ const AdminDashboard = () => {
             fetchApi('/donations?limit=100'),
             fetchApi('/stats'),
             fetchApi('/inventory?limit=100'),
-            fetchApi('/medications/compliance/stats'),  // NEW: Compliance endpoint
+            fetchApi('/medications/compliance/stats'),
         ]);
         if (bRes.success) setBookings(bRes.data || []);
         if (dRes.success) setDonations(dRes.data || []);
         if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
         if (iRes.success) setInventory(iRes.data || []);
-        
-        // NEW: Merge compliance data
+
         if (complianceRes.success && complianceRes.stats) {
             setStats(p => ({
                 ...p,
@@ -1232,24 +1139,19 @@ const AdminDashboard = () => {
                 administeredCount: complianceRes.stats.administered
             }));
         }
-        
+
         await Promise.all([fetchResidentStats(), fetchStaffList(), fetchDbAlerts()]);
         setLastUpdated(new Date());
         if (silent) setIsAutoRefreshing(false); else setLoading(false);
     }, [fetchApi, fetchResidentStats, fetchStaffList, fetchDbAlerts]);
 
-    // Initial load on mount.
     useEffect(() => {
         loadAllData(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [fetchApi]);
 
-    // Background auto-refresh so stat cards (residents, staff, bookings,
-    // donations, inventory) stay live instead of only updating on mount or
-    // when the user clicks "Refresh Data". Also re-syncs immediately when the
-    // admin returns to the tab, so numbers aren't stale after switching away.
     useEffect(() => {
-        const REFRESH_INTERVAL_MS = 30000; // 30s
+        const REFRESH_INTERVAL_MS = 30000;
         const interval = setInterval(() => {
             if (document.visibilityState === 'visible') {
                 loadAllData(true);
@@ -1279,27 +1181,30 @@ const AdminDashboard = () => {
     };
 
     const handleLogout = () => setShowLogoutConfirm(true);
-    const confirmLogout = () => { logout(); navigate('/'); };
+    const confirmLogout = async () => {
+        await logout();
+        navigate(HIDDEN_LOGIN_PATH);
+    };
 
     const renderPagination = (total, page, setPage, perPage = itemsPerPage) => {
         const pages = Math.ceil(total / perPage);
         if (pages <= 1) return null;
-        
+
         let startPage = Math.max(1, page - 2);
         let endPage = Math.min(pages, startPage + 4);
         if (endPage - startPage < 4) {
             startPage = Math.max(1, endPage - 4);
         }
-        
+
         const pageNumbers = [];
         for (let i = startPage; i <= endPage; i++) {
             pageNumbers.push(i);
         }
-        
+
         return (
-            <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '16px 20px',
                 borderTop: '1px solid #E8D6CC',
@@ -1311,8 +1216,8 @@ const AdminDashboard = () => {
                     Showing {Math.min((page - 1) * perPage + 1, total)} – {Math.min(page * perPage, total)} of {total}
                 </span>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <button 
-                        disabled={page === 1} 
+                    <button
+                        disabled={page === 1}
                         onClick={() => setPage(p => p - 1)}
                         style={{
                             padding: '6px 12px',
@@ -1327,8 +1232,8 @@ const AdminDashboard = () => {
                         <FaChevronLeft size={11} /> Prev
                     </button>
                     {pageNumbers.map(n => (
-                        <button 
-                            key={n} 
+                        <button
+                            key={n}
                             onClick={() => setPage(n)}
                             style={{
                                 padding: '6px 12px',
@@ -1344,8 +1249,8 @@ const AdminDashboard = () => {
                             {n}
                         </button>
                     ))}
-                    <button 
-                        disabled={page === pages} 
+                    <button
+                        disabled={page === pages}
                         onClick={() => setPage(p => p + 1)}
                         style={{
                             padding: '6px 12px',
@@ -1366,7 +1271,7 @@ const AdminDashboard = () => {
 
     const handleRegisterSuccess = async () => {
         fetchStaffList();
-        toast('Account created! Login credentials have been emailed to the new user.'); 
+        toast('Account created! Login credentials have been emailed to the new user.');
     };
 
     const toggleStaffStatus = async (id, cur) => {
@@ -1417,10 +1322,10 @@ const AdminDashboard = () => {
 
     const confirmPersonnelAction = async () => {
         const { action, userId, reason, effectiveDate, notes, userName, currentStatus } = reasonModal;
-        
+
         let newStatus = 'inactive';
         let actionMessage = '';
-        
+
         switch(action) {
             case 'restrict':
                 newStatus = 'restricted';
@@ -1441,9 +1346,9 @@ const AdminDashboard = () => {
             default:
                 return;
         }
-        
+
         setActionLoading(true);
-        
+
         try {
             await fetchApi(`/admin/staff/${userId}/status`, {
                 method: 'PUT',
@@ -1454,18 +1359,18 @@ const AdminDashboard = () => {
                 method: 'POST',
                 body: JSON.stringify({ action, reason, effectiveDate, notes, performedBy: user._id, newStatus })
             }).catch(() => {});
-            
-            setStaff(staff.map(m => 
-                m._id === userId 
+
+            setStaff(staff.map(m =>
+                m._id === userId
                     ? { ...m, isActive: false, status: newStatus, actionReason: reason, actionDate: effectiveDate }
                     : m
             ));
-            
+
             toast(`${userName} has been ${actionMessage}. Reason: ${reason.substring(0, 50)}${reason.length > 50 ? '...' : ''}`);
             setReasonModal({ isOpen: false, action: null, userId: null, userName: '', currentStatus: null, reason: '', effectiveDate: '', notes: '' });
-            
+
             await fetchStaffList();
-            
+
         } catch (error) {
             console.error('Action error:', error);
             toast('Failed to perform action. Please try again.', 'error');
@@ -1491,7 +1396,7 @@ const AdminDashboard = () => {
                         method: 'POST',
                         body: JSON.stringify({ action: 'reactivate', reason: 'Account reactivated', performedBy: user._id, newStatus: 'active' })
                     }).catch(() => {});
-                    
+
                     setStaff(staff.map(m => m._id === userId ? { ...m, isActive: true, status: 'active' } : m));
                     toast(`${userName} has been reactivated.`);
                     await fetchStaffList();
@@ -1580,8 +1485,7 @@ const AdminDashboard = () => {
             availability: {
                 ...DEFAULT_AVAILABILITY,
                 rules: [...DEFAULT_AVAILABILITY.rules],
-                // Only the slot the visitor actually requested is enabled/checked by default.
-                // The non-matching slot stays disabled until the admin explicitly turns on "Edit time slots".
+
                 morningEnabled: bookedMorning,
                 afternoonEnabled: !bookedMorning
             }
@@ -1592,7 +1496,6 @@ const AdminDashboard = () => {
         setApprovalModal(prev => ({ ...prev, availability: { ...prev.availability, [field]: value } }));
     };
 
-    // Fixed visiting windows the org offers - times can be narrowed within these, but not moved outside them
     const SLOT_BOUNDS = {
         morningStart: { min: '09:00', max: '11:00' },
         morningEnd: { min: '09:00', max: '11:00' },
@@ -1701,7 +1604,7 @@ const AdminDashboard = () => {
                 setShowAddInventory(false);
                 return { success: true };
             }
-            // Server responded but rejected the item (e.g. validation failure, duplicate name).
+
             const message = data.message || 'Failed to add inventory item. Please check the details and try again.';
             toast(message, 'error');
             return { success: false, message };
@@ -1720,21 +1623,21 @@ const AdminDashboard = () => {
         try {
             const doc = new jsPDF();
             const now = new Date().toLocaleString('en-PH');
-            
+
             doc.setFontSize(20);
             doc.setTextColor(184, 92, 45);
             doc.text('Kanang-Alalay Care Facility', 14, 20);
-            
+
             doc.setFontSize(12);
             doc.setTextColor(100, 100, 100);
             doc.text(`${type.charAt(0).toUpperCase() + type.slice(1)} Report`, 14, 32);
-            
+
             doc.setFontSize(9);
             doc.setTextColor(150, 150, 150);
             doc.text(`Generated: ${now}`, 14, 40);
-            
+
             let startY = 50;
-            
+
             if (type === 'bookings') {
                 const dataToExport = searchQuery && filteredBookings.length !== bookings.length ? filteredBookings : bookings;
                 autoTable(doc, {
@@ -1773,7 +1676,7 @@ const AdminDashboard = () => {
                     margin: { left: 14, right: 14 }
                 });
             }
-            
+
             const pageCount = doc.internal.getNumberOfPages();
             for (let i = 1; i <= pageCount; i++) {
                 doc.setPage(i);
@@ -1786,7 +1689,7 @@ const AdminDashboard = () => {
                     { align: 'center' }
                 );
             }
-            
+
             doc.save(`Kanang-Alalay_${type}_${Date.now()}.pdf`);
             toast(`${type.charAt(0).toUpperCase() + type.slice(1)} report exported successfully.`);
         } catch (error) {
@@ -1815,7 +1718,6 @@ const AdminDashboard = () => {
         }
     };
 
-    // Overview Tab — uses OverviewTab component which includes embedded Reports & Analytics
     const renderOverview = () => (
         <OverviewTab
             stats={stats}
@@ -1832,7 +1734,6 @@ const AdminDashboard = () => {
         />
     );
 
-    // OLD renderOverview kept below for reference — DELETE after migration
     const _renderOverview_OLD = () => (
         <div>
             {apiError && (
@@ -1935,11 +1836,10 @@ const AdminDashboard = () => {
         </div>
     );
 
-    // Staff Management Tab
     const renderStaffManagement = () => (
-        <UserManagementTab 
-            users={staff} 
-            setUsers={setStaff} 
+        <UserManagementTab
+            users={staff}
+            setUsers={setStaff}
             onEdit={(updated) => {
                 setStaff(prev => prev.map(u => u._id === updated._id ? updated : u));
                 toast(`User ${updated.firstName} ${updated.lastName} updated successfully.`);
@@ -1947,12 +1847,10 @@ const AdminDashboard = () => {
         />
     );
 
-    // Staff Roster Tab
     const renderStaffRoster = () => (
         <StaffRosterTab staff={staff} onRefresh={fetchStaffList} currentUser={user} />
     );
 
-    // Booking Management Tab — passes raw bookings; the tab owns its own search
     const renderBookingManagement = () => (
         <BookingManagementTab
             bookings={bookings}
@@ -1965,7 +1863,6 @@ const AdminDashboard = () => {
         />
     );
 
-    // Donation Management Tab — passes raw donations; the tab owns its own search
     const renderDonationManagement = () => (
         <DonationManagementTab
             donations={donations}
@@ -1975,7 +1872,6 @@ const AdminDashboard = () => {
         />
     );
 
-    // Alerts Tab
     const renderAlerts = () => (
         <div className="card-white" style={{ background: 'white', borderRadius: 16, overflow: 'hidden' }}>
             <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -1991,9 +1887,6 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* Filters — search, type, status, date. Work together (AND), and
-                operate over the real combined alert list above, never a
-                hardcoded set. */}
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', background: '#FFF8F3' }}>
                 <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
                     <FaSearch style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#B58968', fontSize: '.8rem' }} />
@@ -2090,7 +1983,6 @@ const AdminDashboard = () => {
         </div>
     );
 
-    // Inventory Tab
     const renderInventory = () => (
         <InventoryTab
             inventory={filteredInventory}
@@ -2099,17 +1991,11 @@ const AdminDashboard = () => {
             currentUser={user}
             showConfirm={showConfirm}
             closeConfirm={closeConfirm}
-            // Part 6 §9 — after a stock request is approved, Admin Central
-            // Inventory quantities changed server-side. Re-pull the same
-            // data the rest of the dashboard already uses (silent = no
-            // full-page spinner) so the Inventory list/summary reflect the
-            // deduction immediately, matching TEST 5 (values remain correct
-            // after refresh, and here we don't even need a manual refresh).
+
             onStockApproved={() => loadAllData(true)}
         />
     );
 
-    // Compliance Tab
     const handleComplianceReport = () => {
         const win = window.open('', '_blank', 'width=900,height=700');
         if (!win) {
@@ -2193,11 +2079,6 @@ const AdminDashboard = () => {
         `);
         win.document.close();
 
-        // NOTE: closing the window immediately after print() causes it to
-        // flash open and shut before the print dialog can render, since
-        // print() does not block execution. Instead, wait for the report to
-        // finish loading before printing, and only auto-close once the user
-        // has actually dismissed the print dialog (onafterprint).
         let printed = false;
         const triggerPrint = () => {
             if (printed) return;
@@ -2207,7 +2088,7 @@ const AdminDashboard = () => {
         };
 
         win.onload = triggerPrint;
-        // Fallback in case onload doesn't fire reliably after document.write()
+
         setTimeout(triggerPrint, 300);
 
         win.onafterprint = () => win.close();
@@ -2271,8 +2152,6 @@ const AdminDashboard = () => {
         { day: 'Thu', rate: 95 }, { day: 'Fri', rate: 92 }, { day: 'Sat', rate: 89 }, { day: 'Sun', rate: 92 }
     ];
 
-    // renderReports removed — reports are now embedded in System Overview (OverviewTab)
-
     const renderContent = () => {
         if (loading) return (
             <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center', minHeight: 400 }}>
@@ -2280,7 +2159,7 @@ const AdminDashboard = () => {
                 <span style={{ color: '#7A5C4E' }}>Loading dashboard…</span>
             </div>
         );
-        
+
         switch (activeSection) {
             case 'overview': return renderOverview();
             case 'staff': return renderStaffManagement();
@@ -2290,7 +2169,7 @@ const AdminDashboard = () => {
             case 'alerts': return renderAlerts();
             case 'inventory': return renderInventory();
             case 'compliance': return renderCompliance();
-            case 'reports': return renderOverview(); // redirect to overview which contains reports
+            case 'reports': return renderOverview();
             default: return renderOverview();
         }
     };
@@ -2298,7 +2177,6 @@ const AdminDashboard = () => {
     return (
         <div className="dashboard-layout">
             <div className="dashboard-body">
-                {/* Mobile drawer backdrop — click to close */}
                 {mobileSidebarOpen && (
                     <div className="sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />
                 )}
@@ -2326,10 +2204,10 @@ const AdminDashboard = () => {
                             { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Alerts', badge: realLowStockCount },
                             { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
                             { key: 'donation', icon: <FaMoneyBillWave />, label: 'Donation Ledger' },
-                            // Reports & Analytics removed — now in System Overview (lower section)
+
                         ].map(({ key, icon, label, badge }) => (
-                            <li key={key} 
-                                className={activeSection === key ? 'active' : ''} 
+                            <li key={key}
+                                className={activeSection === key ? 'active' : ''}
                                 onClick={() => {
                                     setActiveSection(key);
                                     setSearchQuery('');
@@ -2496,7 +2374,6 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* Toast Notifications */}
             {toastMessage && (
                 <div className="toast-container" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 10002 }}>
                     <div className={`toast ${toastMessage.type === 'error' ? 'error' : toastMessage.type === 'info' ? 'warn' : 'success'}`} style={{
@@ -2514,7 +2391,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* Modals */}
             <UserRegistrationModal
                 isOpen={showRegistrationModal}
                 onClose={() => setShowRegistrationModal(false)}
@@ -2542,13 +2418,13 @@ const AdminDashboard = () => {
                     onClose={() => { setShowEditModal(false); setSelectedUser(null); }}
                 />
             )}
-            
+
             <AddInventoryModal
                 isOpen={showAddInventory}
                 onClose={() => setShowAddInventory(false)}
                 onSave={handleAddInventory}
             />
-            
+
             {detailsModal.isOpen && (
                 <DetailsModal
                     type={detailsModal.type}
@@ -2567,7 +2443,6 @@ const AdminDashboard = () => {
                 danger={confirmModal.danger}
             />
 
-            {/* Logout Confirm */}
             {showLogoutConfirm && (
                 <div className="modal-overlay" style={{ zIndex: 10002 }}>
                     <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
@@ -2651,7 +2526,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* APPROVAL MODAL */}
             {approvalModal.isOpen && approvalModal.booking && (
                 <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
                     <div
@@ -2681,7 +2555,6 @@ const AdminDashboard = () => {
 
                         <div style={{ overflowY: 'auto', flex: 1, paddingRight: 4 }}>
 
-                        {/* VISITOR DETAILS */}
                         <div style={{ marginBottom: 24 }}>
                             <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visitor Details</h5>
                             <div style={{ background: '#FFF8F3', padding: 16, borderRadius: 12, border: '1.5px solid #E8D6CC' }}>
@@ -2706,7 +2579,6 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        {/* VISIT SCHEDULE */}
                         <div style={{ marginBottom: 24 }}>
                             <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visit Schedule</h5>
                             <div style={{ background: '#E8F5E9', padding: 16, borderRadius: 12, border: '1.5px solid #28a745' }}>
@@ -2731,7 +2603,6 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        {/* FACILITY AVAILABILITY - EDITABLE, GOES OUT IN THE APPROVAL EMAIL */}
                         <div style={{ marginBottom: 24 }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                 <div>
@@ -2751,7 +2622,7 @@ const AdminDashboard = () => {
                                             setApprovalModal(prev => ({
                                                 ...prev,
                                                 editTimeSlots: editOn,
-                                                // Turning override off snaps back to the visitor's actual requested slot
+
                                                 availability: editOn
                                                     ? prev.availability
                                                     : {
@@ -2770,7 +2641,6 @@ const AdminDashboard = () => {
                                     <FaMapMarkerAlt size={14} /> Available Visiting Hours
                                 </p>
 
-                                {/* Morning slot row */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap', opacity: (!approvalModal.editTimeSlots && !approvalModal.availability.morningEnabled) ? 0.5 : 1 }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
                                         <input
@@ -2798,7 +2668,6 @@ const AdminDashboard = () => {
                                     />
                                 </div>
 
-                                {/* Afternoon slot row */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap', opacity: (!approvalModal.editTimeSlots && !approvalModal.availability.afternoonEnabled) ? 0.5 : 1 }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#1A0A00', fontWeight: 600, minWidth: 110 }}>
                                         <input
@@ -2826,8 +2695,6 @@ const AdminDashboard = () => {
                                     />
                                 </div>
 
-
-                                {/* Max per slot + arrival note */}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.78rem', color: '#7A5C4E', fontWeight: 600, marginBottom: 4 }}>Maximum visitors per slot</label>
@@ -2880,7 +2747,6 @@ const AdminDashboard = () => {
                         </div>
                         </div>
 
-                        {/* ACTION BUTTONS */}
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexShrink: 0, paddingTop: 20, borderTop: '1.5px solid #E8D6CC' }}>
                             <button
                                 onClick={() => setApprovalModal({ isOpen: false, bookingId: null, booking: null, availability: DEFAULT_AVAILABILITY, editTimeSlots: false })}
@@ -2954,7 +2820,6 @@ const AdminDashboard = () => {
 
                         {rejectionModal.booking && (
                             <>
-                                {/* VISITOR DETAILS */}
                                 <div style={{ marginBottom: 24 }}>
                                     <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visitor Details</h5>
                                     <div style={{ background: '#FFF8F3', padding: 16, borderRadius: 12, border: '1.5px solid #E8D6CC' }}>
@@ -2979,7 +2844,6 @@ const AdminDashboard = () => {
                                     </div>
                                 </div>
 
-                                {/* VISIT SCHEDULE */}
                                 <div style={{ marginBottom: 24 }}>
                                     <h5 style={{ margin: '0 0 12px 0', color: '#1A0A00', fontSize: '0.95rem', fontWeight: 700 }}>Visit Schedule</h5>
                                     <div style={{ background: '#FDEDED', padding: 16, borderRadius: 12, border: '1.5px solid #dc3545' }}>

@@ -29,7 +29,8 @@ export const AuthProvider = ({ children }) => {
             if (token) {
                 try {
                     const response = await axios.get(`${API_BASE_URL}/auth/validate-token`, {
-                        headers: { Authorization: `Bearer ${token}` }
+                        headers: { Authorization: `Bearer ${token}` },
+                        withCredentials: true,
                     });
                     if (response.data.success) {
                         setUser(response.data.user);
@@ -54,7 +55,9 @@ export const AuthProvider = ({ children }) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await axios.post(`${API_BASE_URL}/auth/login`, { username, password });
+            const response = await axios.post(`${API_BASE_URL}/auth/login`, { username, password }, {
+                withCredentials: true,
+            });
             const data = response.data;
 
             if (data.requiresOTP) {
@@ -106,7 +109,16 @@ export const AuthProvider = ({ children }) => {
         setPendingUserData(null);
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            await axios.post(`${API_BASE_URL}/auth/logout`, {}, {
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                withCredentials: true,
+            });
+        } catch (err) {
+            console.error('Logout request error:', err);
+        }
+
         localStorage.removeItem('token');
         setToken(null);
         setUser(null);

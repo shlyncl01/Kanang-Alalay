@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { HIDDEN_LOGIN_PATH } from '../config/hiddenRoute';
 import {
     FaUserCircle, FaSearch, FaHome, FaUsers, FaPills,
     FaQrcode, FaSignOutAlt, FaChevronDown,
@@ -27,7 +28,6 @@ const getApiUrl = () => {
 
 const API = getApiUrl();
 
-// ─── Status maps ─────────────────────────────────────────────────────────────
 const STATUS_COLOR = {
     completed: '#1E7D56', administered: '#1E7D56',
     pending: '#E65100', scheduled: '#0277BD',
@@ -44,17 +44,12 @@ const STATUS_LABEL = {
 };
 const getStatus = s => (s || 'pending').toLowerCase();
 
-// Part 4: colors for the HC Assigned Stock Status column — same palette
-// already used for the Admin Product Status column (InventoryTab.js).
 const STOCK_STATUS_STYLE = {
     'In Stock': { bg: '#e0faf4', color: '#0d6b4f' },
     'Low Stock': { bg: '#fff8e1', color: '#7c5a00' },
     'Out of Stock': { bg: '#fdecea', color: '#b71c1c' },
 };
 
-// Part 5: colors for the "My Stock Requests" Status column. Keys match
-// the lowercase StockRequest.status enum (models/StockRequest.js);
-// display labels are capitalized separately, see requestStatusLabel().
 const STOCK_REQUEST_STATUS_STYLE = {
     pending: { bg: '#fff8e1', color: '#7c5a00' },
     approved: { bg: '#e0faf4', color: '#0d6b4f' },
@@ -82,7 +77,6 @@ const DotBadge = ({ s }) => {
     );
 };
 
-// ─── Shared fetch ─────────────────────────────────────────────────────────────
 const useFetch = () => useCallback(async (endpoint, opts = {}) => {
     const token = localStorage.getItem('token');
     try {
@@ -97,9 +91,6 @@ const useFetch = () => useCallback(async (endpoint, opts = {}) => {
     } catch (e) { return { success: false, message: e.message }; }
 }, []);
 
-// Part 8 — same relative-time convention already used by Admin's
-// notification bell (AdminDashboard.js), so both dashboards' dropdowns
-// read consistently.
 const timeAgo = (iso) => {
     const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
     if (diff < 60) return `${diff}s ago`;
@@ -108,7 +99,6 @@ const timeAgo = (iso) => {
     return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 const Toast = ({ msg, type, onDone }) => {
     useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
     return (
@@ -118,15 +108,6 @@ const Toast = ({ msg, type, onDone }) => {
     );
 };
 
-// ─── Shared inline-style system (matches Add Inventory Item exactly) ─────────
-// Used only by AddResidentModal, AddScheduleModal, RequestStockModal — fully
-// self-contained inline styles, independent of any external CSS classes.
-// NOTE: hcModalStyle is now a flex column (header / scrollable body / footer)
-// so the header + footer stay pinned in place and only the middle content
-// scrolls — this is what keeps the close button and Save/Cancel buttons
-// reachable no matter how tall the form gets. Side padding uses clamp()
-// so every modal automatically tightens its gutters on narrow screens
-// instead of needing separate mobile breakpoints.
 const hcModalStyle = {
     maxWidth: 560, width: '100%', padding: 0,
     display: 'flex', flexDirection: 'column',
@@ -159,14 +140,11 @@ const hcSectionLabel = {
 };
 const hcFieldWrap = { marginBottom: 18 };
 const hcGrid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 18 };
-// The facility has 3 floors, 6 rooms per floor, 4 beds per room. Room numbers
-// (1-6) repeat per floor, so a room is only unique combined with its floor.
+
 const FLOORS = ['2nd Floor', '3rd Floor', '4th Floor'];
 const ROOM_NUMBERS = ['1', '2', '3', '4', '5', '6'];
 const BEDS = ['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4'];
-// Exactly the medication.form values present in the database — each is its
-// own unit rather than being collapsed into a generic bucket, so the value
-// shown always matches what's on file.
+
 const DOSAGE_UNITS = [
     'Tablet', 'Film-Coated Tablet', 'Caplet', 'Delayed-Release Tablet',
     'Delayed-Release Capsule', 'Enteric-Coated Tablet',
@@ -206,7 +184,7 @@ const hcSaveBtn = (disabled) => ({
     fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, fontSize: '.9rem',
     boxShadow: disabled ? 'none' : '0 4px 14px rgba(249,107,56,.3)', transition: 'all .22s',
 });
-// Reusable field wrapper so every modal renders label/input/error identically
+
 const HCField = ({ label, required, error, hint, style, children }) => (
     <div style={style || hcFieldWrap}>
         <label style={hcLabelStyle}>
@@ -224,7 +202,6 @@ const HCHeader = ({ icon, title, onClose }) => (
     </div>
 );
 
-// ─── Medical condition options (Add Resident modal) ──────────────────────────
 const MEDICAL_CONDITIONS = [
     'Hypertension',
     'Type 2 Diabetes',
@@ -247,8 +224,6 @@ const MEDICAL_CONDITIONS = [
     'Cold',
 ];
 
-// Multi-select dropdown (checkbox list) for Medical Conditions — styled to
-// match the rest of the Add Resident form inputs.
 const ConditionsMultiSelect = ({ value, onChange }) => {
     const [open, setOpen] = useState(false);
     const wrapRef = useRef(null);
@@ -323,10 +298,6 @@ const ConditionsMultiSelect = ({ value, onChange }) => {
     );
 };
 
-/// ════════════════════════════════════════════════════════════
-//  MODAL: Add Resident (UPDATED with better UI and caregivers dropdown - NO EMOJIS)
-// ════════════════════════════════════════════════════════════
-// AddResidentModal - now doubles as the Edit modal when a `resident` prop is passed
 const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregivers, fetchCaregivers }) => {
     const isEdit = !!resident;
     const [f, setF] = useState(() => isEdit ? {
@@ -367,19 +338,17 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
     const [occupiedBeds, setOccupiedBeds] = useState([]);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
 
-    // Fetch caregivers when modal opens
     useEffect(() => {
         if (fetchCaregivers) fetchCaregivers();
     }, [fetchCaregivers]);
 
-    // Fetch occupied beds when room or floor changes
     useEffect(() => {
         if (!f.roomNumber) { setOccupiedBeds([]); return; }
         const params = new URLSearchParams({ roomNumber: f.roomNumber });
         if (f.floor) params.append('floor', f.floor);
         doFetch(`/head-caregiver/residents/occupied-beds?${params}`).then(r => {
             if (r.success) {
-                // When editing, don't count this resident's own current bed as "occupied".
+
                 const beds = isEdit
                     ? (r.data || []).filter(o => String(o.residentId) !== String(resident._id))
                     : (r.data || []);
@@ -398,7 +367,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
 
         setSaving(true);
 
-        // Find selected caregiver to get their name
         const selectedCaregiver = caregivers.find(c => String(c._id) === String(f.primaryCaregiverId));
 
         const payload = {
@@ -414,8 +382,8 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
             alertLevel: f.alertLevel,
             admissionDate: f.admissionDate,
             conditions: f.conditions.map(c => ({ name: c })),
-            primaryCaregiverId: f.primaryCaregiverId || '',  // Send as ObjectId reference
-            primaryCaregiver: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',  // Store name for display
+            primaryCaregiverId: f.primaryCaregiverId || '',
+            primaryCaregiver: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',
             primaryCaregiverName: selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '',
         };
 
@@ -435,7 +403,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         }
     };
 
-    // Find selected caregiver
     const selectedCaregiver = caregivers.find(c => String(c._id) === String(f.primaryCaregiverId));
     const selectedCaregiverName = selectedCaregiver ? `${selectedCaregiver.firstName} ${selectedCaregiver.lastName}` : '';
 
@@ -445,7 +412,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                 <HCHeader icon={<FaUserPlus />} title={isEdit ? `Edit Resident — ${resident.firstName} ${resident.lastName}`.trim() : 'Add New Resident'} onClose={onClose} />
                 <div style={hcBodyStyle}>
 
-                    {/* Personal Information Section */}
                     <div style={{ ...hcSectionLabel, marginTop: 0 }}>
                         <FaUserCircle style={{ marginRight: 6 }} /> Personal Information
                     </div>
@@ -509,7 +475,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                         </HCField>
                     </div>
 
-                    {/* Room Assignment Section */}
                     <div style={hcSectionLabel}>
                         <FaHome style={{ marginRight: 6 }} /> Room Assignment
                     </div>
@@ -560,7 +525,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                         </HCField>
                     </div>
 
-                    {/* Medical Information Section */}
                     <div style={hcSectionLabel}>
                         <FaStethoscope style={{ marginRight: 6 }} /> Medical Information
                     </div>
@@ -571,7 +535,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                         />
                     </HCField>
 
-                    {/* Assignment Section with Caregivers Dropdown */}
                     <div style={hcSectionLabel}>
                         <FaUserMd style={{ marginRight: 6 }} /> Assignment
                     </div>
@@ -613,9 +576,6 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: Discharge / Remove Resident
-// ════════════════════════════════════════════════════════════
 const DISCHARGE_REASON_OPTIONS = [
     { value: '', label: 'Select a reason…' },
     { value: 'deceased', label: 'Death' },
@@ -636,7 +596,6 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
 
     const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'this resident';
 
-    // Reasons where a "destination" (hospital / guardian / family) makes sense.
     const showDestination = ['legal_guardianship', 'adopted', 'reunited_with_family', 'transferred_hospital'].includes(reason);
     const destinationLabel = {
         legal_guardianship: 'New Legal Guardian',
@@ -742,9 +701,6 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  DELETE MEDICATION (schedule/log entry) CONFIRM MODAL
-// ════════════════════════════════════════════════════════════
 const DeleteMedicationModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     const [saving, setSaving] = useState(false);
     const medName = log?.medicationName || 'this medication';
@@ -791,9 +747,6 @@ const DeleteMedicationModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: View Full Profile
-// ════════════════════════════════════════════════════════════
 const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch, toast, fetchCaregivers }) => {
     const currentCaregiverId = typeof resident.primaryCaregiverId === 'object'
         ? resident.primaryCaregiverId?._id
@@ -977,9 +930,6 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: Medication History
-// ════════════════════════════════════════════════════════════
 const HistoryModal = ({ resident, onClose, doFetch }) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1025,9 +975,6 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: Add Medication to Schedule
-// ════════════════════════════════════════════════════════════
 const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, toast, defaultResident }) => {
     const [f, setF] = useState({ residentId: defaultResident?._id || '', medicationId: '', scheduledTime: '', dosageAmount: '', dosageUnit: '', notes: '' });
     const [errs, setErrs] = useState({});
@@ -1048,7 +995,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
         if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
             e.scheduledTime = 'Scheduled time cannot be in the past.';
         }
-        // Dosage Override is required
+
         if (!f.dosageAmount) e.dosageAmount = 'Enter an amount';
         if (!f.dosageUnit) e.dosageUnit = 'Select a unit';
         if (Object.keys(e).length) { setErrs(e); return; }
@@ -1057,8 +1004,7 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
             ...f,
             dosageAmount: f.dosageAmount ? Number(f.dosageAmount) : undefined,
             dosageUnit: f.dosageUnit || undefined,
-            // Combined string kept for backward compatibility with tables/views
-            // that still read a single `dosage` field (e.g. "1 Tablet").
+
             dosage: f.dosageAmount && f.dosageUnit ? `${f.dosageAmount} ${f.dosageUnit}` : ''
         };
         const r = await doFetch('/head-caregiver/schedule', { method: 'POST', body: JSON.stringify(payload) });
@@ -1138,9 +1084,6 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: Edit Schedule
-// ════════════════════════════════════════════════════════════
 const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     const dt = log.scheduledTime ? new Date(log.scheduledTime).toISOString().slice(0, 16) : '';
     const [f, setF] = useState({ scheduledTime: dt, dosage: log.dosage || '', notes: log.notes || '' });
@@ -1187,15 +1130,6 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MODAL: Request Stock  (Part 5)
-// ════════════════════════════════════════════════════════════
-// `items` is the Product catalog (Parts 1–3) — the HC can only pick from
-// this list; there is deliberately no free-text item name field, so an
-// HC can never type in a product that doesn't exist in Admin Central
-// Inventory. Submitting sends productId only — the backend derives
-// name/unit from the Product record itself (see POST
-// /head-caregiver/inventory/request).
 const RequestStockModal = ({ items, onClose, doFetch, toast, onSubmitted }) => {
     const [f, setF] = useState({ productId: '', quantity: '', reason: '' });
     const [errs, setErrs] = useState({});
@@ -1267,9 +1201,6 @@ const RequestStockModal = ({ items, onClose, doFetch, toast, onSubmitted }) => {
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  ACTION DROPDOWN (⋮) - UPDATED to icon-only buttons
-// ════════════════════════════════════════════════════════════
 const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule, onDelete }) => {
     const [open, setOpen] = useState(false);
     const ref = useRef(null);
@@ -1304,17 +1235,12 @@ const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule, onDelete }
     );
 };
 
-// ════════════════════════════════════════════════════════════
-//  MAIN DASHBOARD
-// ════════════════════════════════════════════════════════════
 const HeadCaregiverDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const doFetch = useFetch();
 
-    // Support deep-linking into a specific tab, e.g. navigate('/head-caregiver', { state: { section: 'residents' } })
-    // from Help Center's Quick Navigation cards.
     const [activeSection, setSection] = useState(location.state?.section || 'home');
     const [searchQuery, setSearch] = useState('');
     const [accountMenuOpen, setAcctMenu] = useState(false);
@@ -1332,36 +1258,17 @@ const HeadCaregiverDashboard = () => {
     const [residents, setResidents] = useState([]);
     const [schedule, setSchedule] = useState([]);
     const [medications, setMedications] = useState([]);
-    // PART 4 FIX: `inventory` below is no longer Admin Central Stock — it's
-    // the medication/medical_supplies SUBSET of HC Assigned Stock (see the
-    // GET /head-caregiver/inventory route). It and `assignedStock` are two
-    // views of the exact same underlying rows, never two separate numbers.
+
     const [inventory, setInventory] = useState([]);
-    // HC Assigned Stock — SHARED pool balance (same quantity across every
-    // head_caregiver account, not this HC's own). Single source of
-    // truth for both "Shared Stock" and "Medication Inventory Status".
+
     const [assignedStock, setAssignedStock] = useState([]);
-    // Guards the Administer button against a fast double-click/double-tap
-    // firing two overlapping PUT /schedule/:id/status requests for the
-    // same dose before the first one has come back. The backend now
-    // protects the data either way (atomic claim on the MedicationLog),
-    // but disabling the button here avoids a needless second request and
-    // the confusing "already administered" toast it would produce.
+
     const [pendingScheduleIds, setPendingScheduleIds] = useState(() => new Set());
-    // Product catalog (Parts 1–3), used only to populate the Request Stock
-    // "Select Item" dropdown — carries no quantity of its own.
+
     const [products, setProducts] = useState([]);
-    // This HC's own submitted stock requests (Part 5) — Pending/Approved/
-    // Rejected. Purely a list of request records; creating one never
-    // moves Admin Central Stock or HC Assigned Stock (see the backend
-    // POST /inventory/request comment).
+
     const [stockRequests, setStockRequests] = useState([]);
-    // Part 8 — notifications from the project's existing Alert system
-    // (GET/PUT /api/alerts*, routes/alertRoutes.js) — not a separate
-    // notification store. Stock Request Approved/Rejected and Medication
-    // Administered alerts land here, scoped server-side to this HC's own
-    // relatedUser, so they persist across refresh and never expose
-    // another HC's alerts.
+
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [notifOpen, setNotifOpen] = useState(false);
@@ -1381,7 +1288,7 @@ const HeadCaregiverDashboard = () => {
     const [invPage, setInvPage] = useState(1);
     const [stockPage, setStockPage] = useState(1);
     const [requestsPage, setRequestsPage] = useState(1);
-    const PER = 5; // rows per page, applied to every paginated table
+    const PER = 5;
 
     const shiftLabel = {
         DAY: 'Day (7AM–7PM)',
@@ -1389,13 +1296,6 @@ const HeadCaregiverDashboard = () => {
         FLEXIBLE: 'Flexible',
     }[user?.shift] || 'Day (7AM–7PM)';
 
-    // Matches backend/utils/shiftUtils.js — kept in sync manually since the
-    // frontend and backend are separate apps with no shared package. This is
-    // a UX convenience only (hides/disables buttons, shows the off-duty
-    // notice); the backend re-checks the same thing on every request, so it
-    // stays correct even if this copy ever drifts. Uses raw UTC-offset math
-    // rather than toLocaleString/hour12, which some ICU builds mis-render as
-    // hour "24" at midnight instead of "0".
     const onDuty = (() => {
         if (user?.shift !== 'DAY' && user?.shift !== 'NIGHT') return true;
         const manilaNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -1404,10 +1304,6 @@ const HeadCaregiverDashboard = () => {
         return user.shift === 'DAY' ? isDayWindow : !isDayWindow;
     })();
 
-    // Actions a head caregiver may only take while on duty — attempting one
-    // off duty shows the notice instead of opening the modal. The backend
-    // enforces the same rule independently on each of these endpoints, so
-    // this is UX only, not the real security boundary.
     const ON_DUTY_ONLY_MODALS = new Set([
         'addResident', 'editResident', 'discharge', 'assignCaregiver',
         'addSchedule', 'editSchedule', 'deleteMedication', 'requestStock',
@@ -1420,9 +1316,6 @@ const HeadCaregiverDashboard = () => {
         setModal(next);
     };
 
-    // One-time notice for the current session — captured from onDuty at the
-    // moment the dashboard mounts, so dismissing it doesn't need to be
-    // re-shown just because a re-render happens to run this component again.
     const [showOffDutyNotice, setShowOffDutyNotice] = useState(() => !onDuty);
 
     const toast = useCallback((msg, type = 'success') => {
@@ -1467,21 +1360,15 @@ const HeadCaregiverDashboard = () => {
             doFetch('/head-caregiver/residents'),
             doFetch('/head-caregiver/schedule'),
             doFetch('/head-caregiver/medications'),
-            // PART 4 FIX: same HC Assigned Stock table as /assigned-stock
-            // below, just filtered to medication/medical_supplies — not a
-            // second stock number.
+
             doFetch('/head-caregiver/inventory'),
             doFetch('/head-caregiver/stats'),
             doFetch('/head-caregiver/assigned-stock'),
-            // Product catalog for the Request Stock dropdown (Parts 1–3).
+
             doFetch('/head-caregiver/products'),
-            // Part 5: this HC's own submitted stock requests.
+
             doFetch('/head-caregiver/stock-requests'),
-            // Part 8: the project's existing Alert system (routes/
-            // alertRoutes.js, mounted at /api/alerts — a sibling of
-            // /api/head-caregiver, not nested under it). GET / already
-            // scopes non-admin roles to their own relatedUser, so this
-            // naturally returns only this HC's own notifications.
+
             doFetch('/alerts'),
             doFetch('/alerts/unread-count'),
         ]);
@@ -1498,9 +1385,6 @@ const HeadCaregiverDashboard = () => {
         await fetchCaregivers();
     }, [doFetch, fetchCaregivers]);
 
-    // Re-fetches just the notification list/badge — called when the
-    // dropdown is opened, so it's current at the moment the HC checks it,
-    // without needing a full loadAll().
     const refreshNotifications = useCallback(async () => {
         const [alertR, unreadR] = await Promise.all([
             doFetch('/alerts'),
@@ -1515,7 +1399,7 @@ const HeadCaregiverDashboard = () => {
         setUnreadCount(c => Math.max(0, c - 1));
         const r = await doFetch(`/alerts/${id}/read`, { method: 'PUT' });
         if (!r.success) {
-            // Roll the optimistic update back if the server didn't confirm it.
+
             await refreshNotifications();
         }
     }, [doFetch, refreshNotifications]);
@@ -1529,25 +1413,16 @@ const HeadCaregiverDashboard = () => {
         }
     }, [doFetch, refreshNotifications]);
 
-    // Refreshes just this HC's stock request list — called after
-    // submitting a new request, instead of a full loadAll(), since
-    // submitting a request never changes residents/schedule/stock.
     const refreshStockRequests = useCallback(async () => {
         const r = await doFetch('/head-caregiver/stock-requests');
         if (r.success) setStockRequests(r.data || []);
     }, [doFetch]);
 
-    // The summary cards (Total Meds/On Time/Delayed/Missed/Pending) are server-
-    // computed, so any local edit to `schedule` (add/edit/delete/mark status)
-    // needs this too, or the cards silently drift out of sync with the list.
     const refreshStats = useCallback(async () => {
         const r = await doFetch('/head-caregiver/stats');
         if (r.success) setStats(s => ({ ...s, ...r.data }));
     }, [doFetch]);
 
-    // Per-page refresh scoped to just the table(s) that page shows — used by
-    // the small refresh button on Residents / Medicines / My Stock so a
-    // click there doesn't have to reload every other page's data too.
     const refreshResidentsPage = useCallback(async () => {
         setRefreshing(true);
         const [resR] = await Promise.all([doFetch('/head-caregiver/residents'), fetchCaregivers()]);
@@ -1586,9 +1461,6 @@ const HeadCaregiverDashboard = () => {
         (async () => { setLoading(true); await loadAll(); setLoading(false); })();
     }, [loadAll]);
 
-    // Real-time sync: any resident create/update/discharge/assign-caregiver
-    // (from this session, another admin, or the mobile app) refreshes the
-    // residents list and stats immediately instead of requiring a manual reload.
     const { on, off } = useSocket();
     useEffect(() => {
         const handleResidentsUpdated = () => { loadAll(); };
@@ -1605,15 +1477,13 @@ const HeadCaregiverDashboard = () => {
         setRequestsPage(1);
     }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort]);
 
-    // Re-apply a deep-linked section if we navigate here again while already mounted
-    // (e.g. clicking a Help Center Quick Navigation card while already on /head-caregiver).
     useEffect(() => {
         if (location.state?.section) {
             setSection(location.state.section);
-            // Clear the state so a manual refresh doesn't keep forcing this tab.
+
             navigate(location.pathname, { replace: true, state: {} });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [location.state?.section]);
 
     const handleRefresh = async () => {
@@ -1622,10 +1492,6 @@ const HeadCaregiverDashboard = () => {
         setRefreshing(false);
     };
 
-    // Small icon-only refresh button reused on every page (Home, Residents,
-    // Medicines, My Stock). Defaults to a full loadAll() so every table on
-    // whichever page it's clicked from is brought current; pass a scoped
-    // `onClick` to refresh only that page's data instead.
     const RefreshBtn = ({ onClick = handleRefresh, title = 'Refresh data' }) => (
         <button
             type="button"
@@ -1645,8 +1511,6 @@ const HeadCaregiverDashboard = () => {
         </button>
     );
 
-    // Close the notification dropdown on outside click (same pattern as
-    // the existing account-menu dropdown / Admin's notif-dropdown).
     useEffect(() => {
         if (!notifOpen) return;
         const handleClickOutside = (e) => {
@@ -1658,15 +1522,13 @@ const HeadCaregiverDashboard = () => {
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const handleLogout = () => setShowLogoutConfirm(true);
-    const confirmLogout = () => { logout(); navigate('/'); };
+    const confirmLogout = async () => {
+        await logout();
+        navigate(HIDDEN_LOGIN_PATH);
+    };
 
     const markStatus = async (id, status, method = 'manual') => {
-        // Already have a request in flight for this exact dose — ignore
-        // the extra click instead of firing a second PUT. This is a UX
-        // nicety on top of the backend's atomic guard, not a substitute
-        // for it: the backend must (and does) reject a genuine duplicate
-        // on its own, since two clicks can still originate from two
-        // different tabs/devices where this in-memory guard can't help.
+
         if (pendingScheduleIds.has(id)) return;
 
         const log = schedule.find(l => l._id === id);
@@ -1701,14 +1563,7 @@ const HeadCaregiverDashboard = () => {
 
                 const isAdministerAction = status === 'completed' || status === 'administered';
                 if (isAdministerAction) {
-                    // The dose that just went through drew down this HC's
-                    // HCAssignedStock on the server (see PUT
-                    // /schedule/:id/status). Re-pull the same two
-                    // endpoints the Stock page reads from — /inventory and
-                    // /assigned-stock — so "My Stock" and "Medication
-                    // Inventory Status" reflect the new balance right away
-                    // instead of only after a manual refresh or a full
-                    // reload of the page.
+
                     const [invR, assignedR] = await Promise.all([
                         doFetch('/head-caregiver/inventory'),
                         doFetch('/head-caregiver/assigned-stock'),
@@ -1717,9 +1572,6 @@ const HeadCaregiverDashboard = () => {
                     if (assignedR.success) setAssignedStock(assignedR.data || []);
                 }
 
-                // Compliance rate and the Total/On-Time/Delayed/Missed/
-                // Pending cards are server-computed from MedicationLog, so
-                // this always needs a refresh after any status change.
                 await refreshStats();
                 toast(`${medName} marked as ${status} for ${resName}.`);
             } else {
@@ -1815,21 +1667,12 @@ const HeadCaregiverDashboard = () => {
         return inventory.filter(item => item.name?.toLowerCase().includes(q));
     }, [inventory, searchQuery]);
 
-    // Part 4: filters HC Assigned Stock only — `inventory` above is
-    // already the same table (server-filtered), so this and
-    // filteredInventory are two views of one dataset, not two datasets.
     const filteredAssignedStock = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
         if (!q) return assignedStock;
         return assignedStock.filter(item => item.name?.toLowerCase().includes(q));
     }, [assignedStock, searchQuery]);
 
-    // PART 4 FIX: Request Stock dropdown source. Lists the full Product
-    // catalog (Parts 1–3) so an HC can request an item they currently have
-    // zero of, not just items already in their assigned stock. The
-    // "Current: N unit" figure shown per option is looked up from
-    // `assignedStock` (defaulting to 0) rather than stored on `products`
-    // itself — there is still only one place quantity lives.
     const requestableItems = useMemo(() => {
         return products.map(p => {
             const assigned = assignedStock.find(a => String(a.productId) === String(p._id));
@@ -1857,7 +1700,6 @@ const HeadCaregiverDashboard = () => {
         return <button className="btn-success-sm sched-btn-administer" disabled={isPending} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
     };
 
-    // ── SCREEN 1: HOME DASHBOARD ────────────────────────────────────────
     const renderHome = () => (
         <div>
             <div className="nurse-header">
@@ -1876,7 +1718,6 @@ const HeadCaregiverDashboard = () => {
                 </div>
             </div>
 
-            {/* Stats Row */}
             <div className="nurse-stat-row">
                 {[
                     { label: 'Total Meds', val: stats.total, cls: '' },
@@ -1893,7 +1734,6 @@ const HeadCaregiverDashboard = () => {
                 ))}
             </div>
 
-            {/* Compliance Rate */}
             <div className="card-white mb-18">
                 <div className="compliance-text">
                     <span>Compliance Rate &nbsp;</span>
@@ -1908,7 +1748,6 @@ const HeadCaregiverDashboard = () => {
             </div>
 
             <div className="home-top-grid">
-                {/* Today's Schedule Preview */}
                 <div className="card-white home-card">
                     <h6><FaClock style={{ marginRight: 7, color: 'var(--d-orange)' }} />Today's Schedule</h6>
                     {schedule.length === 0 ? (
@@ -1940,7 +1779,6 @@ const HeadCaregiverDashboard = () => {
                     <button className="btn-primary-sm home-full-width-btn" onClick={() => setSection('medicines')}>View Full Schedule →</button>
                 </div>
 
-                {/* My Assigned Residents Preview */}
                 <div className="card-white home-card">
                     <h6><FaUsers style={{ marginRight: 7, color: 'var(--d-orange)' }} />My Assigned Residents</h6>
                     {residents.length === 0 ? (
@@ -1968,7 +1806,6 @@ const HeadCaregiverDashboard = () => {
                     <button className="btn-primary-sm home-full-width-btn" onClick={() => setSection('residents')}>View All Residents →</button>
                 </div>
 
-                {/* Quick Actions */}
                 <div className="card-white home-card">
                     <h6>Quick Actions</h6>
                     <div className="quick-actions-grid">
@@ -1987,14 +1824,12 @@ const HeadCaregiverDashboard = () => {
         </div>
     );
 
-    // ── SCREEN 2: RESIDENTS MANAGEMENT (UPDATED with icon-only actions) ──
     const renderResidents = () => {
         const RES_PER = 10;
         const pages = Math.max(1, Math.ceil(filteredRes.length / RES_PER));
         const safeResPage = Math.min(resPage, pages);
         const paged = filteredRes.slice((safeResPage - 1) * RES_PER, safeResPage * RES_PER);
 
-        // Helper to get resident's full name for display
         const getResidentName = (r) => {
             if (r.name) return r.name;
             const first = r.firstName || '';
@@ -2166,7 +2001,6 @@ const HeadCaregiverDashboard = () => {
         );
     };
 
-    // ── SCREEN 3: MEDICATION MANAGEMENT ─────────────────────────────────
     const renderMedicines = () => {
         const schedPages = Math.max(1, Math.ceil(filteredSched.length / PER));
         const safeSchedPage = Math.min(schedPage, schedPages);
@@ -2184,7 +2018,6 @@ const HeadCaregiverDashboard = () => {
                     <span className="nurse-info-pill">Shift: {shiftLabel.split(' ')[0]}</span>
                 </div>
 
-                {/* Filters + Action Row */}
                 <div className="med-filters-row">
                     <span className="filters-label"><FaFilter /> Filters:</span>
                     <select className="filter-select" value={filterStatus} onChange={e => setFStatus(e.target.value)}>
@@ -2212,7 +2045,6 @@ const HeadCaregiverDashboard = () => {
                     </div>
                 </div>
 
-                {/* Today's Medication Schedule Table */}
                 <div className="card-white mb-18">
                     <div className="card-header"><h5><FaClock className="mr-8" />Today's Medication Schedule</h5></div>
                     <div className="table-scroll">
@@ -2266,7 +2098,6 @@ const HeadCaregiverDashboard = () => {
                     )}
                 </div>
 
-                {/* Active Medications by Resident */}
                 <div className="card-white mb-18">
                     <div className="card-header"><h5>Active Medications by Resident</h5></div>
                     <div className="table-scroll">
@@ -2328,25 +2159,11 @@ const HeadCaregiverDashboard = () => {
         );
     };
 
-    // ── SCREEN 4: HC ASSIGNED STOCK (Part 4) ────────────────────────────
-    // Read-only view of the SHARED stock pool (same for every HC). The "Medication
-    // Inventory Status" table (medication/medical_supplies subset of this
-    // same HC Assigned Stock data) lives ONLY here on My Stock as of
-    // Part 9 — it used to also be duplicated on the Medicines tab
-    // (renderMedicines() above), which was removed as a UI cleanup; the
-    // underlying data/state (filteredInventory, invPage, etc.) is
-    // untouched and still comes from the same GET /head-caregiver/
-    // inventory call used elsewhere.
     const renderMyStock = () => {
         const stockPages = Math.max(1, Math.ceil(filteredAssignedStock.length / PER));
         const safeStockPage = Math.min(stockPage, stockPages);
         const pagedStock = filteredAssignedStock.slice((safeStockPage - 1) * PER, safeStockPage * PER);
 
-        // Part 5: "Medication Inventory Status" on the My Stock page.
-        // Reuses the exact same `filteredInventory` (medication/
-        // medical_supplies view over HC Assigned Stock) already used on
-        // the Medicines tab — same rows, same source, never a second
-        // stock number.
         const invPages2 = Math.max(1, Math.ceil(filteredInventory.length / PER));
         const safeInvPage2 = Math.min(invPage, invPages2);
         const pagedInventory2 = filteredInventory.slice((safeInvPage2 - 1) * PER, safeInvPage2 * PER);
@@ -2421,10 +2238,6 @@ const HeadCaregiverDashboard = () => {
                     )}
                 </div>
 
-                {/* Medication Inventory Status — Part 5: added to the My
-                    Stock page, directly below "My Assigned Stock". Same
-                    HC Assigned Stock rows as above (medication/
-                    medical_supplies subset), not a second quantity. */}
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>Medication Inventory Status</h5>
@@ -2471,10 +2284,6 @@ const HeadCaregiverDashboard = () => {
                     )}
                 </div>
 
-                {/* My Stock Requests — Part 5. Requests this HC has
-                    submitted via "Request Stock". Read-only status list;
-                    approval/rejection happens on the Admin side (Part 6,
-                    not implemented yet). */}
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>My Stock Requests</h5>
@@ -2676,7 +2485,6 @@ const HeadCaregiverDashboard = () => {
                 </div>
             </div>
 
-            {/* Modals */}
             {modal?.type === 'addResident' && <AddResidentModal
                 onClose={() => setModal(null)}
                 onSaved={r => { setResidents(p => [...p, r]); loadAll(); }}
@@ -2717,7 +2525,6 @@ const HeadCaregiverDashboard = () => {
             {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} onSubmitted={refreshStockRequests} />}
 
-            {/* Off Duty Notice */}
             {showOffDutyNotice && (
                 <div className="modal-overlay" style={{ zIndex: 10002 }}>
                     <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
@@ -2737,7 +2544,6 @@ const HeadCaregiverDashboard = () => {
                 </div>
             )}
 
-            {/* Logout Confirm */}
             {showLogoutConfirm && (
                 <div className="modal-overlay" style={{ zIndex: 10002 }}>
                     <div className="registration-modal" style={{ maxWidth: 380, width: '100%', padding: 'clamp(20px,6vw,28px)', boxSizing: 'border-box' }}>
