@@ -1613,12 +1613,15 @@ router.put('/stock-requests/:id', async (req, res) => {
             });
         }
 
-        // §3.4 — credit the requesting HC's OWN assigned-stock balance,
-        // identified by their user ID (never name/email), upserting the
-        // (headCaregiver, product) row per HCAssignedStock's unique index.
+        // §3.4 — credit the SHARED assigned-stock pool for this Product
+        // (see models/HCAssignedStock.js: the pool is now one row per
+        // productId, shared by every head_caregiver — there is no
+        // headCaregiverId field to scope by anymore). lastUpdatedBy is
+        // purely informational and must never be used to filter this
+        // query, or the old per-HC behavior would silently come back.
         await HCAssignedStock.findOneAndUpdate(
-            { headCaregiverId: existing.requestedBy, productId: product._id },
-            { $inc: { quantity: requestedQty } },
+            { productId: product._id },
+            { $inc: { quantity: requestedQty }, $set: { lastUpdatedBy: req.user._id } },
             { upsert: true }
         );
 
@@ -1637,8 +1640,10 @@ router.put('/stock-requests/:id', async (req, res) => {
 
         if (!updatedRequest) {
             await restoreBatchDeductions(deductions);
+            // Compensate the shared pool credit from §3.4 above — same
+            // productId-only key, no headCaregiverId (see note there).
             await HCAssignedStock.findOneAndUpdate(
-                { headCaregiverId: existing.requestedBy, productId: product._id },
+                { productId: product._id },
                 { $inc: { quantity: -requestedQty } }
             );
             return res.status(409).json({ success: false, message: 'This request has already been resolved by another action.' });
