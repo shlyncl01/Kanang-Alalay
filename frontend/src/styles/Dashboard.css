@@ -520,6 +520,7 @@ body {
    declared later in this file with equal selector specificity. */
 .inventory-stats-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 16px;
 }
 
 /* Smaller, more compact stat cards for the Inventory tab specifically
