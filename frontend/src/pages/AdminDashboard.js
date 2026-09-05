@@ -81,7 +81,7 @@ const timeAgo = (iso) => {
     return `${Math.floor(diff / 86400)}d ago`;
 };
 
-const ALERT_TYPE_OPTIONS = ['All', 'Medication', 'Inventory', 'Stock Request', 'Resident', 'System'];
+const ALERT_TYPE_OPTIONS = ['All', 'Medication', 'Inventory', 'Stock Request', 'System'];
 const ALERT_STATUS_OPTIONS = ['All', 'Unread', 'Read'];
 const ALERT_DATE_OPTIONS = ['All', 'Today', 'This Week', 'This Month'];
 const alertSelectStyle = { padding: '8px 10px', border: '1.5px solid #E8D6CC', borderRadius: 9, fontSize: '.83rem', background: '#fff', color: '#1A0A00', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" };
