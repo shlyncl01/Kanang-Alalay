@@ -35,6 +35,7 @@ const upload = multer({
 });
 
 // POST /api/donations - Create a new donation
+// ✅ FIXED: Now respects anonymous flag for validation and data storage
 router.post('/', upload.single('proofOfPayment'), async (req, res) => {
     try {
         console.log('=== Received donation submission ===');
@@ -48,6 +49,10 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
             appointmentDate, appointmentTime, notes, anonymous, paymentMethod
         } = req.body;
 
+        // ✅ NEW: Check anonymous flag FIRST
+        const isAnonymous = anonymous === 'true' || anonymous === true;
+        console.log('Is anonymous:', isAnonymous);
+
         // Normalize values
         const normalizedFirstName = (firstName || '').toString().trim();
         const normalizedLastName = (lastName || '').toString().trim();
@@ -56,14 +61,20 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
         const normalizedDonationType = (donationType || '').toString().trim().toLowerCase();
         const normalizedPhone = (phone || '').toString().trim();
         
-        // Validate required fields
+        // ✅ FIXED: Validate required fields based on anonymous flag
         const missingFields = [];
-        if (!normalizedFirstName) missingFields.push('firstName');
-        if (!normalizedLastName) missingFields.push('lastName');
-        if (!normalizedDonorName) missingFields.push('donorName');
-        if (!normalizedEmail) missingFields.push('email');
+        
+        // These are ALWAYS required
         if (!normalizedDonationType) missingFields.push('donationType');
         if (!normalizedPhone) missingFields.push('phone');
+        
+        // These are only required if NOT anonymous
+        if (!isAnonymous) {
+            if (!normalizedFirstName) missingFields.push('firstName');
+            if (!normalizedLastName) missingFields.push('lastName');
+            if (!normalizedEmail) missingFields.push('email');
+            if (!normalizedDonorName) missingFields.push('donorName');
+        }
         
         if (missingFields.length > 0) {
             console.log('Missing fields:', missingFields);
@@ -71,6 +82,16 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
                 success: false, 
                 message: `Missing required fields: ${missingFields.join(', ')}` 
             });
+        }
+
+        // ✅ NEW: Validate email format only if provided and not anonymous
+        if (!isAnonymous && normalizedEmail) {
+            if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Invalid email address' 
+                });
+            }
         }
 
         // Handle amount based on donation type
@@ -127,18 +148,19 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
             });
         }
 
-        // Prepare donation data
+        // ✅ FIXED: Prepare donation data with anonymous handling
         const donationData = {
-            firstName: normalizedFirstName,
-            middleName: (middleName || '').toString().trim(),
-            lastName: normalizedLastName,
-            donorName: normalizedDonorName,
-            email: normalizedEmail,
+            // ✅ Use placeholder values for anonymous donations
+            firstName: isAnonymous ? 'Anonymous' : normalizedFirstName,
+            middleName: isAnonymous ? '' : (middleName || '').toString().trim(),
+            lastName: isAnonymous ? 'Donor' : normalizedLastName,
+            donorName: isAnonymous ? 'Anonymous Donor' : normalizedDonorName,
+            email: isAnonymous ? 'anonymous@kanangalalay.org' : normalizedEmail,
             phone: normalizedPhone,
             amount: amountNum,
             donationType: normalizedDonationType,
             notes: (notes || '').toString().trim(),
-            anonymous: anonymous === 'true' || anonymous === true,
+            anonymous: isAnonymous,
             paymentMethod: normalizedDonationType === 'online' ? (paymentMethod || 'qrph').toString().trim().toLowerCase() : null,
             appointmentDate: normalizedDonationType === 'cash' ? appointmentDate : undefined,
             appointmentTime: normalizedDonationType === 'cash' ? appointmentTime : undefined,
@@ -159,12 +181,14 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
 
         // Send email (non-blocking)
         try {
+            // ✅ Use appropriate email based on anonymous flag
+            const emailRecipient = isAnonymous ? 'anonymous@kanangalalay.org' : donation.email;
             await sendEmail(
-                donation.email,
+                emailRecipient,
                 'Thank You For Your Donation - Kanang Alalay',
                 generateDonationTemplate(donation)
             );
-            console.log('Confirmation email sent to:', donation.email);
+            console.log('Confirmation email sent for:', isAnonymous ? 'Anonymous Donor' : donation.email);
         } catch (emailErr) {
             console.warn('Donation email failed (non-blocking):', emailErr?.message || emailErr);
         }
