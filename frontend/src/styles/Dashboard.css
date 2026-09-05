@@ -512,32 +512,37 @@ body {
   width: 100%;
 }
 
-/* Inventory & Stock Management's 4 stat cards (Low Stock, Out of Stock,
-   Total Items, Expiring Soon): force an even 4-column row on desktop so the
-   auto-fit sizing above doesn't leave uneven gaps between them. Media-query
-   overrides on .stats-grid further down still apply on smaller screens since
-   they're declared later in this file with equal selector specificity. */
+/* Inventory & Stock Management's 5 stat cards (Total Products, Total
+   Stock, Low Stock, Out of Stock, Expiring Soon): force an even 5-column
+   row on desktop so they don't wrap and leave a lone card stranded in a
+   near-empty second row. Media-query overrides on .stats-grid further
+   down still reduce the column count on smaller screens since they're
+   declared later in this file with equal selector specificity. */
 .inventory-stats-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 /* Smaller, more compact stat cards for the Inventory tab specifically
-   (scoped to .inventory-stats-grid so no other tab's stat cards change). */
+   (scoped to .inventory-stats-grid so no other tab's stat cards change).
+   Sized with clamp() rather than fixed px/rem so the icon and text scale
+   down fluidly as the card narrows at every breakpoint below, instead of
+   staying frozen at desktop size while the grid shrinks the card around
+   them. */
 .inventory-stats-grid .stat-card {
   padding: 14px 16px;
   gap: 10px;
 }
 .inventory-stats-grid .stat-icon {
-  width: 40px;
-  height: 40px;
-  font-size: 1rem;
+  width: clamp(32px, 3vw, 40px);
+  height: clamp(32px, 3vw, 40px);
+  font-size: clamp(.85rem, 1vw, 1rem);
   border-radius: 10px;
 }
 .inventory-stats-grid .stat-info h3 {
-  font-size: 1.4rem;
+  font-size: clamp(1.05rem, 1.6vw, 1.4rem);
 }
 .inventory-stats-grid .stat-info p {
-  font-size: .72rem;
+  font-size: clamp(.58rem, .75vw, .72rem);
 }
 
 .stat-card {
