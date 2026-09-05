@@ -114,7 +114,12 @@ const matchesAlertDateFilter = (isoTime, filterValue) => {
     return true;
 };
 
-const DB_ALERT_TYPE_COLORS = { OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d' };
+const DB_ALERT_TYPE_COLORS = {
+    OTP: '#6c757d', Booking: '#17a2b8', Inventory: '#dc3545', System: '#6c757d',
+    'stock-request-submitted': '#f0ad4e',
+    'stock-request-approved': '#28a745',
+    'stock-request-rejected': '#dc3545',
+};
 
 const buildUnifiedAlerts = (notifications, dbAlerts, readIds) => {
     const fromNotifications = notifications.map(n => {
@@ -1928,7 +1933,8 @@ const AdminDashboard = () => {
                     <div className="alerts-list-full">
                         {pagedAlerts.map(a => {
                             const isRead = a.isRead;
-                            const isClickable = (a.source === 'notification' && a.section) || (a.source === 'db' && !isRead);
+                            const isStockRequestAlert = a.source === 'db' && (a.rawType || '').includes('stock-request');
+                            const isClickable = (a.source === 'notification' && a.section) || (a.source === 'db' && !isRead) || isStockRequestAlert;
                             const handleRowClick = () => {
                                 if (a.source === 'notification') {
                                     markRead(a.raw.id);
@@ -1937,8 +1943,13 @@ const AdminDashboard = () => {
                                         setNotifOpen(false);
                                         setSearchQuery('');
                                     }
-                                } else if (!isRead) {
-                                    markDbAlertRead(a.raw._id);
+                                } else if (a.source === 'db') {
+                                    if (!isRead) markDbAlertRead(a.raw._id);
+                                    if (isStockRequestAlert) {
+                                        setActiveSection('inventory');
+                                        setNotifOpen(false);
+                                        setSearchQuery('');
+                                    }
                                 }
                             };
                             return (
@@ -1965,7 +1976,8 @@ const AdminDashboard = () => {
                                         <strong style={{ display: 'block', marginBottom: 4 }}>{a.title}</strong>
                                         <span style={{ fontSize: '0.85rem', color: '#555' }}>{a.message}</span>
                                         {a.source === 'notification' && a.section && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to view →</small>}
-                                        {a.source === 'db' && !isRead && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to mark as read</small>}
+                                        {a.source === 'db' && isStockRequestAlert && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to view →</small>}
+                                        {a.source === 'db' && !isStockRequestAlert && !isRead && <small style={{ color: a.color, fontWeight: 600, marginTop: 4, display: 'block', fontSize: '0.7rem' }}>Click to mark as read</small>}
                                     </div>
                                     <div className="alert-row-meta" style={{ textAlign: 'right', flexShrink: 0 }}>
                                         <span className="alert-type-tag" style={{ background: a.color + '18', color: a.color, padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', display: 'inline-block', marginBottom: 6 }}>{a.typeLabel}</span>
