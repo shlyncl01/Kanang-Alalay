@@ -310,8 +310,8 @@ const DetailsModal = ({ data, type, onClose }) => {
     if (!data) return null;
     return (
         <div className="modal-overlay" style={{ zIndex: 9999 }}>
-            <div className="registration-modal" style={{ maxWidth: 520, padding: 35 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1.5px solid var(--d-border)', paddingBottom: 14 }}>
+            <div className="registration-modal" style={{ maxWidth: 520, padding: 35, maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1.5px solid var(--d-border)', paddingBottom: 14, position: 'sticky', top: 0, background: 'var(--d-card, #fff)', zIndex: 1 }}>
                     <h4 style={{ margin: 0, color: 'var(--d-ink)', display: 'flex', alignItems: 'center', gap: 10 }}>
                         {type === 'booking' ? <FaCalendarCheck color="#b85c2d" /> : <FaMoneyBillWave color="#28a745" />}
                         {type === 'booking' ? 'Booking Details' : 'Donation Details'}
