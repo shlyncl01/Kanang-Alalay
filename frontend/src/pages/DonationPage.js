@@ -213,10 +213,16 @@ Rules:
 
   const validate = () => {
     const e = {};
-    if (!form.firstName.trim()) e.firstName = 'Required';
-    if (!form.lastName.trim())  e.lastName  = 'Required';
-    if (!form.email.trim())     e.email     = 'Required';
-    else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
+    // Name/email are personal-identity fields — only required when NOT donating anonymously
+    if (!form.anonymous) {
+      if (!form.firstName.trim()) e.firstName = 'Required';
+      if (!form.lastName.trim())  e.lastName  = 'Required';
+      if (!form.email.trim())     e.email     = 'Required';
+      else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
+    } else if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email)) {
+      // If an anonymous donor chooses to still enter an email, keep format validation
+      e.email = 'Invalid email';
+    }
 
     if (!form.phone) {
       e.phone = 'Mobile number is required';
@@ -286,7 +292,7 @@ Rules:
 
       formData.append('firstName',    modalData.firstName);
       formData.append('lastName',     modalData.lastName);
-      formData.append('donorName',    `${modalData.firstName}${modalData.middleName ? ' ' + modalData.middleName : ''} ${modalData.lastName}`.trim());
+      formData.append('donorName',    modalData.donorName);
       formData.append('email',        modalData.email);
       formData.append('phone',        modalData.phone);
       formData.append('donationType', modalData.donationType);
