@@ -6,7 +6,8 @@ const alertSchema = new mongoose.Schema({
     enum: [
       "OTP", "Booking", "Inventory", "System",
       "side-effect", "low-stock", "medication-administered",
-      "delayed-patient", "refusal", "upcoming-medication"
+      "delayed-patient", "refusal", "upcoming-medication",
+      "stock-request-approved", "stock-request-rejected"
     ],
     required: true
   },
