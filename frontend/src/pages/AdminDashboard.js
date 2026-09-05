@@ -2268,9 +2268,9 @@ const AdminDashboard = () => {
                                     title="Notifications"
                                 >
                                     <FaBell />
-                                    {unreadCount > 0 && (
+                                    {combinedUnreadCount > 0 && (
                                         <span className="notif-dot-badge">
-                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                            {combinedUnreadCount > 9 ? '9+' : combinedUnreadCount}
                                         </span>
                                     )}
                                 </button>
@@ -2288,49 +2288,60 @@ const AdminDashboard = () => {
                                         </div>
 
                                         <div className="notif-list" style={{ maxHeight: 400, overflowY: 'auto' }}>
-                                            {notifications.length === 0 ? (
+                                            {unifiedAlerts.length === 0 ? (
                                                 <div className="notif-empty" style={{ textAlign: 'center', padding: '40px 20px' }}>
                                                     <FaBell style={{ fontSize: '2rem', color: '#E8D6CC' }} />
                                                     <p style={{ marginTop: 12, color: '#7A5C4E' }}>All caught up! No new alerts.</p>
                                                 </div>
-                                            ) : notifications.slice(0, 20).map(n => {
-                                                const meta = NOTIF_TYPES[n.type] || NOTIF_TYPES.system;
-                                                const isRead = readIds.has(n.id);
+                                            ) : unifiedAlerts.slice(0, 20).map(a => {
+                                                const isRead = a.isRead;
+                                                const isStockRequestAlert = a.source === 'db' && (a.rawType || '').includes('stock-request');
+                                                const isClickable = (a.source === 'notification' && a.section) || (a.source === 'db' && !isRead) || isStockRequestAlert;
+                                                const handleRowClick = () => {
+                                                    if (a.source === 'notification') {
+                                                        markRead(a.raw.id);
+                                                        if (a.section) {
+                                                            setActiveSection(a.section);
+                                                            setNotifOpen(false);
+                                                            setSearchQuery('');
+                                                        }
+                                                    } else if (a.source === 'db') {
+                                                        if (!isRead) markDbAlertRead(a.raw._id);
+                                                        if (isStockRequestAlert) {
+                                                            setActiveSection('inventory');
+                                                            setNotifOpen(false);
+                                                            setSearchQuery('');
+                                                        }
+                                                    }
+                                                };
                                                 return (
-                                                    <div key={n.id}
+                                                    <div key={a.uid}
                                                         className={`notif-item ${isRead ? 'read' : 'unread'}`}
-                                                        onClick={() => {
-                                                            markRead(n.id);
-                                                            if (meta.section) {
-                                                                setActiveSection(meta.section);
-                                                                setNotifOpen(false);
-                                                                setSearchQuery('');
-                                                            }
-                                                        }}
+                                                        onClick={handleRowClick}
                                                         style={{
                                                             padding: '12px 16px',
                                                             borderBottom: '1px solid #E8D6CC',
-                                                            cursor: meta.section ? 'pointer' : 'default',
+                                                            cursor: isClickable ? 'pointer' : 'default',
                                                             background: isRead ? '#fff' : '#FFF8F3',
                                                             display: 'flex',
                                                             gap: 12
                                                         }}
                                                     >
-                                                        <div className="notif-item-icon" style={{ color: meta.color, fontSize: '1.1rem' }}>{meta.icon}</div>
+                                                        <div className="notif-item-icon" style={{ color: a.color, fontSize: '1.1rem' }}>{a.icon || <FaBell />}</div>
                                                         <div className="notif-item-body" style={{ flex: 1 }}>
-                                                            <strong style={{ fontSize: '0.85rem', display: 'block' }}>{n.title}</strong>
-                                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>{n.body}</span>
-                                                            <small style={{ fontSize: '0.65rem', color: '#999', display: 'block', marginTop: 4 }}>{timeAgo(n.time)}</small>
+                                                            <strong style={{ fontSize: '0.85rem', display: 'block' }}>{a.title}</strong>
+                                                            <span style={{ fontSize: '0.75rem', color: '#666' }}>{a.message}</span>
+                                                            <small style={{ fontSize: '0.65rem', color: '#999', display: 'block', marginTop: 4 }}>{timeAgo(a.time)}</small>
                                                         </div>
-                                                        {!isRead && <div className="notif-unread-dot" style={{ width: 8, height: 8, background: meta.color, borderRadius: '50%', alignSelf: 'center' }} />}
+                                                        {!isRead && <div className="notif-unread-dot" style={{ width: 8, height: 8, background: a.color, borderRadius: '50%', alignSelf: 'center' }} />}
                                                     </div>
                                                 );
                                             })}
                                         </div>
 
-                                        {notifications.length > 0 && (
+                                        {unifiedAlerts.length > 0 && (
                                             <div className="notif-footer" onClick={() => { setActiveSection('alerts'); setNotifOpen(false); }} style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px solid #E8D6CC', cursor: 'pointer', color: '#F96B38', fontSize: '0.8rem' }}>
-                                                View all {notifications.length + dbAlerts.length} notifications →
+                                                View all {unifiedAlerts.length} notifications →
                                             </div>
                                         )}
                                     </div>
