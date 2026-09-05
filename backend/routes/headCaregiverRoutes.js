@@ -1392,6 +1392,25 @@ router.post('/inventory/request', async (req, res) => {
         // HC Assigned Stock both stay exactly as they were. Only the
         // request record itself is created.
 
+        // Notify Admin via the existing Alert system (models/Alert.js,
+        // routes/alertRoutes.js) — same pattern as the approve/reject
+        // notifications below, just the reverse direction. No relatedUser
+        // is set: this is an Admin-facing alert, not tied to one HC's own
+        // inbox (Admin's GET /alerts already returns every alert
+        // unfiltered, so it doesn't need one). Best-effort: the request
+        // itself already saved above, so a failure here is only logged,
+        // never turned into a failed submission.
+        try {
+            await Alert.create({
+                type: 'stock-request-submitted',
+                title: 'New Stock Request',
+                message: `${req.user.firstName} ${req.user.lastName} requested ${quantity} ${product.unit} of ${product.name}.`,
+                details: { stockRequestId: request._id },
+            });
+        } catch (notifyErr) {
+            console.error('Failed to create stock request submission alert:', notifyErr);
+        }
+
         const io = req.app.get('io');
         if (io) io.emit('stock_request', request);
 
