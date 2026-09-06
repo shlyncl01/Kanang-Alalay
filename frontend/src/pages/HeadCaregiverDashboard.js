@@ -1823,7 +1823,7 @@ const HeadCaregiverDashboard = () => {
                     <div className="quick-actions-grid">
                         {[
                             { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }), onDutyOnly: true },
-                            { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }) },
+                            { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }), onDutyOnly: true },
                             { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }), onDutyOnly: true },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
                             { icon: <FaSync />, label: 'Refresh Data', action: handleRefresh },
@@ -1887,7 +1887,7 @@ const HeadCaregiverDashboard = () => {
                             <option value="All">Caregiver: All</option>
                             {caregivers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                         </select>
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addResident' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Add Resident</button>
                     </div>
                 </div>
 
