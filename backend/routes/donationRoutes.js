@@ -121,6 +121,18 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
                     message: 'Payment method is required for online donations' 
                 });
             }
+
+            // Proof of donation receipt required for online donations — mirrors
+            // the frontend's existing requirement (DonationPage.js validate()),
+            // enforced server-side so the check can't be bypassed by calling
+            // this endpoint directly. Applies regardless of the anonymous flag,
+            // same as the frontend check.
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Proof of donation receipt is required for online donations.'
+                });
+            }
         } else if (normalizedDonationType === 'cash') {
             // For cash, amount is optional - default to 0
             if (rawAmount && rawAmount !== '') {

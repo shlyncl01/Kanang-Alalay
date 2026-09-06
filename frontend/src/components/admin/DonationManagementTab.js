@@ -102,7 +102,7 @@ const DonationManagementTab = ({ donations, updateDonationStatus, handleViewDeta
             </div>
 
             {/* Summary strip */}
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16, padding: '12px 16px', background: '#f0fff4', borderRadius: 10, border: '1.5px solid #c3e6cb', minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 16, marginBottom: 16, padding: '12px 16px', background: '#f0fff4', borderRadius: 10, border: '1.5px solid #c3e6cb', minWidth: 0 }}>
                 <div style={{ fontSize: '.82rem', color: '#555', flexShrink: 0 }}>
                     Showing <strong style={{ color: '#28a745' }}>{filtered.length}</strong> donation{filtered.length !== 1 ? 's' : ''}
                 </div>
