@@ -317,6 +317,7 @@ textarea.form-input { resize: vertical; }
     color: var(--d-ink);
 }
 .nurse-info-pill.on-duty { background: #EEFBF5; border-color: rgba(30,125,86,.2); color: #1E7D56; }
+.nurse-info-pill.off-duty { background: #F3F1EE; border-color: rgba(122,92,78,.2); color: #7A5C4E; }
 
 .home-top-grid    { display: grid; grid-template-columns: 1fr 1.2fr 0.8fr; gap: 16px; margin-bottom: 18px; }
 .home-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

@@ -1723,7 +1723,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="badge-row">
                     <span className="nurse-info-pill">Shift: {shiftLabel}</span>
                     {user?.ward && <span className="nurse-info-pill">{user.ward}</span>}
-                    <span className="nurse-info-pill on-duty">● On Duty</span>
+                    <span className={`nurse-info-pill ${onDuty ? 'on-duty' : 'off-duty'}`}>● {onDuty ? 'On Duty' : 'Off Duty'}</span>
                     <button className="btn-outline-sm ml-auto" onClick={handleRefresh} disabled={refreshing}>
                         <FaSync className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh Data'}
                     </button>
