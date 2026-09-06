@@ -1822,13 +1822,13 @@ const HeadCaregiverDashboard = () => {
                     <h6>Quick Actions</h6>
                     <div className="quick-actions-grid">
                         {[
-                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }) },
+                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }), onDutyOnly: true },
                             { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }) },
-                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }) },
+                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }), onDutyOnly: true },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
                             { icon: <FaSync />, label: 'Refresh Data', action: handleRefresh },
                         ].map((a, i) => (
-                            <button key={i} className="quick-action-btn" onClick={a.action}>{a.icon} {a.label}</button>
+                            <button key={i} className="quick-action-btn" onClick={a.action} disabled={a.onDutyOnly && !onDuty}>{a.icon} {a.label}</button>
                         ))}
                     </div>
                 </div>
@@ -1956,22 +1956,25 @@ const HeadCaregiverDashboard = () => {
                                             <button
                                                 className="res-action-icon"
                                                 onClick={() => openModal({type:'assignCaregiver',data:r})}
-                                                title="Assign Caregiver"
+                                                title={onDuty ? "Assign Caregiver" : "Not available while off duty"}
+                                                disabled={!onDuty}
                                             >
                                                 <FaUserMd />
                                             </button>
                                             <button
                                                 className="res-action-icon"
                                                 onClick={() => openModal({type:'editResident',data:r})}
-                                                title="Edit Resident"
+                                                title={onDuty ? "Edit Resident" : "Not available while off duty"}
+                                                disabled={!onDuty}
                                             >
                                                 <FaEdit />
                                             </button>
                                             <button
                                                 className="res-action-icon res-action-icon-danger"
                                                 onClick={() => openModal({type:'discharge',data:r})}
-                                                title="Remove Resident"
+                                                title={onDuty ? "Remove Resident" : "Not available while off duty"}
                                                 style={{ color: '#C0392B' }}
+                                                disabled={!onDuty}
                                             >
                                                 <FaUserMinus />
                                             </button>
@@ -2053,7 +2056,7 @@ const HeadCaregiverDashboard = () => {
                     </select>
                     <div className="med-action-btns">
                         <RefreshBtn onClick={refreshMedicinesPage} title="Refresh medication tables" />
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })}><FaPlus /> Add Medication</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Add Medication</button>
                     </div>
                 </div>
 
@@ -2299,7 +2302,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>My Stock Requests</h5>
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'requestStock' })}>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'requestStock' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}>
                             <FaBoxOpen /> Request Stock
                         </button>
                     </div>

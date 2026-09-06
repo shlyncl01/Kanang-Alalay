@@ -786,6 +786,12 @@ body {
 }
 .btn-primary-sm:hover  { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(249,107,56,.4); }
 .btn-primary-sm:active { transform: translateY(0); }
+.btn-primary-sm:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
 
 .btn-success-sm {
   display: inline-flex;
