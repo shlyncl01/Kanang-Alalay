@@ -168,7 +168,14 @@ async function autoMarkOverdue(logs) {
     );
     if (toOverdue.length) {
         const ids = toOverdue.map(l => l._id);
-        await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'overdue' });
+        // `logs` is a snapshot fetched earlier in this request — if a
+        // caregiver administered one of these doses in the meantime, its
+        // real DB status has already moved on. Re-matching status here (not
+        // just _id) stops this from clobbering that with a stale write.
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: { $in: ['scheduled', 'pending'] } },
+            { status: 'overdue' }
+        );
         toOverdue.forEach(l => { l.status = 'overdue'; });
     }
 
@@ -179,7 +186,14 @@ async function autoMarkOverdue(logs) {
     );
     if (toMissed.length) {
         const ids = toMissed.map(l => l._id);
-        await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'missed' });
+        // Same race guard as above — only escalate to 'missed' if the dose
+        // is still actually 'overdue' right now, not whatever it was when
+        // `logs` was fetched. Without this, administering a dose while this
+        // sweep is in flight gets silently overwritten back to 'missed'.
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: 'overdue' },
+            { status: 'missed' }
+        );
         toMissed.forEach(l => { l.status = 'missed'; });
     }
 
