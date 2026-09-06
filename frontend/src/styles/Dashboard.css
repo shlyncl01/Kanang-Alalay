@@ -911,6 +911,17 @@ body {
   flex-shrink: 0;
 }
 
+/* Same fix as .actions-approve-reject above, but for the Donation
+   Management table: reserves space for Mark Paid/Confirm so the View
+   icon stays in a fixed horizontal position whether or not a status
+   action button is rendered for a given row. */
+.actions-mark-paid {
+  display: flex;
+  align-items: center;
+  width: 112px;
+  flex-shrink: 0;
+}
+
 /* ── SEARCH / FILTER ──────────────────────────────────────────
    search-input bg: --d-cream → --d-white on focus
    border focus: --d-orange  ring: rgba(249,107,56,.1)

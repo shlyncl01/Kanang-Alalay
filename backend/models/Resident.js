@@ -19,6 +19,7 @@ const residentSchema = new mongoose.Schema({
     room:       { type: String, default: '' },
     floor:      { type: String, default: '' },
     bed:        { type: String, default: '' },
+    location:   { type: String, default: '', trim: true }, // where the resident was picked up from / found
     conditions: [String],
     allergies:  { type: String, default: '' },
     medications: [

@@ -157,12 +157,14 @@ const DonationManagementTab = ({ donations, updateDonationStatus, handleViewDeta
                                         </td>
                                         <td><span className={`status ${donation.paymentStatus}`}>{donation.paymentStatus}</span></td>
                                         <td className="actions">
-                                            {donation.paymentStatus === 'pending' && (
-                                                <button className="btn-success-sm" onClick={() => updateDonationStatus(donation._id, 'paid')}>Mark Paid</button>
-                                            )}
-                                            {donation.paymentStatus === 'processing' && (
-                                                <button className="btn-primary-sm" onClick={() => updateDonationStatus(donation._id, 'paid')}>Confirm</button>
-                                            )}
+                                            <div className="actions-mark-paid">
+                                                {donation.paymentStatus === 'pending' && (
+                                                    <button className="btn-success-sm" onClick={() => updateDonationStatus(donation._id, 'paid')}>Mark Paid</button>
+                                                )}
+                                                {donation.paymentStatus === 'processing' && (
+                                                    <button className="btn-primary-sm" onClick={() => updateDonationStatus(donation._id, 'paid')}>Confirm</button>
+                                                )}
+                                            </div>
                                             <span className="view" onClick={() => handleViewDetails('donation', donation)} title="View Details"><FaEye /></span>
                                         </td>
                                     </tr>

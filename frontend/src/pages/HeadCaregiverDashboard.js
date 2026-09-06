@@ -310,6 +310,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         roomNumber: resident.room || resident.roomNumber || '',
         floor: resident.floor || '',
         bed: resident.bed || '',
+        location: resident.location || '',
         conditions: (resident.conditions || []).map(c => c?.name || c),
         primaryCaregiverId: (typeof resident.primaryCaregiverId === 'object'
             ? resident.primaryCaregiverId?._id
@@ -328,6 +329,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         roomNumber: '',
         floor: '',
         bed: '',
+        location: '',
         conditions: [],
         primaryCaregiverId: '',
         admissionDate: new Date().toISOString().slice(0, 10),
@@ -379,6 +381,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
             roomNumber: f.roomNumber.trim(),
             floor: f.floor,
             bed: f.bed,
+            location: f.location.trim(),
             alertLevel: f.alertLevel,
             admissionDate: f.admissionDate,
             conditions: f.conditions.map(c => ({ name: c })),
@@ -471,6 +474,14 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                                 style={hcInputStyle(false)}
                                 value={f.admissionDate}
                                 onChange={e => setField('admissionDate', e.target.value)}
+                            />
+                        </HCField>
+                        <HCField label="Location" style={{ ...hcFieldWrap, gridColumn: '1 / -1' }} hint="Where the resident was picked up from or found">
+                            <input
+                                style={hcInputStyle(false)}
+                                value={f.location}
+                                onChange={e => setField('location', e.target.value)}
+                                placeholder="e.g. Barangay Hall, Riverside area (optional)"
                             />
                         </HCField>
                     </div>
@@ -868,6 +879,7 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
                             <InfoRow label="Age" value={resident.age} />
                             <InfoRow label="Gender" value={resident.gender} />
                             <InfoRow label="Admission Date" value={resident.admissionDate ? new Date(resident.admissionDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : null} />
+                            <InfoRow label="Location" value={resident.location} />
                         </div>
 
                         <div className="profile-section">
