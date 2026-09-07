@@ -633,6 +633,8 @@ textarea.form-input { resize: vertical; }
 .sched-btn-prepare:hover { opacity: .88; }
 .sched-btn-view:hover    { background: #d0d0d0; }
 .sched-btn-administer    { font-size: .78rem; padding: 6px 14px; }
+.sched-btn-verify:disabled { opacity: .4; cursor: not-allowed; }
+.sched-btn-verify:disabled:hover { opacity: .4; }
 
 .active-med-resident-cell { vertical-align: top; padding-top: 14px !important; }
 .active-med-res-name      { font-size: .88rem; font-weight: 700; }

@@ -941,11 +941,16 @@ router.put('/schedule/:id/status', async (req, res) => {
         const { status, notes, verificationMethod } = req.body;
         const allowed = ['scheduled', 'administered', 'overdue', 'missed', 'skipped', 'completed', 'pending'];
         if (!allowed.includes(status)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Invalid status. Allowed: ${allowed.join(', ')}` 
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status. Allowed: ${allowed.join(', ')}`
             });
         }
+
+        // Only the "mark as done" transition (Administer / Verify Now) is
+        // gated by duty status — Prepare (-> 'pending') stays available
+        // regardless, matching what was actually asked to be restricted.
+        if (status === 'completed' && !requireOnDuty(req, res)) return;
 
         // Part 7 §3 — administration quantity must be > 0. There's no
         // quantity-entry field in the current "Administer" UI (every click

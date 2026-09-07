@@ -809,6 +809,7 @@ body {
   transition: all .22s;
 }
 .btn-success-sm:hover { background: #155e41; transform: translateY(-2px); }
+.btn-success-sm:disabled { opacity: .45; cursor: not-allowed; background: #1E7D56; transform: none; }
 
 .btn-danger-sm {
   display: inline-flex;

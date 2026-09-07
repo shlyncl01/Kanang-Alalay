@@ -1702,14 +1702,14 @@ const HeadCaregiverDashboard = () => {
     const SchedActionBtn = ({ item }) => {
         const isPending = pendingScheduleIds.has(item._id);
         if (item.status === 'overdue')
-            return <button className="sched-btn-verify" disabled={isPending} onClick={() => markStatus(item._id, 'completed', 'manual')}>{isPending ? 'Verifying…' : 'Verify Now'}</button>;
+            return <button className="sched-btn-verify" disabled={isPending || !onDuty} title={onDuty ? undefined : "Not available while off duty"} onClick={() => markStatus(item._id, 'completed', 'manual')}>{isPending ? 'Verifying…' : 'Verify Now'}</button>;
         if (item.status === 'scheduled' || item.status === 'upcoming')
             return <button className="sched-btn-prepare" disabled={isPending} onClick={() => markStatus(item._id, 'pending', 'manual')}>{isPending ? 'Preparing…' : 'Prepare'}</button>;
         if (item.status === 'pending')
             return <button className="sched-btn-view" disabled style={{ opacity: 0.7 }}>Prepared — Awaiting Caregiver</button>;
         if (item.status === 'completed' || item.status === 'administered')
             return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === item.residentName) || { _id: item.residentId, name: item.residentName } })}>View</button>;
-        return <button className="btn-success-sm sched-btn-administer" disabled={isPending} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
+        return <button className="btn-success-sm sched-btn-administer" disabled={isPending || !onDuty} title={onDuty ? undefined : "Not available while off duty"} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
     };
 
     const renderHome = () => (
