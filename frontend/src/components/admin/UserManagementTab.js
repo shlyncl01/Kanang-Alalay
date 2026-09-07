@@ -274,7 +274,7 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
 
             {/* Table */}
             <div className="card-white" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1.5px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h5 style={{ margin: 0 }}>User Accounts</h5>
                     <small style={{ color: '#7A5C4E', fontSize: '.8rem' }}>{filteredUsers.length} account{filteredUsers.length !== 1 ? 's' : ''} found</small>
                 </div>
