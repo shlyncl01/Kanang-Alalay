@@ -1878,8 +1878,8 @@ const AdminDashboard = () => {
     );
 
     const renderAlerts = () => (
-        <div className="card-white" style={{ background: 'white', borderRadius: 16, overflow: 'hidden' }}>
-            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div className="card-white" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid #E8D6CC' }}>
                 <h5 style={{ margin: 0 }}>
                     Alerts &amp; Notifications
                     {combinedUnreadCount > 0 && <span style={{ marginLeft: 10, background: '#dc3545', color: '#fff', padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem' }}>{combinedUnreadCount}</span>}
@@ -2107,8 +2107,8 @@ const AdminDashboard = () => {
     };
 
     const renderCompliance = () => (
-        <div className="card-white" style={{ background: 'white', borderRadius: 16, padding: 24 }}>
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div className="card-white">
+            <div className="card-header">
                 <h5 style={{ margin: 0 }}>Medication Compliance Chart</h5>
                 <button className="btn-primary-sm" onClick={handleComplianceReport} style={{ padding: '8px 16px' }}>
                     <FaFileAlt /> Full Report
