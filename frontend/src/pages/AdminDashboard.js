@@ -1878,8 +1878,8 @@ const AdminDashboard = () => {
     );
 
     const renderAlerts = () => (
-        <div className="card-white" style={{ background: 'white', borderRadius: 16, overflow: 'hidden' }}>
-            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div className="card-white" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid #E8D6CC' }}>
                 <h5 style={{ margin: 0 }}>
                     Alerts &amp; Notifications
                     {combinedUnreadCount > 0 && <span style={{ marginLeft: 10, background: '#dc3545', color: '#fff', padding: '2px 8px', borderRadius: 20, fontSize: '0.7rem' }}>{combinedUnreadCount}</span>}
@@ -2107,8 +2107,8 @@ const AdminDashboard = () => {
     };
 
     const renderCompliance = () => (
-        <div className="card-white" style={{ background: 'white', borderRadius: 16, padding: 24 }}>
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div className="card-white">
+            <div className="card-header">
                 <h5 style={{ margin: 0 }}>Medication Compliance Chart</h5>
                 <button className="btn-primary-sm" onClick={handleComplianceReport} style={{ padding: '8px 16px' }}>
                     <FaFileAlt /> Full Report
@@ -2211,11 +2211,11 @@ const AdminDashboard = () => {
                             { key: 'overview', icon: <FaHome />, label: 'System Overview' },
                             { key: 'staff', icon: <FaUsers />, label: 'User Management' },
                             { key: 'roster', icon: <FaCalendarAlt />, label: 'Staff Roster' },
-                            { key: 'booking', icon: <FaCalendarCheck />, label: 'Booking Management', badge: stats.pendingBookings },
-                            { key: 'donation', icon: <FaMoneyBillWave />, label: 'Donation Ledger' },
-                            { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notification', badge: unreadCount },
-                            { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Management', badge: realLowStockCount },
+                            { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notifications', badge: unreadCount },
+                            { key: 'booking', icon: <FaCalendarCheck />, label: 'Admission & Booking', badge: stats.pendingBookings },
+                            { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Alerts', badge: realLowStockCount },
                             { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
+                            { key: 'donation', icon: <FaMoneyBillWave />, label: 'Donation Ledger' },
 
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key}
