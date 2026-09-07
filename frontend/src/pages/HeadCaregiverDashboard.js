@@ -1702,14 +1702,14 @@ const HeadCaregiverDashboard = () => {
     const SchedActionBtn = ({ item }) => {
         const isPending = pendingScheduleIds.has(item._id);
         if (item.status === 'overdue')
-            return <button className="sched-btn-verify" disabled={isPending} onClick={() => markStatus(item._id, 'completed', 'manual')}>{isPending ? 'Verifying…' : 'Verify Now'}</button>;
+            return <button className="sched-btn-verify" disabled={isPending || !onDuty} title={onDuty ? undefined : "Not available while off duty"} onClick={() => markStatus(item._id, 'completed', 'manual')}>{isPending ? 'Verifying…' : 'Verify Now'}</button>;
         if (item.status === 'scheduled' || item.status === 'upcoming')
             return <button className="sched-btn-prepare" disabled={isPending} onClick={() => markStatus(item._id, 'pending', 'manual')}>{isPending ? 'Preparing…' : 'Prepare'}</button>;
         if (item.status === 'pending')
             return <button className="sched-btn-view" disabled style={{ opacity: 0.7 }}>Prepared — Awaiting Caregiver</button>;
         if (item.status === 'completed' || item.status === 'administered')
             return <button className="sched-btn-view" onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === item.residentName) || { _id: item.residentId, name: item.residentName } })}>View</button>;
-        return <button className="btn-success-sm sched-btn-administer" disabled={isPending} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
+        return <button className="btn-success-sm sched-btn-administer" disabled={isPending || !onDuty} title={onDuty ? undefined : "Not available while off duty"} onClick={() => markStatus(item._id, 'completed')}>{isPending ? 'Administering…' : 'Administer'}</button>;
     };
 
     const renderHome = () => (
@@ -1723,7 +1723,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="badge-row">
                     <span className="nurse-info-pill">Shift: {shiftLabel}</span>
                     {user?.ward && <span className="nurse-info-pill">{user.ward}</span>}
-                    <span className="nurse-info-pill on-duty">● On Duty</span>
+                    <span className={`nurse-info-pill ${onDuty ? 'on-duty' : 'off-duty'}`}>● {onDuty ? 'On Duty' : 'Off Duty'}</span>
                     <button className="btn-outline-sm ml-auto" onClick={handleRefresh} disabled={refreshing}>
                         <FaSync className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh Data'}
                     </button>
@@ -1822,13 +1822,13 @@ const HeadCaregiverDashboard = () => {
                     <h6>Quick Actions</h6>
                     <div className="quick-actions-grid">
                         {[
-                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }) },
-                            { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }) },
-                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }) },
+                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }), onDutyOnly: true },
+                            { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }), onDutyOnly: true },
+                            { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }), onDutyOnly: true },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
                             { icon: <FaSync />, label: 'Refresh Data', action: handleRefresh },
                         ].map((a, i) => (
-                            <button key={i} className="quick-action-btn" onClick={a.action}>{a.icon} {a.label}</button>
+                            <button key={i} className="quick-action-btn" onClick={a.action} disabled={a.onDutyOnly && !onDuty}>{a.icon} {a.label}</button>
                         ))}
                     </div>
                 </div>
@@ -1887,7 +1887,7 @@ const HeadCaregiverDashboard = () => {
                             <option value="All">Caregiver: All</option>
                             {caregivers.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                         </select>
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addResident' })}><FaPlus /> Add Resident</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addResident' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Add Resident</button>
                     </div>
                 </div>
 
@@ -1956,22 +1956,25 @@ const HeadCaregiverDashboard = () => {
                                             <button
                                                 className="res-action-icon"
                                                 onClick={() => openModal({type:'assignCaregiver',data:r})}
-                                                title="Assign Caregiver"
+                                                title={onDuty ? "Assign Caregiver" : "Not available while off duty"}
+                                                disabled={!onDuty}
                                             >
                                                 <FaUserMd />
                                             </button>
                                             <button
                                                 className="res-action-icon"
                                                 onClick={() => openModal({type:'editResident',data:r})}
-                                                title="Edit Resident"
+                                                title={onDuty ? "Edit Resident" : "Not available while off duty"}
+                                                disabled={!onDuty}
                                             >
                                                 <FaEdit />
                                             </button>
                                             <button
                                                 className="res-action-icon res-action-icon-danger"
                                                 onClick={() => openModal({type:'discharge',data:r})}
-                                                title="Remove Resident"
+                                                title={onDuty ? "Remove Resident" : "Not available while off duty"}
                                                 style={{ color: '#C0392B' }}
+                                                disabled={!onDuty}
                                             >
                                                 <FaUserMinus />
                                             </button>
@@ -2053,7 +2056,7 @@ const HeadCaregiverDashboard = () => {
                     </select>
                     <div className="med-action-btns">
                         <RefreshBtn onClick={refreshMedicinesPage} title="Refresh medication tables" />
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })}><FaPlus /> Add Medication</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Add Medication</button>
                     </div>
                 </div>
 
@@ -2299,7 +2302,7 @@ const HeadCaregiverDashboard = () => {
                 <div className="card-white mb-18">
                     <div className="card-header">
                         <h5>My Stock Requests</h5>
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'requestStock' })}>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'requestStock' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}>
                             <FaBoxOpen /> Request Stock
                         </button>
                     </div>

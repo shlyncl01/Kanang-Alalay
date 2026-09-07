@@ -1,7 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import OTPVerificationModal from '../components/OTPVerificationModal';
-import ProfileUpdateModal from '../components/ProfileUpdateModal';
 
 const AuthContext = createContext();
 
@@ -20,9 +19,7 @@ export const AuthProvider = ({ children }) => {
     const [error, setError] = useState(null);
 
     const [showOTPModal, setShowOTPModal] = useState(false);
-    const [showProfileModal, setShowProfileModal] = useState(false);
     const [pendingUserId, setPendingUserId] = useState(null);
-    const [pendingUserData, setPendingUserData] = useState(null);
 
     useEffect(() => {
         const validateToken = async () => {
@@ -89,24 +86,9 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('token', data.token);
             setToken(data.token);
             setUser(data.user);
-
-            if (data.needsProfileUpdate) {
-                setPendingUserData(data.user);
-                setShowProfileModal(true);
-                setShowOTPModal(false);
-            } else {
-                setIsAuthenticated(true);
-                setShowOTPModal(false);
-            }
+            setIsAuthenticated(true);
+            setShowOTPModal(false);
         }
-    };
-
-    const handleProfileComplete = (updatedUser) => {
-        setUser(updatedUser);
-        setIsAuthenticated(true);
-        setShowProfileModal(false);
-        setPendingUserId(null);
-        setPendingUserData(null);
     };
 
     const logout = async () => {
@@ -124,9 +106,7 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsAuthenticated(false);
         setShowOTPModal(false);
-        setShowProfileModal(false);
         setPendingUserId(null);
-        setPendingUserData(null);
     };
 
     const register = async (userData) => {
@@ -173,12 +153,8 @@ export const AuthProvider = ({ children }) => {
         updateUser,
         showOTPModal,
         setShowOTPModal,
-        showProfileModal,
-        setShowProfileModal,
         pendingUserId,
-        pendingUserData,
         handleOTPSuccess,
-        handleProfileComplete,
     };
 
     return (
@@ -190,14 +166,6 @@ export const AuthProvider = ({ children }) => {
                     userId={pendingUserId}
                     onClose={() => setShowOTPModal(false)}
                     onVerified={handleOTPSuccess}
-                />
-            )}
-            {showProfileModal && (
-                <ProfileUpdateModal
-                    isOpen={showProfileModal}
-                    userData={pendingUserData}
-                    onClose={() => setShowProfileModal(false)}
-                    onComplete={handleProfileComplete}
                 />
             )}
         </AuthContext.Provider>

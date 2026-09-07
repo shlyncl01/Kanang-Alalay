@@ -576,30 +576,38 @@ router.post('/administer/:logId', authMiddleware, async (req, res) => {
                 }
 
                 const administeredQuantity = 1; // one dose unit, same as the web Administer flow's default
-                const assigned = await HCAssignedStock.findOne({ headCaregiverId: claimed.preparingHeadCaregiverId, productId: product._id });
+                // HCAssignedStock is now a single SHARED pool per productId
+                // (see models/HCAssignedStock.js) — no headCaregiverId field
+                // exists on it anymore, so filtering by
+                // claimed.preparingHeadCaregiverId here always matched
+                // nothing, making every mobile administration fail with
+                // "not in assigned stock" regardless of real quantity.
+                // Matches the query shape headCaregiverRoutes.js's PUT
+                // /schedule/:id/status already uses for the same pool.
+                const assigned = await HCAssignedStock.findOne({ productId: product._id });
                 const available = assigned ? assigned.quantity : 0;
                 if (available < administeredQuantity) {
                     await rollbackClaim();
                     return res.status(409).json({
                         message: assigned
-                            ? `Insufficient stock: only ${available} ${product.unit} of ${product.name} assigned to the preparing head caregiver. Administration was not recorded.`
-                            : `${product.name} is not in the preparing head caregiver's assigned stock. Administration was not recorded.`,
+                            ? `Insufficient stock: the shared pool has ${available} ${product.unit} of ${product.name}, but ${administeredQuantity} ${product.unit} ${administeredQuantity === 1 ? 'is' : 'are'} required. Administration was not recorded.`
+                            : `${product.name} is not in the shared stock pool. Administration was not recorded.`,
                     });
                 }
 
                 const updatedAssignedStock = await HCAssignedStock.findOneAndUpdate(
-                    { headCaregiverId: claimed.preparingHeadCaregiverId, productId: product._id, quantity: { $gte: administeredQuantity } },
-                    { $inc: { quantity: -administeredQuantity } },
+                    { productId: product._id, quantity: { $gte: administeredQuantity } },
+                    { $inc: { quantity: -administeredQuantity }, $set: { lastUpdatedBy: req.user._id } },
                     { new: true }
                 );
                 if (!updatedAssignedStock) {
                     await rollbackClaim();
                     return res.status(409).json({
-                        message: 'The assigned stock changed while processing this administration. Please try again.',
+                        message: 'The shared stock pool changed while processing this administration. Please try again.',
                     });
                 }
 
-                deductionNote = ` ${administeredQuantity} ${product.unit} deducted from the preparing head caregiver's assigned stock.`;
+                deductionNote = ` ${administeredQuantity} ${product.unit} deducted from the shared stock pool.`;
             }
         } catch (deductionErr) {
             await rollbackClaim();

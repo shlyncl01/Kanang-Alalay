@@ -168,7 +168,14 @@ async function autoMarkOverdue(logs) {
     );
     if (toOverdue.length) {
         const ids = toOverdue.map(l => l._id);
-        await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'overdue' });
+        // `logs` is a snapshot fetched earlier in this request — if a
+        // caregiver administered one of these doses in the meantime, its
+        // real DB status has already moved on. Re-matching status here (not
+        // just _id) stops this from clobbering that with a stale write.
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: { $in: ['scheduled', 'pending'] } },
+            { status: 'overdue' }
+        );
         toOverdue.forEach(l => { l.status = 'overdue'; });
     }
 
@@ -179,7 +186,14 @@ async function autoMarkOverdue(logs) {
     );
     if (toMissed.length) {
         const ids = toMissed.map(l => l._id);
-        await MedicationLog.updateMany({ _id: { $in: ids } }, { status: 'missed' });
+        // Same race guard as above — only escalate to 'missed' if the dose
+        // is still actually 'overdue' right now, not whatever it was when
+        // `logs` was fetched. Without this, administering a dose while this
+        // sweep is in flight gets silently overwritten back to 'missed'.
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: 'overdue' },
+            { status: 'missed' }
+        );
         toMissed.forEach(l => { l.status = 'missed'; });
     }
 
@@ -927,11 +941,16 @@ router.put('/schedule/:id/status', async (req, res) => {
         const { status, notes, verificationMethod } = req.body;
         const allowed = ['scheduled', 'administered', 'overdue', 'missed', 'skipped', 'completed', 'pending'];
         if (!allowed.includes(status)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Invalid status. Allowed: ${allowed.join(', ')}` 
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status. Allowed: ${allowed.join(', ')}`
             });
         }
+
+        // Only the "mark as done" transition (Administer / Verify Now) is
+        // gated by duty status — Prepare (-> 'pending') stays available
+        // regardless, matching what was actually asked to be restricted.
+        if (status === 'completed' && !requireOnDuty(req, res)) return;
 
         // Part 7 §3 — administration quantity must be > 0. There's no
         // quantity-entry field in the current "Administer" UI (every click

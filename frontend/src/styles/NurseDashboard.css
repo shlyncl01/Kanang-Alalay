@@ -317,6 +317,7 @@ textarea.form-input { resize: vertical; }
     color: var(--d-ink);
 }
 .nurse-info-pill.on-duty { background: #EEFBF5; border-color: rgba(30,125,86,.2); color: #1E7D56; }
+.nurse-info-pill.off-duty { background: #F3F1EE; border-color: rgba(122,92,78,.2); color: #7A5C4E; }
 
 .home-top-grid    { display: grid; grid-template-columns: 1fr 1.2fr 0.8fr; gap: 16px; margin-bottom: 18px; }
 .home-bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -469,6 +470,8 @@ textarea.form-input { resize: vertical; }
 }
 .quick-action-btn svg   { color: var(--d-orange); font-size: .9rem; flex-shrink: 0; }
 .quick-action-btn:hover { background: var(--d-orange-lt); border-color: var(--d-orange); color: var(--d-orange-dk); }
+.quick-action-btn:disabled { opacity: .45; cursor: not-allowed; }
+.quick-action-btn:disabled:hover { background: var(--d-cream); border-color: var(--d-border); color: var(--d-ink); }
 
 .res-page-header  { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
 .res-page-label   { font-size: .8rem; font-weight: 700; color: var(--d-muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -630,6 +633,8 @@ textarea.form-input { resize: vertical; }
 .sched-btn-prepare:hover { opacity: .88; }
 .sched-btn-view:hover    { background: #d0d0d0; }
 .sched-btn-administer    { font-size: .78rem; padding: 6px 14px; }
+.sched-btn-verify:disabled { opacity: .4; cursor: not-allowed; }
+.sched-btn-verify:disabled:hover { opacity: .4; }
 
 .active-med-resident-cell { vertical-align: top; padding-top: 14px !important; }
 .active-med-res-name      { font-size: .88rem; font-weight: 700; }
@@ -1029,6 +1034,17 @@ textarea.form-input { resize: vertical; }
     border-color: var(--d-orange);
     color: var(--d-orange-dk);
     transform: translateY(-2px);
+}
+
+.res-action-icon:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+.res-action-icon:disabled:hover {
+    background: var(--d-cream);
+    border-color: var(--d-border);
+    color: var(--d-muted);
+    transform: none;
 }
 
 .res-completed-icon {

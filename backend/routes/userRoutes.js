@@ -148,6 +148,17 @@ router.put('/push-token', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'pushToken is required.' });
         }
 
+        // Expo push tokens are tied to a (device + app install), not an
+        // account. If a different account was previously logged into this
+        // same device, their record still holds this exact token and would
+        // keep "receiving" pushes meant for whoever is using this device
+        // now — clearing it from every other account before assigning it
+        // here means a token is only ever attached to whoever is actually
+        // logged in on that device.
+        await User.updateMany(
+            { _id: { $ne: req.user._id }, pushToken },
+            { $unset: { pushToken: 1 } }
+        );
         await User.findByIdAndUpdate(req.user._id, { pushToken });
         res.json({ success: true, message: 'Push token saved.' });
     } catch (error) {
