@@ -2211,11 +2211,11 @@ const AdminDashboard = () => {
                             { key: 'overview', icon: <FaHome />, label: 'System Overview' },
                             { key: 'staff', icon: <FaUsers />, label: 'User Management' },
                             { key: 'roster', icon: <FaCalendarAlt />, label: 'Staff Roster' },
-                            { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notifications', badge: unreadCount },
-                            { key: 'booking', icon: <FaCalendarCheck />, label: 'Admission & Booking', badge: stats.pendingBookings },
-                            { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Alerts', badge: realLowStockCount },
-                            { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
+                            { key: 'booking', icon: <FaCalendarCheck />, label: 'Booking Management', badge: stats.pendingBookings },
                             { key: 'donation', icon: <FaMoneyBillWave />, label: 'Donation Ledger' },
+                            { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notification', badge: unreadCount },
+                            { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Management', badge: realLowStockCount },
+                            { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
 
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key}
