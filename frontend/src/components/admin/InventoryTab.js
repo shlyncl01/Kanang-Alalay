@@ -1453,20 +1453,20 @@ const StockRequestsPanel = ({ onApproved, showConfirm, closeConfirm }) => {
                                     {!showResolved && (
                                         <td className="actions">
                                             <span
-                                                className="activate"
+                                                className="req-action-btn approve"
                                                 title="Approve"
                                                 onClick={() => { if (processingId !== r._id) resolveRequest(r._id, 'approved'); }}
                                                 style={processingId === r._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
                                             >
-                                                <FaCheckCircle />
+                                                <FaCheckCircle /> Approve
                                             </span>
                                             <span
-                                                className="delete"
-                                                title="Reject"
+                                                className="req-action-btn decline"
+                                                title="Decline"
                                                 onClick={() => { if (processingId !== r._id) resolveRequest(r._id, 'rejected'); }}
                                                 style={processingId === r._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
                                             >
-                                                <FaTimesCircle />
+                                                <FaTimesCircle /> Decline
                                             </span>
                                         </td>
                                     )}
