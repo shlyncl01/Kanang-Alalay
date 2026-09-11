@@ -3,7 +3,10 @@ const crypto = require('crypto');
 
 class PaymentService {
     constructor() {
-        this.apiKey = process.env.PAYMENT_GATEWAY_API_KEY;
+        // Support both naming conventions: PAYMONGO_SECRET_KEY (what's actually
+        // set in this project's Render env) and PAYMENT_GATEWAY_API_KEY (the
+        // generic name the original paymentService.js used).
+        this.apiKey = process.env.PAYMONGO_SECRET_KEY || process.env.PAYMENT_GATEWAY_API_KEY;
         this.baseURL = 'https://api.paymongo.com/v1';
         // Hosted Checkout uses PayMongo's newer /v2 Checkout Session API, which
         // defers Payment Intent creation until the donor actually pays (this is
@@ -121,7 +124,8 @@ class PaymentService {
     // bytes being signed and always fail verification.
     // See: https://developers.paymongo.com/docs/securing-webhook
     verifyWebhookSignature(payload, signatureHeader) {
-        if (!signatureHeader || !process.env.PAYMENT_WEBHOOK_SECRET) return false;
+        const webhookSecret = process.env.PAYMONGO_WEBHOOK_SECRET || process.env.PAYMENT_WEBHOOK_SECRET;
+        if (!signatureHeader || !webhookSecret) return false;
 
         const parts = {};
         for (const segment of signatureHeader.split(',')) {
@@ -134,7 +138,7 @@ class PaymentService {
         const rawBody = Buffer.isBuffer(payload) ? payload.toString('utf8') : payload;
         const signedPayload = `${timestamp}.${rawBody}`;
         const expected = crypto
-            .createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
+            .createHmac('sha256', webhookSecret)
             .update(signedPayload)
             .digest('hex');
 
