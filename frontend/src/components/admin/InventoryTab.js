@@ -1452,22 +1452,22 @@ const StockRequestsPanel = ({ onApproved, showConfirm, closeConfirm }) => {
                                     </td>
                                     {!showResolved && (
                                         <td className="actions">
-                                            <button
-                                                onClick={() => resolveRequest(r._id, 'approved')}
-                                                disabled={processingId === r._id}
+                                            <span
+                                                className="activate"
                                                 title="Approve"
-                                                style={{ background: 'none', border: 'none', color: '#0d6b4f', cursor: processingId === r._id ? 'not-allowed' : 'pointer', marginRight: 10 }}
+                                                onClick={() => { if (processingId !== r._id) resolveRequest(r._id, 'approved'); }}
+                                                style={processingId === r._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
                                             >
                                                 <FaCheckCircle />
-                                            </button>
-                                            <button
-                                                onClick={() => resolveRequest(r._id, 'rejected')}
-                                                disabled={processingId === r._id}
+                                            </span>
+                                            <span
+                                                className="delete"
                                                 title="Reject"
-                                                style={{ background: 'none', border: 'none', color: '#b71c1c', cursor: processingId === r._id ? 'not-allowed' : 'pointer' }}
+                                                onClick={() => { if (processingId !== r._id) resolveRequest(r._id, 'rejected'); }}
+                                                style={processingId === r._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
                                             >
                                                 <FaTimesCircle />
-                                            </button>
+                                            </span>
                                         </td>
                                     )}
                                 </tr>
