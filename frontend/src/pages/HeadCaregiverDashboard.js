@@ -50,6 +50,22 @@ const STOCK_STATUS_STYLE = {
     'Out of Stock': { bg: '#fdecea', color: '#b71c1c' },
 };
 
+// Groups the existing Product categories into the three high-level filter
+// buckets the Shared Stock page offers (Medicine / Food / Supplies).
+// Anything not explicitly medication or food is treated as Supplies —
+// this is display/filter-only and never changes stored category values.
+const STOCK_CATEGORY_GROUP = {
+    medication: 'Medicine',
+    food: 'Food',
+    medical_supplies: 'Supplies',
+    hygiene: 'Supplies',
+    General: 'Supplies',
+    Cleaning: 'Supplies',
+    Equipment: 'Supplies',
+    'Linens & Bedding': 'Supplies',
+};
+const getStockCategoryGroup = (category) => STOCK_CATEGORY_GROUP[category] || 'Supplies';
+
 const STOCK_REQUEST_STATUS_STYLE = {
     pending: { bg: '#fff8e1', color: '#7c5a00' },
     approved: { bg: '#e0faf4', color: '#0d6b4f' },
@@ -1300,6 +1316,8 @@ const HeadCaregiverDashboard = () => {
     const [invPage, setInvPage] = useState(1);
     const [stockPage, setStockPage] = useState(1);
     const [requestsPage, setRequestsPage] = useState(1);
+    const [stockCategoryFilter, setStockCategoryFilter] = useState('All');
+    const [stockStatusFilter, setStockStatusFilter] = useState('All');
     const PER = 5;
 
     const shiftLabel = {
@@ -1487,7 +1505,7 @@ const HeadCaregiverDashboard = () => {
         setInvPage(1);
         setStockPage(1);
         setRequestsPage(1);
-    }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort]);
+    }, [searchQuery, filterStatus, filterResident, filterCaregiver, activeSection, resFloor, resRoom, resSort, stockCategoryFilter, stockStatusFilter]);
 
     useEffect(() => {
         if (location.state?.section) {
@@ -1681,9 +1699,13 @@ const HeadCaregiverDashboard = () => {
 
     const filteredAssignedStock = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return assignedStock;
-        return assignedStock.filter(item => item.name?.toLowerCase().includes(q));
-    }, [assignedStock, searchQuery]);
+        return assignedStock.filter(item => {
+            if (q && !item.name?.toLowerCase().includes(q)) return false;
+            if (stockCategoryFilter !== 'All' && getStockCategoryGroup(item.category) !== stockCategoryFilter) return false;
+            if (stockStatusFilter !== 'All' && item.status !== stockStatusFilter) return false;
+            return true;
+        });
+    }, [assignedStock, searchQuery, stockCategoryFilter, stockStatusFilter]);
 
     const requestableItems = useMemo(() => {
         return products.map(p => {
@@ -2179,10 +2201,6 @@ const HeadCaregiverDashboard = () => {
         const safeStockPage = Math.min(stockPage, stockPages);
         const pagedStock = filteredAssignedStock.slice((safeStockPage - 1) * PER, safeStockPage * PER);
 
-        const invPages2 = Math.max(1, Math.ceil(filteredInventory.length / PER));
-        const safeInvPage2 = Math.min(invPage, invPages2);
-        const pagedInventory2 = filteredInventory.slice((safeInvPage2 - 1) * PER, safeInvPage2 * PER);
-
         const requestsPages = Math.max(1, Math.ceil(stockRequests.length / PER));
         const safeRequestsPage = Math.min(requestsPage, requestsPages);
         const pagedRequests = stockRequests.slice((safeRequestsPage - 1) * PER, safeRequestsPage * PER);
@@ -2200,6 +2218,21 @@ const HeadCaregiverDashboard = () => {
                         quantities change automatically when any HC administers a dose, or
                         once a submitted stock request is approved.
                     </p>
+                    <div className="med-filters-row">
+                        <span className="filters-label"><FaFilter /> Filters:</span>
+                        <select className="filter-select" value={stockCategoryFilter} onChange={e => setStockCategoryFilter(e.target.value)}>
+                            <option value="All">Category: All</option>
+                            <option value="Medicine">Medicine</option>
+                            <option value="Food">Food</option>
+                            <option value="Supplies">Supplies</option>
+                        </select>
+                        <select className="filter-select" value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
+                            <option value="All">Status: All</option>
+                            <option value="In Stock">In Stock</option>
+                            <option value="Low Stock">Low Stock</option>
+                            <option value="Out of Stock">Out of Stock</option>
+                        </select>
+                    </div>
                     <div className="table-scroll">
                         <table className="custom-table">
                             <thead>
@@ -2215,8 +2248,8 @@ const HeadCaregiverDashboard = () => {
                             <tbody>
                                 {filteredAssignedStock.length === 0 ? (
                                     <tr><td colSpan="6" className="text-center no-data-italic">
-                                        {searchQuery
-                                            ? `No results for "${searchQuery}".`
+                                        {searchQuery || stockCategoryFilter !== 'All' || stockStatusFilter !== 'All'
+                                            ? 'No items match your search/filters.'
                                             : 'The shared stock pool is empty right now.'}
                                     </td></tr>
                                 ) : (
@@ -2241,60 +2274,26 @@ const HeadCaregiverDashboard = () => {
                             </tbody>
                         </table>
                     </div>
-                    {stockPages > 1 && (
+                    {filteredAssignedStock.length > 0 && (
                         <div className="res-page-footer">
                             <span className="res-page-label">Showing {(safeStockPage - 1) * PER + 1}–{Math.min(safeStockPage * PER, filteredAssignedStock.length)} of {filteredAssignedStock.length}</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: stockPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeStockPage === n ? ' active' : ''}`} onClick={() => setStockPage(n)}>{n}</button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="card-white mb-18">
-                    <div className="card-header">
-                        <h5>Medication Inventory Status</h5>
-                    </div>
-                    <div className="table-scroll">
-                        <table className="custom-table">
-                            <thead>
-                                <tr><th>Medication</th><th>Quantity</th><th>Unit</th><th>Status</th></tr>
-                            </thead>
-                            <tbody>
-                                {filteredInventory.length === 0 ? (
-                                    <tr><td colSpan="4" className="text-center no-data-italic">
-                                        {searchQuery ? `No results for "${searchQuery}".` : 'No medication stock in the shared pool yet.'}
-                                    </td></tr>
-                                ) : (
-                                    pagedInventory2.map(item => {
-                                        const s = STOCK_STATUS_STYLE[item.status] || STOCK_STATUS_STYLE['In Stock'];
-                                        return (
-                                            <tr key={item._id}>
-                                                <td><strong>{item.name}</strong></td>
-                                                <td>{item.quantity}</td>
-                                                <td>{item.unit}</td>
-                                                <td>
-                                                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 12, fontSize: '.78rem', fontWeight: 700, background: s.bg, color: s.color, border: `1.5px solid ${s.color}30` }}>
-                                                        {item.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    {invPages2 > 1 && (
-                        <div className="res-page-footer">
-                            <span className="res-page-label">Showing {(safeInvPage2 - 1) * PER + 1}–{Math.min(safeInvPage2 * PER, filteredInventory.length)} of {filteredInventory.length}</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: invPages2 }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeInvPage2 === n ? ' active' : ''}`} onClick={() => setInvPage(n)}>{n}</button>
-                                ))}
-                            </div>
+                            {stockPages > 1 && (
+                                <div className="res-pagination">
+                                    <button
+                                        className="page-num-btn"
+                                        disabled={safeStockPage === 1}
+                                        onClick={() => setStockPage(p => Math.max(1, p - 1))}
+                                    >Previous</button>
+                                    {Array.from({ length: stockPages }, (_, i) => i + 1).map(n => (
+                                        <button key={n} className={`page-num-btn${safeStockPage === n ? ' active' : ''}`} onClick={() => setStockPage(n)}>{n}</button>
+                                    ))}
+                                    <button
+                                        className="page-num-btn"
+                                        disabled={safeStockPage === stockPages}
+                                        onClick={() => setStockPage(p => Math.min(stockPages, p + 1))}
+                                    >Next</button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
