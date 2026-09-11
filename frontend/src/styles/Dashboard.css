@@ -908,22 +908,23 @@ body {
 .actions .delete:hover     { background: #FFD7D7; }
 
 /* Labeled variant of the action buttons above (icon + word, e.g. "Approve" /
-   "Decline" in the Stock Requests table) — same palette, auto width instead
-   of the fixed 32x32 square used for icon-only buttons. */
+   "Decline" in the Stock Requests table) — matches the Bookings table's
+   Approve/Reject buttons: solid filled Approve, outlined Decline. */
 .actions .req-action-btn {
   width: auto;
   height: auto;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1.5px solid transparent;
   gap: 6px;
   font-size: .82rem;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
-.actions .req-action-btn.approve       { background: #e0faf4; color: #0d6b4f; }
-.actions .req-action-btn.approve:hover { background: #c3f2e6; }
-.actions .req-action-btn.decline       { background: #fdecea; color: #b71c1c; }
-.actions .req-action-btn.decline:hover { background: #fad4d0; }
+.actions .req-action-btn.approve       { background: #1E7D56; color: #fff; border-color: #1E7D56; }
+.actions .req-action-btn.approve:hover { background: #176644; border-color: #176644; }
+.actions .req-action-btn.decline       { background: #fff; color: #C0392B; border-color: #C0392B; }
+.actions .req-action-btn.decline:hover { background: #FFF0F0; }
 
 /* Reserves space for Approve/Reject in the Bookings table Actions column so
    the View/Edit icons stay in a fixed horizontal position whether or not
