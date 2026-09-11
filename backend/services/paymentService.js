@@ -34,7 +34,7 @@ class PaymentService {
                             quantity: 1
                         }
                     ],
-                    payment_method_types: ['card', 'gcash', 'paymaya', 'qrph'],
+                    payment_method_types: ['qrph'],
                     success_url: successUrl,
                     cancel_url: cancelUrl,
                     reference_number: referenceNumber,

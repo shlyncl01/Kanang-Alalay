@@ -48,7 +48,7 @@ const ConfirmModal = ({ data, onConfirm, onCancel, loading }) => (
           ['Type',        data.typeLabel],
           ...(data.donationType === 'online' ? [
             ['Amount',    fmt(data.amount)],
-            ['Payment',   'PayMongo (GCash, Maya, Card, QRPH)'],
+            ['Payment',   'QRPH via PayMongo'],
           ] : [
             ['Amount',    data.amount > 0 ? fmt(data.amount) : 'To be specified'],
             ['Date',      data.appointmentDate],
@@ -675,7 +675,7 @@ export default function DonationPage() {
                   <div className="dp-qrph-label">Pay Securely via PayMongo</div>
                   <div className="dp-qrph-hint">
                     After you review your donation, you'll be redirected to PayMongo's
-                    secure hosted checkout page to pay by GCash, Maya, card, or QRPH.
+                    secure hosted checkout page to pay via QRPH.
                     PayMongo emails you an official payment receipt once your payment
                     goes through — no need to upload a screenshot.
                   </div>
