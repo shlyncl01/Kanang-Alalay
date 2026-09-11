@@ -93,6 +93,63 @@ const DotBadge = ({ s }) => {
     );
 };
 
+// Builds a windowed page list with '…' gap markers so we never render
+// dozens of number buttons in a row (e.g. 1 … 4 5 6 … 11 instead of 1-11).
+const getPageRange = (current, total, siblings = 1) => {
+    const totalNumbers = siblings * 2 + 5; // first, last, current, 2 siblings, 2 ellipses-as-slots
+    if (total <= totalNumbers) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const left = Math.max(current - siblings, 1);
+    const right = Math.min(current + siblings, total);
+    const showLeftGap = left > 2;
+    const showRightGap = right < total - 1;
+
+    const range = [1];
+    if (showLeftGap) range.push('gap-left');
+    for (let p = left === 1 ? 2 : left; p <= (right === total ? total - 1 : right); p++) {
+        if (p > 1 && p < total) range.push(p);
+    }
+    if (showRightGap) range.push('gap-right');
+    if (total > 1) range.push(total);
+    return range;
+};
+
+const Pagination = ({ page, pages, onChange }) => {
+    if (pages <= 1) return null;
+    return (
+        <div className="res-pagination">
+            <button
+                type="button"
+                className="page-num-btn page-nav-btn"
+                disabled={page === 1}
+                onClick={() => onChange(Math.max(1, page - 1))}
+                aria-label="Previous page"
+            >‹</button>
+            {getPageRange(page, pages).map((n, i) => (
+                typeof n === 'number' ? (
+                    <button
+                        key={n}
+                        type="button"
+                        className={`page-num-btn${page === n ? ' active' : ''}`}
+                        aria-current={page === n ? 'page' : undefined}
+                        onClick={() => onChange(n)}
+                    >{n}</button>
+                ) : (
+                    <span key={n + i} className="page-ellipsis">…</span>
+                )
+            ))}
+            <button
+                type="button"
+                className="page-num-btn page-nav-btn"
+                disabled={page === pages}
+                onClick={() => onChange(Math.min(pages, page + 1))}
+                aria-label="Next page"
+            >›</button>
+        </div>
+    );
+};
+
 const useFetch = () => useCallback(async (endpoint, opts = {}) => {
     const token = localStorage.getItem('token');
     try {
@@ -2017,21 +2074,7 @@ const HeadCaregiverDashboard = () => {
                 {pages > 1 && (
                     <div className="res-page-footer">
                         <span className="res-page-label">Showing {(safeResPage - 1) * RES_PER + 1}–{Math.min(safeResPage * RES_PER, filteredRes.length)} of {filteredRes.length}</span>
-                        <div className="res-pagination">
-                            <button
-                                className="page-num-btn"
-                                disabled={safeResPage === 1}
-                                onClick={() => setResPage(p => Math.max(1, p - 1))}
-                            >‹</button>
-                            {Array.from({ length: pages }, (_, i) => i + 1).map(n => (
-                                <button key={n} className={`page-num-btn${safeResPage === n ? ' active' : ''}`} onClick={() => setResPage(n)}>{n}</button>
-                            ))}
-                            <button
-                                className="page-num-btn"
-                                disabled={safeResPage === pages}
-                                onClick={() => setResPage(p => Math.min(pages, p + 1))}
-                            >›</button>
-                        </div>
+                        <Pagination page={safeResPage} pages={pages} onChange={setResPage} />
                     </div>
                 )}
             </div>
@@ -2126,11 +2169,7 @@ const HeadCaregiverDashboard = () => {
                     {schedPages > 1 && (
                         <div className="res-page-footer">
                             <span className="res-page-label">Showing {(safeSchedPage - 1) * PER + 1}–{Math.min(safeSchedPage * PER, filteredSched.length)} of {filteredSched.length}</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: schedPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeSchedPage === n ? ' active' : ''}`} onClick={() => setSchedPage(n)}>{n}</button>
-                                ))}
-                            </div>
+                            <Pagination page={safeSchedPage} pages={schedPages} onChange={setSchedPage} />
                         </div>
                     )}
                 </div>
@@ -2184,11 +2223,7 @@ const HeadCaregiverDashboard = () => {
                     {activeMedsPages > 1 && (
                         <div className="res-page-footer">
                             <span className="res-page-label">Showing {(safeActiveMedsPage - 1) * PER + 1}–{Math.min(safeActiveMedsPage * PER, filteredGroupedByResident.length)} of {filteredGroupedByResident.length} residents</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: activeMedsPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeActiveMedsPage === n ? ' active' : ''}`} onClick={() => setActiveMedsPage(n)}>{n}</button>
-                                ))}
-                            </div>
+                            <Pagination page={safeActiveMedsPage} pages={activeMedsPages} onChange={setActiveMedsPage} />
                         </div>
                     )}
                 </div>
@@ -2277,23 +2312,7 @@ const HeadCaregiverDashboard = () => {
                     {filteredAssignedStock.length > 0 && (
                         <div className="res-page-footer">
                             <span className="res-page-label">Showing {(safeStockPage - 1) * PER + 1}–{Math.min(safeStockPage * PER, filteredAssignedStock.length)} of {filteredAssignedStock.length}</span>
-                            {stockPages > 1 && (
-                                <div className="res-pagination">
-                                    <button
-                                        className="page-num-btn"
-                                        disabled={safeStockPage === 1}
-                                        onClick={() => setStockPage(p => Math.max(1, p - 1))}
-                                    >Previous</button>
-                                    {Array.from({ length: stockPages }, (_, i) => i + 1).map(n => (
-                                        <button key={n} className={`page-num-btn${safeStockPage === n ? ' active' : ''}`} onClick={() => setStockPage(n)}>{n}</button>
-                                    ))}
-                                    <button
-                                        className="page-num-btn"
-                                        disabled={safeStockPage === stockPages}
-                                        onClick={() => setStockPage(p => Math.min(stockPages, p + 1))}
-                                    >Next</button>
-                                </div>
-                            )}
+                            <Pagination page={safeStockPage} pages={stockPages} onChange={setStockPage} />
                         </div>
                     )}
                 </div>
@@ -2340,11 +2359,7 @@ const HeadCaregiverDashboard = () => {
                     {requestsPages > 1 && (
                         <div className="res-page-footer">
                             <span className="res-page-label">Showing {(safeRequestsPage - 1) * PER + 1}–{Math.min(safeRequestsPage * PER, stockRequests.length)} of {stockRequests.length}</span>
-                            <div className="res-pagination">
-                                {Array.from({ length: requestsPages }, (_, i) => i + 1).map(n => (
-                                    <button key={n} className={`page-num-btn${safeRequestsPage === n ? ' active' : ''}`} onClick={() => setRequestsPage(n)}>{n}</button>
-                                ))}
-                            </div>
+                            <Pagination page={safeRequestsPage} pages={requestsPages} onChange={setRequestsPage} />
                         </div>
                     )}
                 </div>

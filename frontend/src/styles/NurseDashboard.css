@@ -553,11 +553,29 @@ textarea.form-input { resize: vertical; }
 }
 
 .res-page-footer  { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 8px; }
-.res-pagination   { display: flex; align-items: center; gap: 6px; }
+.res-pagination   { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
 .preview-label    { font-size: .78rem; color: var(--d-muted); }
-.page-num-btn     { width: 26px; height: 26px; border-radius: 6px; border: 1.5px solid var(--d-border); background: #fff; color: var(--d-muted); font-weight: 700; font-size: .78rem; cursor: pointer; transition: all .18s; }
+.page-num-btn     {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1.5px solid var(--d-border);
+    background: #fff;
+    color: var(--d-muted);
+    font-weight: 700;
+    font-size: .78rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all .18s;
+    flex-shrink: 0;
+}
+.page-num-btn:hover:not(:disabled):not(.active) { border-color: var(--d-orange); color: var(--d-orange-dk); background: var(--d-orange-lt); }
 .page-num-btn.active { border-color: var(--d-orange); background: var(--d-orange); color: #fff; }
 .page-num-btn:disabled { opacity: .4; cursor: not-allowed; }
+.page-nav-btn     { font-size: .95rem; font-weight: 700; }
+.page-ellipsis    { min-width: 20px; text-align: center; color: var(--d-muted); font-size: .8rem; user-select: none; }
 
 .med-pills-row   { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
 .med-filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
