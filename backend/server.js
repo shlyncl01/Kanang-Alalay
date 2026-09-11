@@ -56,6 +56,17 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
 }));
 
+// PayMongo webhook (Part 9) — MUST be registered before express.json() below.
+// Signature verification needs the exact raw bytes PayMongo signed; once
+// express.json() parses the body, those original bytes are gone, so this one
+// route gets its own express.raw() middleware instead of the global parser.
+const paymongoWebhookHandler = require('./routes/paymongoWebhook');
+app.post(
+    '/api/donations/webhook/paymongo',
+    express.raw({ type: 'application/json' }),
+    paymongoWebhookHandler
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

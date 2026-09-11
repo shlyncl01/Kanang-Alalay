@@ -76,6 +76,20 @@ const donationSchema = new mongoose.Schema({
     checkoutUrl: String,
     receiptNumber: String,
 
+    // PayMongo Hosted Checkout (Part 9) — the Checkout Session created for this
+    // donation and the Payment resource id PayMongo reports back on the
+    // "checkout_session.payment.paid" webhook. Used to look up the donation
+    // from the webhook and to prevent creating a second session for a donation
+    // that already has one.
+    paymongoCheckoutSessionId: {
+        type: String,
+        default: null
+    },
+    paymongoPaymentId: {
+        type: String,
+        default: null
+    },
+
     // Proof of payment — stores the uploaded filename only.
     // The full URL is constructed by the frontend as:
     //   <BACKEND_BASE>/uploads/<proofOfPayment>

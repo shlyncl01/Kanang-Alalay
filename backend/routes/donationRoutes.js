@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const Donation = require('../models/Donation');
 const { sendEmail, generateDonationTemplate } = require('../models/mailer');
+const paymentService = require('../services/paymentService');
 
 // ── Multer storage config ─────────────────────────────────────────────────────
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -34,8 +35,132 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5 MB
 });
 
+// POST /api/donations/checkout - Part 9: real PayMongo Hosted Checkout
+// Creates a donation record with paymentStatus 'pending', then creates a
+// PayMongo Checkout Session for it and returns the real checkout_url for the
+// frontend to redirect to. No file upload here — online donations no longer
+// require a manually-uploaded proof of payment; PayMongo's own payment
+// receipt (sent to the donor's email once they pay) serves that role, and
+// the webhook below is the only thing allowed to mark the donation Paid.
+router.post('/checkout', async (req, res) => {
+    try {
+        const {
+            firstName, middleName, lastName, donorName,
+            email, phone, amount, notes, anonymous
+        } = req.body;
+
+        const isAnonymous = anonymous === 'true' || anonymous === true;
+
+        const normalizedFirstName = (firstName || '').toString().trim();
+        const normalizedLastName = (lastName || '').toString().trim();
+        const normalizedDonorName = (donorName || '').toString().trim();
+        const normalizedEmail = (email || '').toString().trim().toLowerCase();
+        const normalizedPhone = (phone || '').toString().trim();
+
+        const missingFields = [];
+        if (!normalizedPhone) missingFields.push('phone');
+        // Email is always required here (even when anonymous) because PayMongo
+        // needs somewhere to send the payment receipt — this mirrors the
+        // "donor email required for PayMongo receipt delivery" requirement.
+        if (!normalizedEmail) missingFields.push('email');
+        if (!isAnonymous) {
+            if (!normalizedFirstName) missingFields.push('firstName');
+            if (!normalizedLastName) missingFields.push('lastName');
+            if (!normalizedDonorName) missingFields.push('donorName');
+        }
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Missing required fields: ${missingFields.join(', ')}`
+            });
+        }
+
+        if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+            return res.status(400).json({ success: false, message: 'Invalid email address' });
+        }
+
+        const amountNum = Number(amount);
+        if (!amount || isNaN(amountNum) || amountNum < 100) {
+            return res.status(400).json({ success: false, message: 'Amount must be at least ₱100' });
+        }
+
+        // Create the donation as pending BEFORE creating the Checkout Session,
+        // so we always have a record to reconcile against even if the donor
+        // never completes payment.
+        const donation = new Donation({
+            firstName: isAnonymous ? 'Anonymous' : normalizedFirstName,
+            middleName: isAnonymous ? '' : (middleName || '').toString().trim(),
+            lastName: isAnonymous ? 'Donor' : normalizedLastName,
+            donorName: isAnonymous ? 'Anonymous Donor' : normalizedDonorName,
+            email: normalizedEmail, // real email kept even if anonymous, so PayMongo can deliver the receipt
+            phone: normalizedPhone,
+            amount: amountNum,
+            donationType: 'online',
+            // Placeholder — the donor actually picks their method (GCash, Maya,
+            // card, QRPH) on PayMongo's hosted page. Updated to the real method
+            // once the webhook reports which source was used.
+            paymentMethod: 'qrph',
+            notes: (notes || '').toString().trim(),
+            anonymous: isAnonymous,
+            paymentStatus: 'pending'
+        });
+        await donation.save();
+
+        const frontendBaseUrl = process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app';
+        const successUrl = `${frontendBaseUrl}/donation?paymongo=success&donation=${donation._id}`;
+        const cancelUrl = `${frontendBaseUrl}/donation?paymongo=cancelled&donation=${donation._id}`;
+
+        let session;
+        try {
+            session = await paymentService.createCheckoutSession({
+                amount: Math.round(amountNum * 100), // PHP -> centavos
+                donationId: donation._id,
+                referenceNumber: donation.donationId,
+                donorName: donation.donorName,
+                donorEmail: normalizedEmail,
+                successUrl,
+                cancelUrl
+            });
+        } catch (gatewayErr) {
+            console.error('PayMongo checkout session error:', gatewayErr.response?.data || gatewayErr.message);
+            donation.paymentStatus = 'failed';
+            await donation.save().catch(() => {});
+            return res.status(502).json({
+                success: false,
+                message: 'Could not start PayMongo checkout. Please try again.'
+            });
+        }
+
+        donation.paymongoCheckoutSessionId = session.id;
+        donation.checkoutUrl = session.attributes?.checkout_url || null;
+        await donation.save();
+
+        const io = req.app.get('io');
+        if (io) io.emit('new_donation', donation);
+
+        res.status(201).json({
+            success: true,
+            message: 'Checkout session created',
+            donationId: donation.donationId,
+            id: donation._id,
+            checkoutUrl: donation.checkoutUrl
+        });
+    } catch (error) {
+        console.error('Checkout session error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Internal server error'
+        });
+    }
+});
+
 // POST /api/donations - Create a new donation
 // ✅ FIXED: Now respects anonymous flag for validation and data storage
+// NOTE (Part 9): Online/PayMongo donations no longer go through this route —
+// see POST /checkout above. This endpoint now only handles Cash donations;
+// it's kept generic here in case anything server-side still calls it, but
+// deliberately rejects donationType 'online' so a request can't bypass the
+// real payment gateway and get marked paid without ever paying.
 router.post('/', upload.single('proofOfPayment'), async (req, res) => {
     try {
         console.log('=== Received donation submission ===');
@@ -60,7 +185,17 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
         const normalizedEmail = (email || '').toString().trim().toLowerCase();
         const normalizedDonationType = (donationType || '').toString().trim().toLowerCase();
         const normalizedPhone = (phone || '').toString().trim();
-        
+
+        // Part 9: online donations must go through the real PayMongo Checkout
+        // Session flow (POST /checkout) so they're never marked Paid without
+        // actually being paid. Block this route from creating them directly.
+        if (normalizedDonationType === 'online') {
+            return res.status(400).json({
+                success: false,
+                message: 'Online donations must be created via POST /api/donations/checkout'
+            });
+        }
+
         // ✅ FIXED: Validate required fields based on anonymous flag
         const missingFields = [];
         
@@ -98,42 +233,7 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
         let amountNum = 0;
         let rawAmount = (amount || '').toString().trim();
         
-        if (normalizedDonationType === 'online') {
-            // For online, amount is required and must be positive
-            if (!rawAmount || rawAmount === '') {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Amount is required for online donations' 
-                });
-            }
-            amountNum = Number(rawAmount);
-            if (isNaN(amountNum) || amountNum <= 0) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Amount must be a valid positive number' 
-                });
-            }
-            
-            // Payment method required for online
-            if (!paymentMethod) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Payment method is required for online donations' 
-                });
-            }
-
-            // Proof of donation receipt required for online donations — mirrors
-            // the frontend's existing requirement (DonationPage.js validate()),
-            // enforced server-side so the check can't be bypassed by calling
-            // this endpoint directly. Applies regardless of the anonymous flag,
-            // same as the frontend check.
-            if (!req.file) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Proof of donation receipt is required for online donations.'
-                });
-            }
-        } else if (normalizedDonationType === 'cash') {
+        if (normalizedDonationType === 'cash') {
             // For cash, amount is optional - default to 0
             if (rawAmount && rawAmount !== '') {
                 amountNum = Number(rawAmount);
@@ -156,7 +256,7 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
         } else {
             return res.status(400).json({
                 success: false,
-                message: `Invalid donation type: ${normalizedDonationType}. Must be 'online' or 'cash'`
+                message: `Invalid donation type: ${normalizedDonationType}. This endpoint only accepts 'cash'.`
             });
         }
 
@@ -173,7 +273,7 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
             donationType: normalizedDonationType,
             notes: (notes || '').toString().trim(),
             anonymous: isAnonymous,
-            paymentMethod: normalizedDonationType === 'online' ? (paymentMethod || 'qrph').toString().trim().toLowerCase() : null,
+            paymentMethod: null, // this route only ever creates 'cash' donations now (see guard above)
             appointmentDate: normalizedDonationType === 'cash' ? appointmentDate : undefined,
             appointmentTime: normalizedDonationType === 'cash' ? appointmentTime : undefined,
             proofOfPayment: req.file ? req.file.filename : undefined,
@@ -205,16 +305,10 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
             console.warn('Donation email failed (non-blocking):', emailErr?.message || emailErr);
         }
 
-        const frontendBaseUrl = process.env.FRONTEND_URL || 'https://kanang-alalay.vercel.app';
-        const checkoutUrl = normalizedDonationType === 'online'
-            ? `${frontendBaseUrl}/donation/success/${donation._id}`
-            : null;
-
         res.status(201).json({
             success: true,
             message: 'Donation submitted successfully',
             donationId: donation.donationId,
-            checkoutUrl,
             data: donation
         });
 

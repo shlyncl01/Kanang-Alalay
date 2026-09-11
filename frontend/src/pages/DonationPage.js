@@ -1,5 +1,5 @@
 // DonationPage.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import '../styles/DonationPage.css';
 import { API_URL } from '../config/api';
@@ -48,8 +48,7 @@ const ConfirmModal = ({ data, onConfirm, onCancel, loading }) => (
           ['Type',        data.typeLabel],
           ...(data.donationType === 'online' ? [
             ['Amount',    fmt(data.amount)],
-            ['Payment',   'QRPH'],
-            ['Proof',     data.proofName || '—'],
+            ['Payment',   'PayMongo (GCash, Maya, Card, QRPH)'],
           ] : [
             ['Amount',    data.amount > 0 ? fmt(data.amount) : 'To be specified'],
             ['Date',      data.appointmentDate],
@@ -70,8 +69,8 @@ const ConfirmModal = ({ data, onConfirm, onCancel, loading }) => (
         </button>
         <button className="dp-modal-confirm" onClick={onConfirm} disabled={loading}>
           {loading
-            ? <><div className="dp-spin" /> Processing…</>
-            : data.donationType === 'online' ? 'Confirm Donation' : 'Confirm Appointment'}
+            ? <><div className="dp-spin" /> {data.donationType === 'online' ? 'Preparing checkout…' : 'Processing…'}</>
+            : data.donationType === 'online' ? 'Proceed to PayMongo' : 'Confirm Appointment'}
         </button>
       </div>
     </div>
@@ -80,15 +79,11 @@ const ConfirmModal = ({ data, onConfirm, onCancel, loading }) => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DonationPage() {
-  const fileInputRef = useRef(null);
-
   const [form, setForm] = useState({
     firstName: '', middleName: '', lastName: '', email: '', phone: '',
     amount: '', donationType: 'online',
     notes: '', anonymous: false, appointmentDate: '', appointmentTime: ''
   });
-  const [proofFile, setProofFile]           = useState(null);
-  const [proofPreview, setProofPreview]     = useState(null);
   const [errors, setErrors]                 = useState({});
   const [apiError, setApiError]             = useState('');
   const [loading, setLoading]               = useState(false);
@@ -96,69 +91,74 @@ export default function DonationPage() {
   const [receipt, setReceipt]               = useState(null);
   const [showModal, setShowModal]           = useState(false);
   const [modalData, setModalData]           = useState(null);
-  const [aiVerifying, setAiVerifying]       = useState(false);
-  const [aiResult, setAiResult]             = useState(null);
 
+  // ── PayMongo return handling (Part 9) ─────────────────────────────────────
+  // The donor lands back here from PayMongo's success_url/cancel_url. We
+  // never trust that redirect by itself — it only tells us to go check the
+  // real status, which the webhook (server-side, source of truth) may or may
+  // not have updated yet. `returnState` drives a dedicated screen instead of
+  // reusing the old fire-and-forget "submitted" flow.
+  const [returnState, setReturnState] = useState(null); // null | 'checking' | 'paid' | 'pending' | 'cancelled' | 'failed' | 'not_found'
+  const [returnDonation, setReturnDonation] = useState(null);
 
-  const verifyReceiptWithAI = async (file, dataUrl) => {
-    if (!file.type.startsWith('image/')) {
-      setAiResult({ valid: null, confidence: 'low', reason: 'PDF uploaded — needs manual review', details: 'PDF receipts cannot be auto-verified by our AI. Our team will review it manually.' });
+  const checkDonationStatus = useCallback(async (donationId) => {
+    try {
+      const res = await axios.get(`${API_URL}/donations/${donationId}`);
+      return res.data?.success ? res.data.data : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymongoParam = params.get('paymongo');
+    const donationId = params.get('donation');
+    if (!paymongoParam || !donationId) return;
+
+    // Clean the query string so a refresh doesn't re-trigger this flow.
+    window.history.replaceState({}, '', window.location.pathname);
+
+    if (paymongoParam === 'cancelled') {
+      setReturnState('cancelled');
       return;
     }
-    setAiVerifying(true);
-    setAiResult(null);
-    try {
-      const base64 = dataUrl.split(',')[1];
-      const mediaType = file.type;
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-              {
-                type: 'text',
-                text: `You are a payment receipt verification assistant for a Philippine charity called Kanang-Alalay.
 
-Analyze this image and determine if it is a genuine payment receipt or proof of payment (e.g. GCash, Maya, bank transfer, QRPH transaction screenshot, online banking confirmation, or similar Philippine payment platforms).
+    let cancelled = false;
+    let attempts = 0;
+    setReturnState('checking');
 
-Respond ONLY with a JSON object — no markdown, no explanation outside the JSON:
-{
-  "valid": true or false or null,
-  "confidence": "high" or "medium" or "low",
-  "reason": "one short sentence max 12 words explaining your decision",
-  "details": "one to two sentences with specific observations"
-}
+    const poll = async () => {
+      const donation = await checkDonationStatus(donationId);
+      if (cancelled) return;
+      if (!donation) {
+        setReturnState('not_found');
+        return;
+      }
+      if (donation.paymentStatus === 'paid') {
+        setReturnDonation(donation);
+        setReturnState('paid');
+        return;
+      }
+      if (donation.paymentStatus === 'failed') {
+        setReturnDonation(donation);
+        setReturnState('failed');
+        return;
+      }
+      // Still pending — the webhook may just not have landed yet. Poll a few
+      // more times before settling into a "we'll email you" pending state.
+      attempts += 1;
+      if (attempts < 6) {
+        setTimeout(poll, 2500);
+      } else {
+        setReturnDonation(donation);
+        setReturnState('pending');
+      }
+    };
 
-Rules:
-- valid true means looks like a real receipt or transaction confirmation
-- valid false means clearly not a receipt such as a selfie meme random photo blank image or screenshot of something unrelated
-- valid null means unclear or ambiguous and needs manual review
-- confidence reflects how certain you are
-- Be lenient: a simple transaction screenshot with an amount and reference number counts
-- Do NOT require personal data to be visible`
-              }
-            ]
-          }]
-        })
-      });
-      if (!response.ok) throw new Error('AI service unavailable');
-      const data = await response.json();
-      const text = data.content?.find(b => b.type === 'text')?.text || '';
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(clean);
-      setAiResult(parsed);
-    } catch (err) {
-      console.warn('AI receipt verification failed:', err);
-      setAiResult({ valid: null, confidence: 'low', reason: 'Verification unavailable', details: 'Could not auto-verify this image. Our team will review it manually.' });
-    } finally {
-      setAiVerifying(false);
-    }
-  };
+    poll();
+    return () => { cancelled = true; };
+  }, [checkDonationStatus]);
 
   const setFormField = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const setAmt = v => { setFormField('amount', v.toString()); setErrors(p => ({ ...p, amount: '' })); };
@@ -176,51 +176,20 @@ Rules:
     setErrors(p => ({ ...p, [name]: '' }));
   };
 
-  const handleProofUpload = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(file.type)) {
-      setErrors(p => ({ ...p, proof: 'Only JPG, PNG, GIF, WEBP, or PDF files are allowed.' }));
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setErrors(p => ({ ...p, proof: 'File must be under 5 MB.' }));
-      return;
-    }
-    setErrors(p => ({ ...p, proof: '' }));
-    setAiResult(null);
-    setProofFile(file);
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        setProofPreview(ev.target.result);
-        verifyReceiptWithAI(file, ev.target.result);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setProofPreview('pdf');
-      verifyReceiptWithAI(file, null);
-    }
-  };
-
-  const removeProof = () => {
-    setProofFile(null);
-    setProofPreview(null);
-    setAiResult(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
   const validate = () => {
     const e = {};
-    // Name/email are personal-identity fields — only required when NOT donating anonymously
+    // Name is a personal-identity field — only required when NOT donating anonymously.
+    // Email is different: for online donations it's always required (even when
+    // anonymous) because PayMongo needs an address to send the payment receipt to.
     if (!form.anonymous) {
       if (!form.firstName.trim()) e.firstName = 'Required';
       if (!form.lastName.trim())  e.lastName  = 'Required';
+    }
+    if (!form.anonymous || form.donationType === 'online') {
       if (!form.email.trim())     e.email     = 'Required';
       else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
     } else if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email)) {
-      // If an anonymous donor chooses to still enter an email, keep format validation
+      // Anonymous cash donor who chose to still enter an email — keep format validation
       e.email = 'Invalid email';
     }
 
@@ -231,10 +200,10 @@ Rules:
       if (!isValid) e.phone = 'Enter a valid PH mobile number (e.g. 09123456789 or 9123456789)';
     }
 
-    // Amount and proof only required for online
+    // Amount required for online — donor pays via PayMongo's hosted checkout,
+    // no proof-of-payment upload needed since PayMongo emails its own receipt.
     if (form.donationType === 'online') {
       if (!form.amount || Number(form.amount) < 100) e.amount = 'Minimum ₱100';
-      if (!proofFile) e.proof = 'Please upload your QRPH payment screenshot or receipt.';
     }
 
     // Cash: appointment required (amount is optional)
@@ -273,13 +242,12 @@ Rules:
       email:           form.email.trim().toLowerCase(),
       phone:           formattedPhone || form.phone.replace(/\D/g, ''),
       donationType:    form.donationType,
-      typeLabel:       form.donationType === 'online' ? 'QRPH (Online)' : 'Cash (In-person)',
+      typeLabel:       form.donationType === 'online' ? 'PayMongo (Online)' : 'Cash (In-person)',
       amount:          donationAmount,
       appointmentDate: form.appointmentDate,
       appointmentTime: form.appointmentTime,
       notes:           form.notes?.trim() || '',
       anonymous:       form.anonymous,
-      proofName:       proofFile ? proofFile.name : null,
     });
     setShowModal(true);
   };
@@ -288,8 +256,32 @@ Rules:
     setLoading(true);
     setApiError('');
     try {
-      const formData = new FormData();
+      // Online donations now go through the real PayMongo Hosted Checkout —
+      // create the (pending) donation + Checkout Session, then redirect the
+      // donor to the actual PayMongo payment page. Nothing here marks the
+      // donation Paid; only the PayMongo webhook does that.
+      if (modalData.donationType === 'online') {
+        const response = await axios.post(`${API_URL}/donations/checkout`, {
+          firstName:  modalData.firstName,
+          middleName: modalData.middleName,
+          lastName:   modalData.lastName,
+          donorName:  modalData.donorName,
+          email:      modalData.email,
+          phone:      modalData.phone,
+          amount:     modalData.amount,
+          notes:      modalData.notes,
+          anonymous:  modalData.anonymous,
+        }, { timeout: 30000 });
 
+        if (response.data.success && response.data.checkoutUrl) {
+          window.location.href = response.data.checkoutUrl;
+          return; // leaving the page
+        }
+        throw new Error(response.data.message || 'Could not start PayMongo checkout.');
+      }
+
+      // Cash donations are unchanged — created immediately, confirmed in person.
+      const formData = new FormData();
       formData.append('firstName',    modalData.firstName);
       formData.append('lastName',     modalData.lastName);
       formData.append('donorName',    modalData.donorName);
@@ -299,25 +291,10 @@ Rules:
       formData.append('middleName',   modalData.middleName);
       formData.append('notes',        modalData.notes);
       formData.append('anonymous',    modalData.anonymous ? 'true' : 'false');
-
-      if (modalData.donationType === 'online') {
-        formData.append('amount',        String(modalData.amount));
-        formData.append('paymentMethod', 'qrph');
-        if (proofFile) formData.append('proofOfPayment', proofFile);
-      }
-
-      if (modalData.donationType === 'cash') {
-        // Send the amount (could be 0 if not specified)
-        formData.append('amount', String(modalData.amount));
-        formData.append('paymentMethod', 'cash');
-        if (modalData.appointmentDate) formData.append('appointmentDate', modalData.appointmentDate);
-        if (modalData.appointmentTime) formData.append('appointmentTime', modalData.appointmentTime);
-      }
-
-      console.log('Submitting form data for:', modalData.donationType);
-      for (let pair of formData.entries()) {
-        console.log(pair[0] + ': ' + pair[1]);
-      }
+      formData.append('amount', String(modalData.amount));
+      formData.append('paymentMethod', 'cash');
+      if (modalData.appointmentDate) formData.append('appointmentDate', modalData.appointmentDate);
+      if (modalData.appointmentTime) formData.append('appointmentTime', modalData.appointmentTime);
 
       const response = await axios.post(`${API_URL}/donations`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -354,7 +331,148 @@ Rules:
     }
   };
 
-  // ── Success Screen ────────────────────────────────────────────────────────
+  // ── Returning from PayMongo Hosted Checkout ───────────────────────────────
+  // success_url/cancel_url both land here — the actual outcome always comes
+  // from GET /api/donations/:id (backed by the webhook), never from the
+  // redirect itself, per the "don't trust the return URL" rule.
+  if (returnState) {
+    if (returnState === 'checking') {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <div
+              className="dp-spin"
+              style={{
+                width: 40, height: 40, margin: '0 auto 16px',
+                borderColor: 'rgba(249, 107, 56, .25)',
+                borderTopColor: 'var(--orange, #F96B38)'
+              }}
+            />
+            <h2>Confirming your payment…</h2>
+            <p>Please wait a moment while we confirm your donation with PayMongo.</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (returnState === 'paid' && returnDonation) {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <div className="dp-checkmark">&#10003;</div>
+            <h2>Thank You for Your Generosity!</h2>
+            <p>
+              Your donation has been received. PayMongo has sent a payment receipt to{' '}
+              <strong>{returnDonation.email}</strong>.
+            </p>
+            <div className="dp-receipt">
+              <div className="dp-receipt-row">
+                <span>Donation ID</span>
+                <strong>{returnDonation.donationId}</strong>
+              </div>
+              <div className="dp-receipt-row">
+                <span>Donor</span>
+                <strong>{returnDonation.donorName}</strong>
+              </div>
+              <div className="dp-receipt-row">
+                <span>Amount</span>
+                <strong>{fmt(returnDonation.amount)}</strong>
+              </div>
+              <div className="dp-receipt-row">
+                <span>Type</span>
+                <strong>PayMongo (Online)</strong>
+              </div>
+            </div>
+            <div className="dp-btn-row">
+              <button className="dp-btn-primary" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </button>
+              <button className="dp-btn-secondary" onClick={() => window.print()}>
+                Print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (returnState === 'pending') {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <h2>We're still confirming your payment</h2>
+            <p>
+              We haven't received final confirmation from PayMongo yet. This can take a
+              minute or two — if you completed payment, you'll get an email receipt from
+              PayMongo shortly and your donation will show as Paid.
+              {returnDonation?.donationId && <> Your donation reference is <strong>{returnDonation.donationId}</strong>.</>}
+            </p>
+            <div className="dp-btn-row">
+              <button className="dp-btn-primary" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (returnState === 'failed') {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <h2>Payment wasn't successful</h2>
+            <p>PayMongo reported that this payment didn't go through. No amount was charged. You're welcome to try again.</p>
+            <div className="dp-btn-row">
+              <button className="dp-btn-primary" onClick={() => setReturnState(null)}>
+                Try Again
+              </button>
+              <button className="dp-btn-secondary" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (returnState === 'cancelled') {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <h2>Checkout Cancelled</h2>
+            <p>You cancelled the PayMongo checkout, so no donation was made and nothing was charged.</p>
+            <div className="dp-btn-row">
+              <button className="dp-btn-primary" onClick={() => setReturnState(null)}>
+                Try Again
+              </button>
+              <button className="dp-btn-secondary" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (returnState === 'not_found') {
+      return (
+        <div className="dp-success">
+          <div className="dp-success-card">
+            <h2>We couldn't find that donation</h2>
+            <p>Something went wrong looking up your donation. If you completed a payment, please contact us with your reference number.</p>
+            <div className="dp-btn-row">
+              <button className="dp-btn-primary" onClick={() => window.location.href = '/'}>
+                Back to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // ── Success Screen (Cash) ─────────────────────────────────────────────────
   if (submitted && receipt) {
     return (
       <div className="dp-success">
@@ -362,7 +480,7 @@ Rules:
           <div className="dp-checkmark">&#10003;</div>
           <h2>Thank You for Your Generosity!</h2>
           <p>
-            Your {receipt.donationType === 'cash' ? 'in-person donation appointment' : 'donation'} has been received.
+            Your in-person donation appointment has been received.
             {' '}A confirmation email has been sent to <strong>{receipt.email}</strong>.
           </p>
           <div className="dp-receipt">
@@ -374,13 +492,7 @@ Rules:
               <span>Donor</span>
               <strong>{receipt.donorName}</strong>
             </div>
-            {receipt.donationType === 'online' && (
-              <div className="dp-receipt-row">
-                <span>Amount</span>
-                <strong>{fmt(receipt.amount)}</strong>
-              </div>
-            )}
-            {receipt.donationType === 'cash' && receipt.amount > 0 && (
+            {receipt.amount > 0 && (
               <div className="dp-receipt-row">
                 <span>Amount</span>
                 <strong>{fmt(receipt.amount)}</strong>
@@ -388,9 +500,9 @@ Rules:
             )}
             <div className="dp-receipt-row">
               <span>Type</span>
-              <strong>{receipt.donationType === 'online' ? 'QRPH (Online)' : 'Cash (In-person)'}</strong>
+              <strong>Cash (In-person)</strong>
             </div>
-            {receipt.donationType === 'cash' && receipt.appointmentDate && (
+            {receipt.appointmentDate && (
               <div className="dp-receipt-row">
                 <span>Appointment</span>
                 <strong>{receipt.appointmentDate} · {receipt.appointmentTime}</strong>
@@ -535,7 +647,7 @@ Rules:
                   }}
                   disabled={loading}
                 >
-                  QRPH (Online)
+                  PayMongo (Online)
                 </button>
                 <button
                   type="button"
@@ -551,27 +663,21 @@ Rules:
               </div>
               <div className="dp-hint">
                 {form.donationType === 'online'
-                  ? 'Pay via QRPH and upload proof of payment'
+                  ? "You'll be redirected to PayMongo's secure checkout to pay"
                   : 'Schedule an appointment to donate in person'}
               </div>
             </div>
 
-            {/* 3. QRPH Code — Online only */}
+            {/* 3. PayMongo Checkout info — Online only */}
             {form.donationType === 'online' && (
               <div className="dp-section">
                 <div className="dp-qrph-box">
-                  <div className="dp-qrph-label">Scan to Pay via QRPH</div>
-                  <img
-                    src="/images/QRPH.jpg"
-                    alt="QRPH Code"
-                    className="dp-qrph-img"
-                    onError={(e) => { 
-                      // Fallback to a data URL SVG placeholder if image fails to load
-                      e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220"%3E%3Crect fill="%23f0f0f0" width="220" height="220"/%3E%3Crect fill="none" stroke="%23ccc" stroke-width="2" x="1" y="1" width="218" height="218"/%3E%3Ctext x="110" y="110" font-size="14" text-anchor="middle" dominant-baseline="middle" fill="%23666"%3EQRPH Payment Code%3C/text%3E%3C/svg%3E';
-                    }}
-                  />
+                  <div className="dp-qrph-label">Pay Securely via PayMongo</div>
                   <div className="dp-qrph-hint">
-                    Scan this QR code with your mobile banking app (GCash, Maya, etc.) to complete payment.
+                    After you review your donation, you'll be redirected to PayMongo's
+                    secure hosted checkout page to pay by GCash, Maya, card, or QRPH.
+                    PayMongo emails you an official payment receipt once your payment
+                    goes through — no need to upload a screenshot.
                   </div>
                 </div>
               </div>
@@ -663,122 +769,7 @@ Rules:
               </div>
             </div>
 
-            {/* 6. Proof of Payment — Online only */}
-            {form.donationType === 'online' && (
-              <div className="dp-section">
-                <div className="dp-section-title">
-                  Proof of Payment<span className="req" style={{ marginLeft: 4 }}>*</span>
-                </div>
-                <div className={`dp-upload-box${errors.proof ? ' dp-upload-box--err' : ''}`}>
-                  {!proofFile ? (
-                    <label className="dp-upload-label" htmlFor="proofInput">
-                      <div className="dp-upload-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                        </svg>
-                      </div>
-                      <div className="dp-upload-text">
-                        <strong>Upload receipt or screenshot</strong>
-                        <span>JPG, PNG, PDF — max 5 MB</span>
-                      </div>
-                      <input
-                        id="proofInput"
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-                        onChange={handleProofUpload}
-                        disabled={loading}
-                        className="dp-upload-input"
-                      />
-                    </label>
-                  ) : (
-                    <div className="dp-upload-preview">
-                      {proofPreview === 'pdf' ? (
-                        <div className="dp-upload-pdf-icon">
-                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
-                          </svg>
-                        </div>
-                      ) : (
-                        <img src={proofPreview} alt="Proof preview" className="dp-upload-preview-img" />
-                      )}
-                      <div className="dp-upload-file-info">
-                        <strong>{proofFile.name}</strong>
-                        <span>{(proofFile.size / 1024).toFixed(0)} KB</span>
-                      </div>
-                      <button type="button" className="dp-upload-remove" onClick={removeProof} disabled={loading}>
-                        &#10005;
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* AI Verification Badge */}
-                {proofFile && (
-                  <div style={{ marginTop: 10 }}>
-                    {aiVerifying && (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '10px 14px', borderRadius: 10,
-                        background: '#F0F4FF', border: '1.5px solid #C7D7F9',
-                        fontSize: '.82rem', color: '#3B5998',
-                      }}>
-                        <span style={{ display: 'inline-block', width: 16, height: 16, border: '2.5px solid #3B5998', borderTopColor: 'transparent', borderRadius: '50%', animation: 'dp-spin 0.8s linear infinite', flexShrink: 0 }} />
-                        <span><strong>AI is verifying your receipt…</strong> This only takes a moment.</span>
-                      </div>
-                    )}
-
-                    {!aiVerifying && aiResult && (() => {
-                      const { valid, confidence, reason, details } = aiResult;
-                      const cfg = valid === true
-                        ? { bg: '#F0FFF4', border: '#68D391', icon: '✅', label: 'Valid Receipt', labelColor: '#276749', barColor: '#48BB78' }
-                        : valid === false
-                        ? { bg: '#FFF5F5', border: '#FC8181', icon: '❌', label: 'Not a Receipt', labelColor: '#9B2C2C', barColor: '#FC8181' }
-                        : { bg: '#FFFBEB', border: '#F6C90E', icon: '⚠️', label: 'Needs Review', labelColor: '#744210', barColor: '#F6C90E' };
-                      const confW = confidence === 'high' ? '90%' : confidence === 'medium' ? '55%' : '25%';
-                      return (
-                        <div style={{ padding: '12px 16px', borderRadius: 12, background: cfg.bg, border: `1.5px solid ${cfg.border}` }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                            <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
-                            <strong style={{ fontSize: '.85rem', color: cfg.labelColor }}>AI Receipt Check: {cfg.label}</strong>
-                            <span style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#888', background: '#fff', padding: '2px 8px', borderRadius: 20, border: '1px solid #eee' }}>
-                              Powered by Claude AI
-                            </span>
-                          </div>
-                          <p style={{ margin: '0 0 8px', fontSize: '.8rem', color: '#444', lineHeight: 1.5 }}>
-                            {reason}. {details}
-                          </p>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: '.72rem', color: '#888', whiteSpace: 'nowrap' }}>Confidence</span>
-                            <div style={{ flex: 1, height: 5, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
-                              <div style={{ width: confW, height: '100%', background: cfg.barColor, borderRadius: 99, transition: 'width 0.6s ease' }} />
-                            </div>
-                            <span style={{ fontSize: '.72rem', color: '#888', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{confidence}</span>
-                          </div>
-                          {valid === false && (
-                            <p style={{ margin: '8px 0 0', fontSize: '.78rem', color: '#9B2C2C', background: '#FED7D7', padding: '7px 10px', borderRadius: 7 }}>
-                              ⚠️ Please upload a genuine payment screenshot (e.g. GCash, Maya, bank transfer confirmation). Random photos will not be accepted.
-                            </p>
-                          )}
-                          {valid === null && (
-                            <p style={{ margin: '8px 0 0', fontSize: '.78rem', color: '#744210', background: '#FEFCBF', padding: '7px 10px', borderRadius: 7 }}>
-                              Our team will review this manually after submission.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {errors.proof
-                  ? <div className="dp-err-msg" style={{ marginTop: 6 }}>{errors.proof}</div>
-                  : <div className="dp-hint" style={{ marginTop: 6 }}>Required — attach your QRPH payment screenshot.</div>
-                }
-              </div>
-            )}
-
-            {/* 7. Notes & Anonymous */}
+            {/* 6. Notes & Anonymous */}
             <div className="dp-section">
               <div className="dp-group">
                 <label>Message / Notes (Optional)</label>
@@ -806,7 +797,7 @@ Rules:
               </div>
 
               <button type="submit" className="dp-submit" disabled={loading}>
-                {form.donationType === 'online' ? 'Review Donation' : 'Review Appointment'}
+                {form.donationType === 'online' ? 'Review & Proceed to PayMongo' : 'Review Appointment'}
               </button>
             </div>
           </form>
