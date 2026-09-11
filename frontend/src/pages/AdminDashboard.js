@@ -355,7 +355,9 @@ const DetailsModal = ({ data, type, onClose }) => {
                             <small style={{ color: 'var(--d-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: '.7rem' }}>
                                 Transaction Receipt
                             </small>
-                            {data.proofOfPayment ? (
+                            {data.donationType === 'online' ? (
+                                <PaymongoReceipt data={data} />
+                            ) : data.proofOfPayment ? (
                                 <div style={{ marginTop: 8 }}>
                                     {/\.(jpg|jpeg|png|gif|webp)$/i.test(data.proofOfPayment) ? (
                                         <a href={proofUrl(data.proofOfPayment)} target="_blank" rel="noopener noreferrer">
@@ -426,6 +428,70 @@ const InfoMini = ({ label, value, accent }) => (
         <div style={{ fontWeight: 600, color: accent || 'var(--d-ink)' }}>{value}</div>
     </div>
 );
+
+// Auto-built transaction receipt for online donations paid through PayMongo's
+// real Hosted Checkout (Part 9). Online donations never have a manually
+// uploaded proof file — PayMongo emails the donor its own receipt — so this
+// renders the confirmation straight from what the webhook already saved
+// (paymongoPaymentId, receiptNumber, paymentMethod, verificationDate)
+// instead of showing "No proof uploaded" forever.
+const PAYMENT_METHOD_LABELS = {
+    qrph: 'QR Ph',
+    gcash: 'GCash',
+    maya: 'Maya',
+    credit_card: 'Credit Card',
+    debit_card: 'Debit Card',
+    paypal: 'PayPal',
+};
+
+const PaymongoReceipt = ({ data }) => {
+    if (data.paymentStatus === 'paid') {
+        const methodLabel = PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod || 'PayMongo';
+        return (
+            <div style={{
+                marginTop: 8, padding: 14, borderRadius: 10,
+                background: '#f0fff4', border: '1.5px solid #c3e6cb',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#1E7D56', fontWeight: 700, fontSize: '.88rem', marginBottom: 10 }}>
+                    <FaCheckCircle /> Paid via {methodLabel}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <InfoMini label="Receipt No." value={data.receiptNumber || '—'} />
+                    <InfoMini
+                        label="Verified"
+                        value={data.verificationDate ? new Date(data.verificationDate).toLocaleString('en-PH') : '—'}
+                    />
+                </div>
+                {(data.paymongoPaymentId || data.transactionId) && (
+                    <div style={{ marginTop: 10 }}>
+                        <small style={{ color: 'var(--d-muted)' }}>PayMongo Payment ID</small>
+                        <div style={{ fontFamily: 'monospace', fontSize: '.82rem', marginTop: 2, wordBreak: 'break-all' }}>
+                            {data.paymongoPaymentId || data.transactionId}
+                        </div>
+                    </div>
+                )}
+                <small style={{ display: 'block', marginTop: 10, color: 'var(--d-muted)', fontSize: '.75rem', fontStyle: 'italic' }}>
+                    PayMongo emailed the donor its own official receipt — no upload needed.
+                </small>
+            </div>
+        );
+    }
+
+    if (data.paymentStatus === 'failed' || data.paymentStatus === 'cancelled') {
+        return (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '.88rem', color: '#c0392b' }}>
+                <FaTimesCircle /> Payment was not completed
+            </div>
+        );
+    }
+
+    // pending / processing
+    return (
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '.88rem', color: 'var(--d-muted)', fontStyle: 'italic' }}>
+            <FaClock /> Awaiting payment via PayMongo
+        </div>
+    );
+};
 
 const EditUserModal = ({ user, onSave, onClose }) => {
     const ROLES_LIST = ['admin', 'head_caregiver', 'caregiver'];

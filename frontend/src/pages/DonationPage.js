@@ -382,6 +382,20 @@ export default function DonationPage() {
                 <span>Type</span>
                 <strong>PayMongo (Online)</strong>
               </div>
+              {returnDonation.receiptNumber && (
+                <div className="dp-receipt-row">
+                  <span>Receipt No.</span>
+                  <strong>{returnDonation.receiptNumber}</strong>
+                </div>
+              )}
+              {(returnDonation.paymongoPaymentId || returnDonation.transactionId) && (
+                <div className="dp-receipt-row">
+                  <span>Payment ID</span>
+                  <strong style={{ fontFamily: 'monospace', fontSize: '.85em' }}>
+                    {returnDonation.paymongoPaymentId || returnDonation.transactionId}
+                  </strong>
+                </div>
+              )}
             </div>
             <div className="dp-btn-row">
               <button className="dp-btn-primary" onClick={() => window.location.href = '/'}>
