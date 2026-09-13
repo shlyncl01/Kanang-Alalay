@@ -444,10 +444,10 @@ textarea.form-input { resize: vertical; }
 }
 
 /* Aligns the ACTIONS header directly above the row action-icon buttons,
-   which are right-aligned via .res-action-icons (justify-content: flex-end). */
+   which are left-aligned via .res-action-icons (justify-content: flex-start). */
 .res-col-actions-header {
-    text-align: right;
-    padding-right: 2px;
+    text-align: left;
+    padding-left: 2px;
 }
 
 .res-row          { border: 1px solid var(--d-border); border-top: none; background: #fff; padding: 13px 16px; }
@@ -975,7 +975,7 @@ textarea.form-input { resize: vertical; }
 .res-action-icons {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     width: 100%;
     gap: 8px;
     flex-wrap: wrap;
@@ -992,7 +992,7 @@ textarea.form-input { resize: vertical; }
 
 .res-action-icons-group {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
