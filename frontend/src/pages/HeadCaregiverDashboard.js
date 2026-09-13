@@ -680,18 +680,20 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
 
     const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'this resident';
 
-    const showDestination = ['legal_guardianship', 'adopted', 'reunited_with_family', 'transferred_hospital'].includes(reason);
+    const showDestination = ['legal_guardianship', 'adopted', 'reunited_with_family', 'transferred_hospital', 'other'].includes(reason);
     const destinationLabel = {
         legal_guardianship: 'New Legal Guardian',
         adopted: 'Adoptive Family / Guardian',
         reunited_with_family: 'Receiving Family Member',
         transferred_hospital: 'Hospital Name',
+        other: 'Please Specify',
     }[reason] || 'Destination';
 
     const submit = async () => {
         const e = {};
         if (!reason) e.reason = 'Please select a reason.';
         if (reason === 'deceased' && !causeOfDeath.trim()) e.causeOfDeath = 'Cause of death is required.';
+        if (showDestination && !destination.trim()) e.destination = `${destinationLabel} is required.`;
         if (Object.keys(e).length) { setErrs(e); return; }
 
         setSaving(true);
@@ -748,11 +750,11 @@ const DischargeResidentModal = ({ resident, onClose, onSaved, doFetch, toast }) 
                     )}
 
                     {showDestination && (
-                        <HCField label={destinationLabel}>
+                        <HCField label={destinationLabel} required error={errs.destination}>
                             <input
-                                style={hcInputStyle(false)}
+                                style={hcInputStyle(errs.destination)}
                                 value={destination}
-                                onChange={e => setDestination(e.target.value)}
+                                onChange={e => { setDestination(e.target.value); setErrs(p => ({ ...p, destination: '' })); }}
                                 placeholder={`Enter ${destinationLabel.toLowerCase()}`}
                             />
                         </HCField>
@@ -1030,7 +1032,7 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="registration-modal" style={hcModalStyle}>
+            <div className="registration-modal" style={{ ...hcModalStyle, maxWidth: 860 }}>
                 <HCHeader icon={<FaEye />} title={`Medication History — ${resName}`} onClose={onClose} />
                 <div style={hcBodyStyle}>
                     {loading ? <div className="no-data-center"><FaSpinner className="spin" /> Loading…</div>
