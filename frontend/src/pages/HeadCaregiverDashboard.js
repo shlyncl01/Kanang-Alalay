@@ -8,7 +8,7 @@ import {
     FaQrcode, FaSignOutAlt, FaChevronDown,
     FaPlus, FaExclamationTriangle,
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
-    FaSpinner, FaSync, FaEye, FaEdit, FaEllipsisV, FaTrashAlt,
+    FaSpinner, FaSync, FaEye, FaEdit, FaTrashAlt,
     FaExclamationCircle, FaFileAlt,
     FaBoxOpen, FaClock, FaFilter, FaBars,
     FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
@@ -1286,40 +1286,6 @@ const RequestStockModal = ({ items, onClose, doFetch, toast, onSubmitted }) => {
     );
 };
 
-const ActionMenu = ({ onViewHistory, onAddMedication, onEditSchedule, onDelete }) => {
-    const [open, setOpen] = useState(false);
-    const ref = useRef(null);
-    useEffect(() => {
-        const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-        document.addEventListener('mousedown', h);
-        return () => document.removeEventListener('mousedown', h);
-    }, []);
-
-    return (
-        <div ref={ref} className="action-menu-wrapper">
-            <button className="action-menu-trigger" onClick={() => setOpen(o => !o)}><FaEllipsisV /></button>
-            {open && (
-                <div className="action-menu-dropdown">
-                    <button className="action-menu-item" onClick={() => { onViewHistory?.(); setOpen(false); }}>
-                        <FaEye /> View History
-                    </button>
-                    <button className="action-menu-item" onClick={() => { onAddMedication?.(); setOpen(false); }}>
-                        <FaPlus /> Add Medication
-                    </button>
-                    <button className="action-menu-item" onClick={() => { onEditSchedule?.(); setOpen(false); }}>
-                        <FaEdit /> Edit Schedule
-                    </button>
-                    {onDelete && (
-                        <button className="action-menu-item action-menu-item-danger" onClick={() => { onDelete(); setOpen(false); }}>
-                            <FaTrashAlt /> Delete Medication
-                        </button>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
-
 const HeadCaregiverDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -1972,7 +1938,7 @@ const HeadCaregiverDashboard = () => {
 
                 <div className="residents-table-scroll">
                     <div className="res-col-header">
-                        <span>Room | Bed</span><span>Name / Age</span><span>Conditions</span><span>Status</span><span>Today's Medication</span><span>Actions</span>
+                        <span>Room | Bed</span><span>Name / Age</span><span>Conditions</span><span>Status</span><span>Today's Medication</span><span className="res-col-actions-header">Actions</span>
                     </div>
 
                     {paged.length === 0 ? (
@@ -2205,13 +2171,43 @@ const HeadCaregiverDashboard = () => {
                                                 </td>
                                                 <td className="td-xs">{m.nextDose || '—'}</td>
                                                 <td><DotBadge s={m.status} /></td>
-                                                <td>
-                                                    <ActionMenu
-                                                        onViewHistory={() => setModal({ type: 'history', data: residents.find(r => r.name === grp.name) || { _id: m.residentId, name: grp.name } })}
-                                                        onAddMedication={() => openModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
-                                                        onEditSchedule={() => openModal({ type: 'editSchedule', data: m })}
-                                                        onDelete={() => openModal({ type: 'deleteMedication', data: m })}
-                                                    />
+                                                <td className="med-action-cell">
+                                                    <div className="res-action-icons">
+                                                        <div className="res-action-icons-group">
+                                                            <button
+                                                                className="res-action-icon"
+                                                                onClick={() => setModal({ type: 'history', data: residents.find(r => r.name === grp.name) || { _id: m.residentId, name: grp.name } })}
+                                                                title="View History"
+                                                            >
+                                                                <FaEye />
+                                                            </button>
+                                                            <button
+                                                                className="res-action-icon"
+                                                                onClick={() => openModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
+                                                                title={onDuty ? "Add Medication" : "Not available while off duty"}
+                                                                disabled={!onDuty}
+                                                            >
+                                                                <FaPlus />
+                                                            </button>
+                                                            <button
+                                                                className="res-action-icon"
+                                                                onClick={() => openModal({ type: 'editSchedule', data: m })}
+                                                                title={onDuty ? "Edit Schedule" : "Not available while off duty"}
+                                                                disabled={!onDuty}
+                                                            >
+                                                                <FaEdit />
+                                                            </button>
+                                                            <button
+                                                                className="res-action-icon res-action-icon-danger"
+                                                                onClick={() => openModal({ type: 'deleteMedication', data: m })}
+                                                                title={onDuty ? "Delete Medication" : "Not available while off duty"}
+                                                                style={{ color: '#C0392B' }}
+                                                                disabled={!onDuty}
+                                                            >
+                                                                <FaTrashAlt />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
