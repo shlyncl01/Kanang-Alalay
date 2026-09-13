@@ -7,12 +7,20 @@ const residentSchema = new mongoose.Schema({
         unique:   true,
         uppercase: true
     },
-    firstName:  { type: String, required: true, trim: true },
+    firstName:  { type: String, default: '', trim: true },
     lastName:   { type: String, default: '', trim: true },
     middleName: { type: String, default: '', trim: true },
-    nickname:   { type: String, default: '', trim: true },
+    nickname:   { type: String, required: true, trim: true },
     age:        { type: Number, required: true },
+    dateOfBirth: { type: Date, default: null },
     gender:     { type: String, enum: ['female', 'other'], required: true },
+
+    // ── Profile photo ─────────────────────────────────────────────────────────
+    // Stored on Cloudinary. photoPublicId is kept (but not sent to clients)
+    // so a re-upload can overwrite the old image and a removal can delete it.
+    photoUrl:       { type: String, default: null },
+    photoPublicId:  { type: String, default: null, select: false },
+
 
     // ── Location ──────────────────────────────────────────────────────────────
     roomNumber: { type: String, required: true },
@@ -109,7 +117,7 @@ const residentSchema = new mongoose.Schema({
     toJSON: {
         virtuals: true,
         transform: (doc, ret) => {
-            ret.name = ret.name || `${ret.firstName || ''} ${ret.lastName || ''}`.trim();
+            ret.name = ret.name || `${ret.firstName || ''} ${ret.lastName || ''}`.trim() || ret.nickname || '';
             ret.room = ret.room || ret.roomNumber;
             ret.conditions = (ret.conditions && ret.conditions.length > 0)
                 ? ret.conditions
@@ -120,7 +128,7 @@ const residentSchema = new mongoose.Schema({
     toObject: {
         virtuals: true,
         transform: (doc, ret) => {
-            ret.name = ret.name || `${ret.firstName || ''} ${ret.lastName || ''}`.trim();
+            ret.name = ret.name || `${ret.firstName || ''} ${ret.lastName || ''}`.trim() || ret.nickname || '';
             ret.room = ret.room || ret.roomNumber;
             ret.conditions = (ret.conditions && ret.conditions.length > 0)
                 ? ret.conditions

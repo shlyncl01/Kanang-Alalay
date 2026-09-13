@@ -777,6 +777,11 @@ textarea.form-input { resize: vertical; }
     flex-wrap: wrap;
 }
 
+.profile-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
 .profile-avatar {
     width: 64px;
     height: 64px;
@@ -789,6 +794,72 @@ textarea.form-input { resize: vertical; }
     font-size: 2.2rem;
     color: var(--d-orange);
     flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.profile-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-avatar-uploading {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+
+.profile-avatar-upload-btn {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--d-orange);
+    border: 2px solid #fff;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .72rem;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,.18);
+    transition: background .18s, transform .15s;
+}
+
+.profile-avatar-upload-btn:hover:not(:disabled) {
+    background: var(--d-orange-dk);
+    transform: translateY(-1px);
+}
+
+.profile-avatar-upload-btn:disabled {
+    background: var(--d-muted);
+    cursor: not-allowed;
+}
+
+.add-resident-photo-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.add-resident-photo-hint {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--d-ink);
+}
+
+.add-resident-photo-optional {
+    color: var(--d-muted);
+    font-weight: 400;
 }
 
 .profile-header-info {

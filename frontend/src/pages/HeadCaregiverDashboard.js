@@ -8,7 +8,7 @@ import {
     FaQrcode, FaSignOutAlt, FaChevronDown,
     FaPlus, FaExclamationTriangle,
     FaCog, FaQuestionCircle, FaMicrophone, FaTimes, FaCheck,
-    FaSpinner, FaSync, FaEye, FaEdit, FaTrashAlt,
+    FaSpinner, FaSync, FaEye, FaEdit, FaTrashAlt, FaCamera,
     FaExclamationCircle, FaFileAlt,
     FaBoxOpen, FaClock, FaFilter, FaBars,
     FaBell, FaUserMd, FaUserPlus, FaStethoscope, FaUserMinus,
@@ -152,11 +152,18 @@ const Pagination = ({ page, pages, onChange }) => {
 
 const useFetch = () => useCallback(async (endpoint, opts = {}) => {
     const token = localStorage.getItem('token');
+    // When uploading a file we pass a FormData body — the browser must set its
+    // own multipart Content-Type (with boundary), so we skip the JSON default.
+    const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
     try {
         const r = await fetch(`${API}${endpoint}`, {
             credentials: 'include',
             ...opts,
-            headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }), ...opts.headers },
+            headers: {
+                ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+                ...(token && { Authorization: `Bearer ${token}` }),
+                ...opts.headers,
+            },
         });
         const text = await r.text();
         const data = text ? JSON.parse(text) : {};
@@ -379,6 +386,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         middleName: resident.middleName || '',
         nickname: resident.nickname || '',
         age: resident.age ?? '',
+        dateOfBirth: resident.dateOfBirth ? new Date(resident.dateOfBirth).toISOString().slice(0, 10) : '',
         gender: resident.gender || 'female',
         roomNumber: resident.room || resident.roomNumber || '',
         floor: resident.floor || '',
@@ -398,6 +406,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         middleName: '',
         nickname: '',
         age: '',
+        dateOfBirth: '',
         gender: 'female',
         roomNumber: '',
         floor: '',
@@ -412,6 +421,26 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
     const [saving, setSaving] = useState(false);
     const [occupiedBeds, setOccupiedBeds] = useState([]);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
+
+    const fileInputRef = useRef(null);
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(isEdit ? (resident.photoUrl || '') : '');
+
+    const pickPhoto = () => { if (!saving) fileInputRef.current?.click(); };
+
+    const handlePhotoChange = (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { toast('Please choose an image file.', 'error'); return; }
+        if (file.size > 5 * 1024 * 1024) { toast('Image must be smaller than 5MB.', 'error'); return; }
+        setPhotoFile(file);
+        setPhotoPreview(URL.createObjectURL(file));
+    };
+
+    useEffect(() => () => {
+        if (photoPreview && photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview);
+    }, [photoPreview]);
 
     useEffect(() => {
         if (fetchCaregivers) fetchCaregivers();
@@ -434,7 +463,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
 
     const submit = async () => {
         const e = {};
-        if (!f.firstName.trim()) e.firstName = 'First name is required';
+        if (!f.nickname.trim()) e.nickname = 'Nickname is required';
         if (!f.age || isNaN(f.age) || +f.age < 1 || +f.age > 130) e.age = 'Enter a valid age (1–130)';
         if (!f.roomNumber.trim()) e.roomNumber = 'Room number is required';
         if (!f.floor) e.floor = 'Please select a floor';
@@ -450,6 +479,7 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
             middleName: f.middleName.trim(),
             nickname: f.nickname.trim(),
             age: +f.age,
+            dateOfBirth: f.dateOfBirth || null,
             gender: f.gender,
             roomNumber: f.roomNumber.trim(),
             floor: f.floor,
@@ -467,16 +497,32 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
             ? await doFetch(`/head-caregiver/residents/${resident._id}`, { method: 'PUT', body: JSON.stringify(payload) })
             : await doFetch('/head-caregiver/residents', { method: 'POST', body: JSON.stringify(payload) });
 
-        setSaving(false);
-        if (r.success) {
-            toast(isEdit
-                ? `Resident ${f.firstName} ${f.lastName} updated successfully.`
-                : `Resident ${f.firstName} ${f.lastName} added successfully.`);
-            onSaved(r.data);
-            onClose();
-        } else {
+        if (!r.success) {
+            setSaving(false);
             toast(r.message || (isEdit ? 'Failed to update resident.' : 'Failed to add resident.'), 'error');
+            return;
         }
+
+        let savedResident = r.data;
+        const displayName = (f.firstName || f.nickname || 'Resident');
+
+        if (photoFile && savedResident?._id) {
+            const body = new FormData();
+            body.append('photo', photoFile);
+            const photoR = await doFetch(`/head-caregiver/residents/${savedResident._id}/photo`, { method: 'PUT', body });
+            if (photoR.success) {
+                savedResident = { ...savedResident, photoUrl: photoR.data?.photoUrl || photoR.photoUrl };
+            } else {
+                toast(photoR.message || 'Resident saved, but the photo failed to upload.', 'error');
+            }
+        }
+
+        setSaving(false);
+        toast(isEdit
+            ? `Resident ${displayName} ${f.lastName}`.trim() + ' updated successfully.'
+            : `Resident ${displayName} ${f.lastName}`.trim() + ' added successfully.');
+        onSaved(savedResident);
+        onClose();
     };
 
     const selectedCaregiver = caregivers.find(c => String(c._id) === String(f.primaryCaregiverId));
@@ -488,16 +534,47 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                 <HCHeader icon={<FaUserPlus />} title={isEdit ? `Edit Resident — ${resident.firstName} ${resident.lastName}`.trim() : 'Add New Resident'} onClose={onClose} />
                 <div style={hcBodyStyle}>
 
+                    <div className="add-resident-photo-row">
+                        <div className="profile-avatar-wrap">
+                            <div className="profile-avatar">
+                                {photoPreview ? (
+                                    <img src={photoPreview} alt="Resident" className="profile-avatar-img" />
+                                ) : (
+                                    <FaUserCircle />
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                className="profile-avatar-upload-btn"
+                                onClick={pickPhoto}
+                                disabled={saving}
+                                title="Add photo"
+                            >
+                                <FaCamera />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handlePhotoChange}
+                                style={{ display: 'none' }}
+                            />
+                        </div>
+                        <div className="add-resident-photo-hint">
+                            Add a profile photo <span className="add-resident-photo-optional">(optional)</span>
+                        </div>
+                    </div>
+
                     <div style={{ ...hcSectionLabel, marginTop: 0 }}>
                         <FaUserCircle style={{ marginRight: 6 }} /> Personal Information
                     </div>
                     <div style={hcGrid2}>
-                        <HCField label="First Name" required error={errs.firstName}>
+                        <HCField label="First Name">
                             <input
-                                style={hcInputStyle(errs.firstName)}
+                                style={hcInputStyle(false)}
                                 value={f.firstName}
                                 onChange={e => setField('firstName', e.target.value)}
-                                placeholder="Enter first name"
+                                placeholder="Enter first name (optional)"
                             />
                         </HCField>
                         <HCField label="Last Name">
@@ -516,9 +593,9 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                                 placeholder="Optional"
                             />
                         </HCField>
-                        <HCField label="Nickname">
+                        <HCField label="Nickname" required error={errs.nickname}>
                             <input
-                                style={hcInputStyle(false)}
+                                style={hcInputStyle(errs.nickname)}
                                 value={f.nickname}
                                 onChange={e => setField('nickname', e.target.value)}
                                 placeholder="What they prefer to be called"
@@ -540,6 +617,14 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                                 <option value="female">Female</option>
                                 <option value="other">Other / Prefer not to say</option>
                             </select>
+                        </HCField>
+                        <HCField label="Date of Birth" style={{ ...hcFieldWrap, gridColumn: '1 / -1' }}>
+                            <input
+                                type="date"
+                                style={hcInputStyle(false)}
+                                value={f.dateOfBirth}
+                                onChange={e => setField('dateOfBirth', e.target.value)}
+                            />
                         </HCField>
                         <HCField label="Admission Date" style={{ ...hcFieldWrap, gridColumn: '1 / -1' }}>
                             <input
@@ -908,11 +993,54 @@ const AssignCaregiverModal = ({ resident, caregivers, onClose, onSaved, doFetch,
     );
 };
 
-const ProfileModal = ({ resident, schedule, onClose }) => {
+const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, onDuty }) => {
     const resName = resident.name || [resident.firstName, resident.lastName].filter(Boolean).join(' ') || 'Resident';
     const todayMeds = (schedule || []).filter(l =>
         l.residentName === resName || l.residentId?.toString() === resident._id?.toString()
     );
+
+    const fileInputRef = useRef(null);
+    const [photoUrl, setPhotoUrl] = useState(resident.photoUrl || '');
+    const [preview, setPreview] = useState('');
+    const [uploading, setUploading] = useState(false);
+
+    const pickPhoto = () => { if (!uploading && onDuty) fileInputRef.current?.click(); };
+
+    const handlePhotoChange = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            toast('Please choose an image file.', 'error');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast('Image must be smaller than 5MB.', 'error');
+            return;
+        }
+
+        const localPreview = URL.createObjectURL(file);
+        setPreview(localPreview);
+        setUploading(true);
+
+        const body = new FormData();
+        body.append('photo', file);
+        const r = await doFetch(`/head-caregiver/residents/${resident._id}/photo`, { method: 'PUT', body });
+
+        setUploading(false);
+        URL.revokeObjectURL(localPreview);
+        setPreview('');
+
+        if (r.success) {
+            const newUrl = r.data?.photoUrl || r.photoUrl;
+            setPhotoUrl(newUrl);
+            toast(r.message || 'Photo updated.');
+            onSaved?.({ _id: resident._id, photoUrl: newUrl });
+        } else {
+            toast(r.message || 'Failed to upload photo.', 'error');
+        }
+    };
 
     const InfoRow = ({ label, value }) => value ? (
         <div className="profile-info-row">
@@ -927,7 +1055,32 @@ const ProfileModal = ({ resident, schedule, onClose }) => {
                 <HCHeader icon={<FaUserCircle />} title={`Resident Profile — ${resName}`} onClose={onClose} />
                 <div style={{ ...hcBodyStyle, padding: 0 }}>
                     <div className="profile-header-card">
-                        <div className="profile-avatar"><FaUserCircle /></div>
+                        <div className="profile-avatar-wrap">
+                            <div className="profile-avatar">
+                                {(preview || photoUrl) ? (
+                                    <img src={preview || photoUrl} alt={resName} className="profile-avatar-img" />
+                                ) : (
+                                    <FaUserCircle />
+                                )}
+                                {uploading && <div className="profile-avatar-uploading"><FaSpinner className="spin" /></div>}
+                            </div>
+                            <button
+                                type="button"
+                                className="profile-avatar-upload-btn"
+                                onClick={pickPhoto}
+                                disabled={uploading || !onDuty}
+                                title={onDuty ? "Change photo" : "Not available while off duty"}
+                            >
+                                <FaCamera />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handlePhotoChange}
+                                style={{ display: 'none' }}
+                            />
+                        </div>
                         <div className="profile-header-info">
                             <h3 className="profile-full-name">{resName}</h3>
                             {resident.nickname && (
@@ -2536,7 +2689,15 @@ const HeadCaregiverDashboard = () => {
                 doFetch={doFetch}
                 toast={toast}
             />}
-            {modal?.type === 'profile' && <ProfileModal onClose={() => setModal(null)} resident={modal.data} schedule={schedule} />}
+            {modal?.type === 'profile' && <ProfileModal
+                onClose={() => setModal(null)}
+                resident={modal.data}
+                schedule={schedule}
+                onSaved={updated => setResidents(p => p.map(r => r._id === updated._id ? { ...r, ...updated } : r))}
+                doFetch={doFetch}
+                toast={toast}
+                onDuty={onDuty}
+            />}
             {modal?.type === 'assignCaregiver' && <AssignCaregiverModal
                 onClose={() => setModal(null)}
                 resident={modal.data}

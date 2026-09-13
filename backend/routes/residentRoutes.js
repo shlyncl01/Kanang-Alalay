@@ -7,6 +7,9 @@ const VitalsLog = require('../models/VitalsLog');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { notifyCaregiverAndOverseers } = require('../services/alertService');
 const { isOnDuty } = require('../utils/shiftUtils');
+const imageUpload = require('../middleware/imageUpload');
+const streamifier = require('streamifier');
+const cloudinary = require('../config/cloudinary');
 
 // A caregiver may only administer medication while on duty — re-checked
 // fresh against the real clock on every request. Scanning a medication for
@@ -102,7 +105,23 @@ async function saveResidentVitals(resident, userId, cleanVitals) {
 
     return vitals;
 }
-// GET /api/residents  — all active residents (any authenticated user)
+function streamUpload(buffer, publicId) {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: 'kanang-alalay/resident-photos',
+                public_id: publicId,
+                overwrite: true,
+                resource_type: 'image',
+                transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
+            },
+            (error, result) => (error ? reject(error) : resolve(result))
+        );
+        streamifier.createReadStream(buffer).pipe(uploadStream);
+    });
+}
+
+
 router.get('/', protect, async (req, res) => {
     try {
         const residents = await Resident.find({ status: 'active' })
@@ -200,6 +219,59 @@ router.delete('/:id/care-notes/:noteId', protect, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: 'Server error deleting care note' });
+    }
+});
+
+// PUT /api/residents/:id/photo  — upload/replace a resident's profile photo
+router.put('/:id/photo', protect, imageUpload.single('photo'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No image file was provided.' });
+        }
+
+        const resident = await Resident.findById(req.params.id);
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
+
+        // Reuse a stable public_id per resident so re-uploads overwrite the
+        // old image instead of piling up unused files in Cloudinary.
+        const publicId = `resident_${resident._id}`;
+        const result = await streamUpload(req.file.buffer, publicId);
+
+        resident.photoUrl = result.secure_url;
+        resident.photoPublicId = result.public_id;
+        await resident.save();
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'photo' });
+
+        res.json({ success: true, message: 'Photo updated.', data: { photoUrl: resident.photoUrl } });
+    } catch (error) {
+        console.error('Resident photo upload error:', error);
+        res.status(500).json({ success: false, message: 'Failed to upload photo.' });
+    }
+});
+
+// DELETE /api/residents/:id/photo  — remove a resident's profile photo
+router.delete('/:id/photo', protect, async (req, res) => {
+    try {
+        const resident = await Resident.findById(req.params.id).select('+photoPublicId');
+        if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
+
+        if (resident.photoPublicId) {
+            await cloudinary.uploader.destroy(resident.photoPublicId).catch(() => {});
+        }
+
+        resident.photoUrl = null;
+        resident.photoPublicId = null;
+        await resident.save();
+
+        const io = req.app.get('io');
+        if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'photo' });
+
+        res.json({ success: true, message: 'Photo removed.' });
+    } catch (error) {
+        console.error('Resident photo delete error:', error);
+        res.status(500).json({ success: false, message: 'Failed to remove photo.' });
     }
 });
 
