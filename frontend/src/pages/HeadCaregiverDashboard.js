@@ -1095,7 +1095,7 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
                                 {(preview || photoUrl) ? (
                                     <img src={preview || photoUrl} alt={resName} className="profile-avatar-img" />
                                 ) : (
-                                    <FaUserCircle />
+                                    <span className="profile-avatar-placeholder"><FaUserCircle /></span>
                                 )}
                                 {uploading && <div className="profile-avatar-uploading"><FaSpinner className="spin" /></div>}
                             </div>

@@ -815,6 +815,14 @@ textarea.form-input { resize: vertical; }
     border-radius: 50%;
 }
 
+.profile-avatar-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .profile-avatar-uploading {
     position: absolute;
     inset: 0;
