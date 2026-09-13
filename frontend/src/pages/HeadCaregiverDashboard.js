@@ -509,7 +509,10 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
         if (photoFile && savedResident?._id) {
             const body = new FormData();
             body.append('photo', photoFile);
-            const photoR = await doFetch(`/head-caregiver/residents/${savedResident._id}/photo`, { method: 'PUT', body });
+            const photoR = await doFetch(`/residents/${savedResident._id}/photo`, {
+                method: 'PUT',
+                body
+            });
             if (photoR.success) {
                 savedResident = { ...savedResident, photoUrl: photoR.data?.photoUrl || photoR.photoUrl };
             } else {
@@ -712,9 +715,9 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                         style={{ marginBottom: 6 }}
                         hint={
                             selectedCaregiverName ? `Assigned to: ${selectedCaregiverName}`
-                            : caregivers.filter(c => String(c.role || '').toLowerCase() === 'caregiver').length === 0
-                                ? 'No caregiver accounts found. Please register a caregiver first in User Management.'
-                                : 'Optional — can be assigned later.'
+                                : caregivers.filter(c => String(c.role || '').toLowerCase() === 'caregiver').length === 0
+                                    ? 'No caregiver accounts found. Please register a caregiver first in User Management.'
+                                    : 'Optional — can be assigned later.'
                         }
                     >
                         <select
@@ -1026,7 +1029,10 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
 
         const body = new FormData();
         body.append('photo', file);
-        const r = await doFetch(`/head-caregiver/residents/${resident._id}/photo`, { method: 'PUT', body });
+        const r = await doFetch(`/residents/${resident._id}/photo`, {
+            method: 'PUT',
+            body
+        });
 
         setUploading(false);
         URL.revokeObjectURL(localPreview);
@@ -2100,96 +2106,96 @@ const HeadCaregiverDashboard = () => {
                         <div className="res-row-empty">{searchQuery ? `No residents match "${searchQuery}".` : 'No residents yet.'}</div>
                     ) : (
                         paged.map((r, i) => {
-                        const isLast = i === paged.length - 1;
-                        const todayMeds = schedule.filter(l =>
-                            l.residentName === getResidentName(r) ||
-                            l.residentId?.toString() === r._id?.toString()
-                        );
-                        const displayName = getResidentName(r);
-                        return (
-                            <div key={r._id || i} className={`res-row${r.medicationOverdue ? ' overdue-row' : ''}${isLast ? ' last-row' : ''}`}>
-                                <div className="res-row-grid">
-                                    <div className="res-room">
-                                        {r.room || '—'} | {r.bed || '—'}
-                                        <br /><small style={{ fontSize: '.72rem', color: 'var(--d-muted)' }}>{r.floor || ''}</small>
-                                    </div>
-                                    <div className="res-name-block">
-                                        <div className="name">{displayName}</div>
-                                        <div className="age">Age: {r.age || '—'} &nbsp;·&nbsp; {r.gender || ''}</div>
-                                        <div className="primary">Caregiver: <span>{r.primaryCaregiverName || r.primaryCaregiver || 'Unassigned'}</span></div>
-                                    </div>
-                                    <div className="conditions-wrap">
-                                        {r.conditions?.length > 0
-                                            ? r.conditions.map((c, ci) => <span key={ci} className="condition-tag">{c?.name || c}</span>)
-                                            : <span className="no-conditions">—</span>}
-                                    </div>
-                                    <div><Badge s={r.medicationOverdue ? 'overdue' : r.alertLevel || 'stable'} /></div>
-                                    <div className="res-meds-cell">
-                                        {todayMeds.length === 0 ? (
-                                            <span className="res-no-meds">No meds today</span>
-                                        ) : (
-                                            todayMeds.slice(0, 3).map((m, mi) => (
-                                                <div key={mi} className={`res-med-item ${m.status === 'completed' || m.status === 'administered' ? 'done' : 'active'}`}>
-                                                    {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—'} — {m.medicationName}
-                                                    {(m.status === 'completed' || m.status === 'administered') && <span className="res-med-done">✓</span>}
-                                                    {m.status === 'pending' && <span className="res-med-pend">Pending</span>}
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                    <div className="res-action-icons">
-                                        <div className="res-action-icons-group">
-                                            <button
-                                                className="res-action-icon"
-                                                onClick={() => setModal({type:'profile',data:r})}
-                                                title="View Profile"
-                                            >
-                                                <FaEye />
-                                            </button>
-                                            <button
-                                                className="res-action-icon"
-                                                onClick={() => setModal({type:'history',data:r})}
-                                                title="Medication History"
-                                            >
-                                                <FaPills />
-                                            </button>
-                                            <button
-                                                className="res-action-icon"
-                                                onClick={() => openModal({type:'assignCaregiver',data:r})}
-                                                title={onDuty ? "Assign Caregiver" : "Not available while off duty"}
-                                                disabled={!onDuty}
-                                            >
-                                                <FaUserMd />
-                                            </button>
-                                            <button
-                                                className="res-action-icon"
-                                                onClick={() => openModal({type:'editResident',data:r})}
-                                                title={onDuty ? "Edit Resident" : "Not available while off duty"}
-                                                disabled={!onDuty}
-                                            >
-                                                <FaEdit />
-                                            </button>
-                                            <button
-                                                className="res-action-icon res-action-icon-danger"
-                                                onClick={() => openModal({type:'discharge',data:r})}
-                                                title={onDuty ? "Remove Resident" : "Not available while off duty"}
-                                                style={{ color: '#C0392B' }}
-                                                disabled={!onDuty}
-                                            >
-                                                <FaUserMinus />
-                                            </button>
+                            const isLast = i === paged.length - 1;
+                            const todayMeds = schedule.filter(l =>
+                                l.residentName === getResidentName(r) ||
+                                l.residentId?.toString() === r._id?.toString()
+                            );
+                            const displayName = getResidentName(r);
+                            return (
+                                <div key={r._id || i} className={`res-row${r.medicationOverdue ? ' overdue-row' : ''}${isLast ? ' last-row' : ''}`}>
+                                    <div className="res-row-grid">
+                                        <div className="res-room">
+                                            {r.room || '—'} | {r.bed || '—'}
+                                            <br /><small style={{ fontSize: '.72rem', color: 'var(--d-muted)' }}>{r.floor || ''}</small>
+                                        </div>
+                                        <div className="res-name-block">
+                                            <div className="name">{displayName}</div>
+                                            <div className="age">Age: {r.age || '—'} &nbsp;·&nbsp; {r.gender || ''}</div>
+                                            <div className="primary">Caregiver: <span>{r.primaryCaregiverName || r.primaryCaregiver || 'Unassigned'}</span></div>
+                                        </div>
+                                        <div className="conditions-wrap">
+                                            {r.conditions?.length > 0
+                                                ? r.conditions.map((c, ci) => <span key={ci} className="condition-tag">{c?.name || c}</span>)
+                                                : <span className="no-conditions">—</span>}
+                                        </div>
+                                        <div><Badge s={r.medicationOverdue ? 'overdue' : r.alertLevel || 'stable'} /></div>
+                                        <div className="res-meds-cell">
+                                            {todayMeds.length === 0 ? (
+                                                <span className="res-no-meds">No meds today</span>
+                                            ) : (
+                                                todayMeds.slice(0, 3).map((m, mi) => (
+                                                    <div key={mi} className={`res-med-item ${m.status === 'completed' || m.status === 'administered' ? 'done' : 'active'}`}>
+                                                        {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—'} — {m.medicationName}
+                                                        {(m.status === 'completed' || m.status === 'administered') && <span className="res-med-done">✓</span>}
+                                                        {m.status === 'pending' && <span className="res-med-pend">Pending</span>}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                        <div className="res-action-icons">
+                                            <div className="res-action-icons-group">
+                                                <button
+                                                    className="res-action-icon"
+                                                    onClick={() => setModal({ type: 'profile', data: r })}
+                                                    title="View Profile"
+                                                >
+                                                    <FaEye />
+                                                </button>
+                                                <button
+                                                    className="res-action-icon"
+                                                    onClick={() => setModal({ type: 'history', data: r })}
+                                                    title="Medication History"
+                                                >
+                                                    <FaPills />
+                                                </button>
+                                                <button
+                                                    className="res-action-icon"
+                                                    onClick={() => openModal({ type: 'assignCaregiver', data: r })}
+                                                    title={onDuty ? "Assign Caregiver" : "Not available while off duty"}
+                                                    disabled={!onDuty}
+                                                >
+                                                    <FaUserMd />
+                                                </button>
+                                                <button
+                                                    className="res-action-icon"
+                                                    onClick={() => openModal({ type: 'editResident', data: r })}
+                                                    title={onDuty ? "Edit Resident" : "Not available while off duty"}
+                                                    disabled={!onDuty}
+                                                >
+                                                    <FaEdit />
+                                                </button>
+                                                <button
+                                                    className="res-action-icon res-action-icon-danger"
+                                                    onClick={() => openModal({ type: 'discharge', data: r })}
+                                                    title={onDuty ? "Remove Resident" : "Not available while off duty"}
+                                                    style={{ color: '#C0392B' }}
+                                                    disabled={!onDuty}
+                                                >
+                                                    <FaUserMinus />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
+                                    {r.medicationOverdue && (
+                                        <div className="res-overdue-alert">
+                                            <FaExclamationCircle /> Medication Overdue ({getMinutesSince(r.overdueAt) || '—'} mins) — {r.overdueMed || ''}
+                                        </div>
+                                    )}
                                 </div>
-                                {r.medicationOverdue && (
-                                    <div className="res-overdue-alert">
-                                        <FaExclamationCircle /> Medication Overdue ({getMinutesSince(r.overdueAt) || '—'} mins) — {r.overdueMed || ''}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })
-                )}
+                            );
+                        })
+                    )}
                 </div>
 
                 {pages > 1 && (
