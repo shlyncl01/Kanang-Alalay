@@ -1005,11 +1005,14 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
     const fileInputRef = useRef(null);
     const [photoUrl, setPhotoUrl] = useState(resident.photoUrl || '');
     const [preview, setPreview] = useState('');
+    const [photoFile, setPhotoFile] = useState(null);
     const [uploading, setUploading] = useState(false);
 
     const pickPhoto = () => { if (!uploading && onDuty) fileInputRef.current?.click(); };
 
-    const handlePhotoChange = async (e) => {
+    // Selecting a photo only stages it locally (preview + pending file).
+    // It is NOT sent to the backend until "Save Edits" is clicked.
+    const handlePhotoChange = (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
         if (!file) return;
@@ -1023,24 +1026,40 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
             return;
         }
 
-        const localPreview = URL.createObjectURL(file);
-        setPreview(localPreview);
+        if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+        setPreview(URL.createObjectURL(file));
+        setPhotoFile(file);
+    };
+
+    const discardPhotoEdit = () => {
+        if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+        setPreview('');
+        setPhotoFile(null);
+    };
+
+    useEffect(() => () => {
+        if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+    }, [preview]);
+
+    const saveEdits = async () => {
+        if (!photoFile) return;
         setUploading(true);
 
         const body = new FormData();
-        body.append('photo', file);
+        body.append('photo', photoFile);
         const r = await doFetch(`/residents/${resident._id}/photo`, {
             method: 'PUT',
             body
         });
 
         setUploading(false);
-        URL.revokeObjectURL(localPreview);
-        setPreview('');
 
         if (r.success) {
             const newUrl = r.data?.photoUrl || r.photoUrl;
             setPhotoUrl(newUrl);
+            if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+            setPreview('');
+            setPhotoFile(null);
             toast(r.message || 'Photo updated.');
             onSaved?.({ _id: resident._id, photoUrl: newUrl });
         } else {
@@ -1169,7 +1188,16 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
                     </div>
                 </div>
                 <div style={{ ...hcFooter, justifyContent: 'flex-end' }}>
-                    <button onClick={onClose} type="button" style={{ ...hcCancelBtn(false), flex: '0 1 140px' }}>Close</button>
+                    {photoFile ? (
+                        <>
+                            <button onClick={discardPhotoEdit} type="button" disabled={uploading} style={{ ...hcCancelBtn(uploading), flex: '0 1 140px' }}>Discard</button>
+                            <button onClick={saveEdits} type="button" disabled={uploading} style={{ ...hcSaveBtn(uploading), flex: '0 1 160px' }}>
+                                {uploading ? 'Saving…' : 'Save Edits'}
+                            </button>
+                        </>
+                    ) : (
+                        <button onClick={onClose} type="button" style={{ ...hcCancelBtn(false), flex: '0 1 140px' }}>Close</button>
+                    )}
                 </div>
             </div>
         </div>
