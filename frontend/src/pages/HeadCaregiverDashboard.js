@@ -538,17 +538,23 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                 <div style={hcBodyStyle}>
 
                     <div className="add-resident-photo-row">
-                        <div className="profile-avatar-wrap">
-                            <div className="profile-avatar">
+                        <div className="add-resident-avatar-wrap">
+                            <div
+                                className={`add-resident-avatar${photoPreview ? '' : ' add-resident-avatar-empty'}`}
+                                onClick={pickPhoto}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') pickPhoto(); }}
+                            >
                                 {photoPreview ? (
-                                    <img src={photoPreview} alt="Resident" className="profile-avatar-img" />
+                                    <img src={photoPreview} alt="Resident" className="add-resident-avatar-img" />
                                 ) : (
-                                    <FaUserCircle />
+                                    <FaCamera className="add-resident-avatar-placeholder-icon" />
                                 )}
                             </div>
                             <button
                                 type="button"
-                                className="profile-avatar-upload-btn"
+                                className="add-resident-avatar-upload-btn"
                                 onClick={pickPhoto}
                                 disabled={saving}
                                 title="Add photo"
@@ -564,7 +570,11 @@ const AddResidentModal = ({ resident, onClose, onSaved, doFetch, toast, caregive
                             />
                         </div>
                         <div className="add-resident-photo-hint">
-                            Add a profile photo <span className="add-resident-photo-optional">(optional)</span>
+                            {photoPreview ? (
+                                <>Change profile photo <span className="add-resident-photo-optional">(optional)</span></>
+                            ) : (
+                                <>Click to upload profile photo <span className="add-resident-photo-optional">(optional)</span></>
+                            )}
                         </div>
                     </div>
 
