@@ -67,6 +67,7 @@ function shapeResident(r) {
         nickname: r.nickname || '',
         age: r.age,
         gender: r.gender,
+        dateOfBirth: r.dateOfBirth || null,
         photoUrl: r.photoUrl || null,
         room: r.roomNumber,
         floor: r.floor || '',
