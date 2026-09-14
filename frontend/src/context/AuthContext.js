@@ -32,6 +32,23 @@ export const AuthProvider = ({ children }) => {
                     if (response.data.success) {
                         setUser(response.data.user);
                         setIsAuthenticated(true);
+
+                        // validate-token returns a slim user object (no
+                        // photoUrl). Follow up with /auth/profile so a page
+                        // refresh doesn't wipe photoUrl until some other
+                        // page happens to fetch it. Best-effort: if this
+                        // fails, the app still works with the slim user.
+                        try {
+                            const profileRes = await axios.get(`${API_BASE_URL}/auth/profile`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                                withCredentials: true,
+                            });
+                            if (profileRes.data.success) {
+                                setUser(prev => prev ? { ...prev, ...profileRes.data.user } : prev);
+                            }
+                        } catch (profileErr) {
+                            console.error('Profile enrichment error:', profileErr);
+                        }
                     } else {
                         localStorage.removeItem('token');
                         localStorage.removeItem('user');

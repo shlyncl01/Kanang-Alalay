@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -45,6 +45,14 @@ const AccountSettings = () => {
     // Profile photo (staged until "Save Photo" is clicked)
     const fileInputRef = useRef(null);
     const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || '');
+
+    // user is null at mount right after a refresh (AuthContext is still
+    // validating the token), so the useState initial value above often
+    // locks in as ''. Re-sync once the real photoUrl arrives.
+    useEffect(() => {
+        if (user?.photoUrl) setPhotoUrl(user.photoUrl);
+    }, [user?.photoUrl]);
+
     const [photoFile, setPhotoFile] = useState(null);
     const [photoPreview, setPhotoPreview] = useState('');
     const [photoLoading, setPhotoLoading] = useState(false);
