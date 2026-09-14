@@ -15,7 +15,7 @@ const API_BASE_URL =
         : 'http://localhost:5000/api');
 
 const AccountSettings = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, patchUser } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -88,8 +88,7 @@ const AccountSettings = () => {
             const data = await res.json();
             if (data.success) {
                 setPhotoUrl(data.photoUrl);
-                const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, photoUrl: data.photoUrl }));
+                patchUser({ photoUrl: data.photoUrl });
                 if (photoPreview) URL.revokeObjectURL(photoPreview);
                 setPhotoPreview('');
                 setPhotoFile(null);
@@ -181,9 +180,7 @@ const AccountSettings = () => {
             });
             const data = await res.json();
             if (data.success) {
-                // Update local storage
-                const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, phone: phone.trim() }));
+                patchUser({ phone: phone.trim() });
                 setPhoneSuccess('Contact number updated successfully.');
                 setTimeout(() => setPhoneSuccess(''), 4000);
             } else {

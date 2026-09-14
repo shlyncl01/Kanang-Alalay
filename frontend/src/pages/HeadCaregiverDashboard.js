@@ -2858,6 +2858,19 @@ const HeadCaregiverDashboard = () => {
                             </li>
                         ))}
                     </ul>
+                    <div className="sidebar-footer-user" style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => navigate('/profile')}>
+                        {user?.photoUrl ? (
+                            <img src={user.photoUrl} alt="" className="sidebar-user-avatar-img" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                        ) : (
+                            <FaUserCircle style={{ fontSize: 38, opacity: 0.85, flexShrink: 0 }} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {user?.firstName} {user?.lastName}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>HEAD CAREGIVER</div>
+                        </div>
+                    </div>
                     <div className="sidebar-footer" onClick={handleLogout}><FaSignOutAlt /> <span>LOGOUT</span></div>
                 </div>
                 {mobileMenuOpen && <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)} />}
