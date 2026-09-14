@@ -773,8 +773,10 @@ const AdminDashboard = () => {
     const [stats, setStats] = useState({
         totalResidents: 0, activeStaff: 0, pendingBookings: 0,
         totalDonations: 0, totalDonationAmount: 0, lowStockItems: 0,
-        complianceRate: null, missedMeds: null, delayedMeds: null
+        complianceRate: null, missedMeds: null, delayedMeds: null,
+        scheduledMeds: null, administeredCount: null, overdueCount: null
     });
+    const [complianceDailyBreakdown, setComplianceDailyBreakdown] = useState(null);
 
     const DEFAULT_AVAILABILITY = {
         morningEnabled: true,
@@ -1207,8 +1209,15 @@ const AdminDashboard = () => {
                 missedMeds: complianceRes.stats.missed,
                 delayedMeds: complianceRes.stats.delayed,
                 overdueCount: complianceRes.stats.overdue,
-                administeredCount: complianceRes.stats.administered
+                administeredCount: complianceRes.stats.administered,
+                scheduledMeds: complianceRes.stats.scheduled
             }));
+            // dailyBreakdown is returned as a sibling of `stats`, not nested inside it.
+            setComplianceDailyBreakdown(complianceRes.dailyBreakdown || []);
+        } else {
+            // API failed — do not fabricate data, leave breakdown empty so the
+            // chart renders its "no data" state instead of fake numbers.
+            setComplianceDailyBreakdown(prev => prev ?? []);
         }
 
         await Promise.all([fetchResidentStats(), fetchStaffList(), fetchDbAlerts()]);
@@ -2087,8 +2096,8 @@ const AdminDashboard = () => {
             : 'Admin';
         const generatedByRole = user?.role || 'admin';
         const complianceRows = [
-            ['Scheduled Today', 24],
-            ['Administered', 21],
+            ['Scheduled Today', stats.scheduledMeds !== null && stats.scheduledMeds !== undefined ? stats.scheduledMeds : 'N/A'],
+            ['Administered', stats.administeredCount !== null && stats.administeredCount !== undefined ? stats.administeredCount : 'N/A'],
             ['Missed', stats.missedMeds !== null ? stats.missedMeds : 'N/A'],
             ['Delayed', stats.delayedMeds !== null ? stats.delayedMeds : 'N/A'],
         ];
@@ -2187,8 +2196,8 @@ const AdminDashboard = () => {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, flex: 1 }}>
                     {[
-                        ['24', 'Scheduled Today', null],
-                        ['21', 'Administered', '#28a745'],
+                        [stats.scheduledMeds !== null && stats.scheduledMeds !== undefined ? stats.scheduledMeds : '--', 'Scheduled Today', null],
+                        [stats.administeredCount !== null && stats.administeredCount !== undefined ? stats.administeredCount : '--', 'Administered', '#28a745'],
                         [stats.missedMeds !== null ? stats.missedMeds : '--', 'Missed', '#dc3545'],
                         [stats.delayedMeds !== null ? stats.delayedMeds : '--', 'Delayed', '#ffc107'],
                     ].map(([v, l, c], i) => (
@@ -2202,33 +2211,50 @@ const AdminDashboard = () => {
             <div style={{ marginTop: 24, padding: '20px', background: '#FFF8F3', borderRadius: 12, textAlign: 'center' }}>
                 <h6 style={{ margin: '0 0 12px', color: '#7A5C4E' }}>Weekly Adherence Trend</h6>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 120, justifyContent: 'center' }}>
-                    {[
-                        { day: 'Mon', rate: 88, color: '#F96B38' },
-                        { day: 'Tue', rate: 91, color: '#F96B38' },
-                        { day: 'Wed', rate: 85, color: '#E65100' },
-                        { day: 'Thu', rate: 95, color: '#28a745' },
-                        { day: 'Fri', rate: 92, color: '#F96B38' },
-                        { day: 'Sat', rate: 89, color: '#F96B38' },
-                        { day: 'Sun', rate: 92, color: '#28a745' },
-                    ].map((item, i) => (
+                    {weeklyData.map((item, i) => (
                         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                            <small style={{ fontSize: '0.7rem', color: '#7A5C4E' }}>{item.rate}%</small>
-                            <div style={{ width: '100%', height: `${item.rate * 0.8}px`, minHeight: 4, borderRadius: '4px 4px 0 0', background: item.color }} />
+                            <small style={{ fontSize: '0.7rem', color: '#7A5C4E' }}>{item.hasData ? `${item.rate}%` : '--'}</small>
+                            <div style={{ width: '100%', height: `${Math.max(item.rate * 0.8, 4)}px`, minHeight: 4, borderRadius: '4px 4px 0 0', background: item.color }} />
                             <small style={{ fontSize: '0.7rem', color: '#7A5C4E' }}>{item.day}</small>
                         </div>
                     ))}
                 </div>
                 <p style={{ marginTop: 16, fontSize: '0.8rem', color: '#7A5C4E' }}>
-                    Average <strong style={{ color: '#F96B38' }}>{(weeklyData.reduce((sum, d) => sum + d.rate, 0) / 7).toFixed(1)}% adherence</strong> tracked this week.
+                    Average <strong style={{ color: '#F96B38' }}>{weeklyAvgLabel}</strong> tracked this week.
                 </p>
             </div>
         </div>
     );
 
-    const weeklyData = [
-        { day: 'Mon', rate: 88 }, { day: 'Tue', rate: 91 }, { day: 'Wed', rate: 85 },
-        { day: 'Thu', rate: 95 }, { day: 'Fri', rate: 92 }, { day: 'Sat', rate: 89 }, { day: 'Sun', rate: 92 }
-    ];
+    // Build the real weekly adherence data from the compliance API's
+    // dailyBreakdown (returned as a sibling of `stats`, keyed by date).
+    // Days with no logs yet are left as `hasData: false` so the chart shows
+    // "--" instead of a fabricated rate.
+    const weeklyData = (() => {
+        const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const dayNamesByIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const base = dayOrder.map(day => ({ day, rate: 0, color: '#E8D6CC', hasData: false }));
+
+        (complianceDailyBreakdown || []).forEach(entry => {
+            const dateObj = new Date(entry.date);
+            const dayName = dayNamesByIndex[dateObj.getDay()];
+            const idx = base.findIndex(b => b.day === dayName);
+            if (idx >= 0) {
+                base[idx].rate = entry.rate;
+                base[idx].hasData = true;
+                base[idx].color = entry.rate >= 90 ? '#28a745' : entry.rate >= 85 ? '#F96B38' : '#E65100';
+            }
+        });
+
+        return base;
+    })();
+
+    const weeklyAvgLabel = (() => {
+        const withData = weeklyData.filter(d => d.hasData);
+        if (withData.length === 0) return 'N/A';
+        const avg = withData.reduce((sum, d) => sum + d.rate, 0) / withData.length;
+        return `${avg.toFixed(1)}% adherence`;
+    })();
 
     const renderContent = () => {
         if (loading) return (

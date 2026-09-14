@@ -674,91 +674,135 @@ router.post('/voice-prompt/:logId', authMiddleware, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ── NEW COMPLIANCE STATISTICS ENDPOINTS ─────────────────────────────────────
+// ── COMPLIANCE STATISTICS ENDPOINTS ─────────────────────────────────────────
+// Kept consistent with headCaregiverRoutes.js's GET /stats, which is treated
+// as the reference implementation: same auto-overdue sweep, same active-
+// resident scoping, same status → card mapping. A MedicationLog's 'overdue'
+// status is surfaced to the UI as "Delayed" — there is no separate Overdue
+// card, matching how the Head Caregiver dashboard already presents it.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Get compliance statistics for today (or custom date range)
+const MISSED_GRACE_MINUTES = 60;
+
+// Discharged/deceased/transferred residents keep their MedicationLog history
+// for audit purposes (see Resident.discharge), but must never count toward
+// live compliance numbers. Any route that counts MedicationLog entries for
+// display should scope to this set.
+async function getActiveResidentIds() {
+    return Resident.find({ status: 'active' }).distinct('_id');
+}
+
+// Flips scheduled/pending doses whose time has passed into 'overdue', and
+// 'overdue' doses that have been overdue past the grace period into
+// 'missed'. Mirrors headCaregiverRoutes.js's autoMarkOverdue exactly,
+// including the status-guarded updateMany() so a dose that gets administered
+// while this sweep is in flight isn't clobbered by a stale write.
+async function autoMarkOverdue(logs) {
+    const now = new Date();
+    const missedCutoff = new Date(now.getTime() - MISSED_GRACE_MINUTES * 60 * 1000);
+
+    const toOverdue = logs.filter(l =>
+        (l.status === 'scheduled' || l.status === 'pending') &&
+        l.scheduledTime && new Date(l.scheduledTime) < now
+    );
+    if (toOverdue.length) {
+        const ids = toOverdue.map(l => l._id);
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: { $in: ['scheduled', 'pending'] } },
+            { status: 'overdue' }
+        );
+        toOverdue.forEach(l => { l.status = 'overdue'; });
+    }
+
+    const toMissed = logs.filter(l =>
+        l.status === 'overdue' &&
+        l.scheduledTime && new Date(l.scheduledTime) < missedCutoff
+    );
+    if (toMissed.length) {
+        const ids = toMissed.map(l => l._id);
+        await MedicationLog.updateMany(
+            { _id: { $in: ids }, status: 'overdue' },
+            { status: 'missed' }
+        );
+        toMissed.forEach(l => { l.status = 'missed'; });
+    }
+
+    return logs;
+}
+
+// Get compliance statistics for today (or a custom date range)
 router.get('/compliance/stats', authMiddleware, async (req, res) => {
     try {
-        const { startDate, endDate, facilityId } = req.query;
-        
+        const { startDate, endDate } = req.query;
+
         // Default to today (Manila time)
         const { today, tomorrow } = getManilaDayBounds();
         const start = startDate ? new Date(startDate) : today;
         const end = endDate ? new Date(endDate) : tomorrow;
 
-        // Match query: all logs in the date range
-        const matchQuery = {
+        const activeResidentIds = await getActiveResidentIds();
+
+        // Fetch real documents (not an aggregate) so autoMarkOverdue can run
+        // against them before anything is tallied — otherwise a dose whose
+        // scheduled time has passed just sits as "scheduled"/"pending"
+        // forever instead of flipping to "overdue"/"missed" like it does
+        // everywhere else in the app (e.g. the Head Caregiver dashboard).
+        const rangeLogs = await MedicationLog.find({
+            residentId: { $in: activeResidentIds },
             scheduledTime: { $gte: start, $lt: end }
-        };
+        });
+        await autoMarkOverdue(rangeLogs);
 
-        // Aggregate by status
-        const statusBreakdown = await MedicationLog.aggregate([
-            { $match: matchQuery },
+        const total = rangeLogs.length;
+        const administered = rangeLogs.filter(l => l.status === 'administered' || l.status === 'completed').length;
+        const missed = rangeLogs.filter(l => l.status === 'missed').length;
+        // 'overdue' is surfaced to the UI as "Delayed" — there is no
+        // separate Overdue card, matching headCaregiverRoutes.js.
+        const delayed = rangeLogs.filter(l => l.status === 'overdue').length;
+        const scheduled = rangeLogs.filter(l => l.status === 'scheduled' || l.status === 'pending').length;
+        const skipped = rangeLogs.filter(l => l.status === 'skipped').length;
+
+        // Same formula as headCaregiverRoutes.js's GET /stats: administered
+        // doses over ALL of the range's doses (not just the ones whose time
+        // has already passed), so the two dashboards never disagree.
+        const complianceRate = total > 0 ? Math.round((administered / total) * 100) : 0;
+
+        // ── Weekly breakdown for the trend chart ────────────────────────────
+        // Always the last 7 Manila days, independent of any custom
+        // startDate/endDate passed above — the previous implementation
+        // reused `matchQuery` here, which only ever covered a single day, so
+        // the "weekly" chart could never show more than one bar.
+        const sevenDaysAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+        const weekLogs = await MedicationLog.find(
             {
-                $group: {
-                    _id: '$status',
-                    count: { $sum: 1 }
-                }
+                residentId: { $in: activeResidentIds },
+                scheduledTime: { $gte: sevenDaysAgo, $lt: tomorrow }
             },
-            { $sort: { _id: 1 } }
-        ]);
+            { status: 1, scheduledTime: 1 }
+        );
 
-        // Convert to object for easier access
-        const statusCounts = {};
-        statusBreakdown.forEach(item => {
-            statusCounts[item._id] = item.count;
+        const dayBuckets = {};
+        weekLogs.forEach(l => {
+            const key = new Date(l.scheduledTime).toISOString().slice(0, 10);
+            if (!dayBuckets[key]) dayBuckets[key] = { total: 0, administered: 0, missed: 0, overdue: 0 };
+            dayBuckets[key].total += 1;
+            if (l.status === 'administered' || l.status === 'completed') dayBuckets[key].administered += 1;
+            if (l.status === 'missed') dayBuckets[key].missed += 1;
+            if (l.status === 'overdue') dayBuckets[key].overdue += 1;
         });
 
-        // Calculate compliance metrics
-        const scheduled = statusCounts['scheduled'] || statusCounts['pending'] || 0;
-        const administered = statusCounts['administered'] || 0;
-        const missed = statusCounts['missed'] || 0;
-        const overdue = statusCounts['overdue'] || 0;
-        const skipped = statusCounts['skipped'] || 0;
-        const delayed = statusCounts['delayed'] || 0;
-
-        // Compliance rate = administered / (scheduled + administered + missed + overdue)
-        // i.e., of doses that had a chance to be given, how many were actually given
-        const totalOpportunities = scheduled + administered + missed + overdue;
-        const complianceRate = totalOpportunities > 0 
-            ? Math.round((administered / totalOpportunities) * 100) 
-            : 0;
-
-        // Daily breakdown for weekly chart (last 7 days)
-        const dailyStats = await MedicationLog.aggregate([
-            { $match: matchQuery },
-            {
-                $group: {
-                    _id: {
-                        $dateToString: { format: '%Y-%m-%d', date: '$scheduledTime' }
-                    },
-                    total: { $sum: 1 },
-                    administered: {
-                        $sum: { $cond: [{ $eq: ['$status', 'administered'] }, 1, 0] }
-                    },
-                    missed: {
-                        $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] }
-                    },
-                    overdue: {
-                        $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] }
-                    }
-                }
-            },
-            { $sort: { _id: 1 } }
-        ]);
-
-        // Calculate daily compliance rates
-        const dailyCompliance = dailyStats.map(day => ({
-            date: day._id,
-            total: day.total,
-            administered: day.administered,
-            missed: day.missed,
-            overdue: day.overdue,
-            rate: day.total > 0 
-                ? Math.round((day.administered / (day.administered + day.missed + day.overdue)) * 100)
-                : 0
-        }));
+        const dailyBreakdown = Object.keys(dayBuckets).sort().map(date => {
+            const day = dayBuckets[date];
+            return {
+                date,
+                total: day.total,
+                administered: day.administered,
+                missed: day.missed,
+                overdue: day.overdue,
+                // Same total-based formula as the card-level complianceRate above.
+                rate: day.total > 0 ? Math.round((day.administered / day.total) * 100) : 0
+            };
+        });
 
         res.json({
             success: true,
@@ -767,13 +811,12 @@ router.get('/compliance/stats', authMiddleware, async (req, res) => {
                 scheduled,
                 administered,
                 missed,
-                overdue,
-                skipped,
                 delayed,
-                totalOpportunities,
+                skipped,
+                total,
                 dateRange: { start, end }
             },
-            dailyBreakdown: dailyCompliance
+            dailyBreakdown
         });
 
     } catch (error) {
@@ -794,9 +837,20 @@ router.get('/compliance/by-resident', authMiddleware, async (req, res) => {
         const start = startDate ? new Date(startDate) : today;
         const end = endDate ? new Date(endDate) : tomorrow;
 
+        const activeResidentIds = await getActiveResidentIds();
+
+        // Sweep this range's logs the same way GET /compliance/stats does,
+        // so per-resident numbers can't drift from the overall card numbers.
+        const rangeLogs = await MedicationLog.find({
+            residentId: { $in: activeResidentIds },
+            scheduledTime: { $gte: start, $lt: end }
+        });
+        await autoMarkOverdue(rangeLogs);
+
         const residentStats = await MedicationLog.aggregate([
             {
                 $match: {
+                    residentId: { $in: activeResidentIds },
                     scheduledTime: { $gte: start, $lt: end }
                 }
             },
@@ -807,12 +861,12 @@ router.get('/compliance/by-resident', authMiddleware, async (req, res) => {
                     room: { $first: '$room' },
                     total: { $sum: 1 },
                     administered: {
-                        $sum: { $cond: [{ $eq: ['$status', 'administered'] }, 1, 0] }
+                        $sum: { $cond: [{ $in: ['$status', ['administered', 'completed']] }, 1, 0] }
                     },
                     missed: {
                         $sum: { $cond: [{ $eq: ['$status', 'missed'] }, 1, 0] }
                     },
-                    overdue: {
+                    delayed: {
                         $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, 1, 0] }
                     }
                 }
