@@ -49,31 +49,18 @@ const medicationLogSchema = new mongoose.Schema({
         language: String
     },
 
-    // ── Part 7: HC stock deduction ──────────────────────────────────────────────
-    // How many units of the medication were actually taken from the
-    // administering caregiver's HCAssignedStock for this dose. Recorded at
-    // administration time purely for audit trail (so "why did stock drop by N"
-    // is always traceable back to a specific dose) — it does not drive any
-    // deduction logic itself; the deduction happens once, atomically, in
-    // routes/headCaregiverRoutes.js PUT /schedule/:id/status. Defaults to 1
-    // (one dose unit) since that's what every existing "Administer" click in
-    // the UI has always represented — there's no quantity-entry field on the
-    // schedule yet, so this is additive and never breaks older log entries.
     administeredQuantity: { type: Number, default: 1, min: 1 },
 
-    // Which Head Caregiver's HCAssignedStock this dose should be drawn
-    // from on administration. Set once, at the moment the HC clicks
-    // "Prepare" (PUT /head-caregiver/schedule/:id/status with
-    // status:'pending' — see routes/headCaregiverRoutes.js), since that's
-    // the only point where we know for certain which HC's physical stock
-    // the dose was pulled from. Needed because administration can later
-    // happen from a different actor/device (e.g. the caregiver mobile
-    // app's POST /medications/administer/:logId) whose req.user is the
-    // administering caregiver, not the HC who holds the stock — unlike
-    // the web "Administer" flow, where the same person prepares and
-    // administers so req.user._id alone was always enough. Optional/unset
-    // on logs created or prepared before this field existed.
+   
     preparingHeadCaregiverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
+   
+    scheduleType: {
+        type: String,
+        enum: ['one_time', 'recurring'],
+        default: 'one_time',
+    },
+    recurringGroupId: { type: String, default: null, index: true },
 
 }, { timestamps: true });
 

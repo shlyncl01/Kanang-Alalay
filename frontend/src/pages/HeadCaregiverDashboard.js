@@ -265,6 +265,56 @@ const hcSaveBtn = (disabled) => ({
     boxShadow: disabled ? 'none' : '0 4px 14px rgba(249,107,56,.3)', transition: 'all .22s',
 });
 
+// ── Part 13: Schedule Type / recurring controls ──────────────────────────
+// Kept visually consistent with the rest of the Add Medication modal
+// (same palette, radius, fonts) rather than introducing new styling.
+const hcSegWrap = {
+    display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap',
+};
+const hcSegBtn = (active) => ({
+    flex: '1 1 140px', padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+    border: `1.5px solid ${active ? '#D94E1B' : '#E8D6CC'}`,
+    background: active ? 'linear-gradient(135deg, #F96B38, #D94E1B)' : '#FFF8F3',
+    color: active ? '#fff' : '#7A5C4E',
+    fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, fontSize: '.86rem',
+    transition: 'all .2s',
+});
+const hcDayChip = (active) => ({
+    padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+    border: `1.5px solid ${active ? '#D94E1B' : '#E8D6CC'}`,
+    background: active ? 'linear-gradient(135deg, #F96B38, #D94E1B)' : '#FFF8F3',
+    color: active ? '#fff' : '#7A5C4E',
+    fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 600, fontSize: '.78rem',
+    transition: 'all .2s', textAlign: 'center',
+});
+const hcIconBtn = {
+    width: 40, height: 40, flexShrink: 0, borderRadius: 10, cursor: 'pointer',
+    border: '1.5px solid #E8D6CC', background: '#FFF8F3', color: '#b85c2d',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem',
+};
+
+const WEEKDAYS = [
+    { key: 'monday', label: 'Mon' },
+    { key: 'tuesday', label: 'Tue' },
+    { key: 'wednesday', label: 'Wed' },
+    { key: 'thursday', label: 'Thu' },
+    { key: 'friday', label: 'Fri' },
+    { key: 'saturday', label: 'Sat' },
+    { key: 'sunday', label: 'Sun' },
+];
+
+// Never hardcoded — recomputed on every call so "past" always means past
+// relative to the real current time/date, not a fixed value.
+const pad2 = (n) => String(n).padStart(2, '0');
+const nowLocalDateTimeValue = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+const todayDateValue = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
 const HCField = ({ label, required, error, hint, style, children }) => (
     <div style={style || hcFieldWrap}>
         <label style={hcLabelStyle}>
@@ -1260,7 +1310,15 @@ const HistoryModal = ({ resident, onClose, doFetch }) => {
 };
 
 const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, toast, defaultResident }) => {
-    const [f, setF] = useState({ residentId: defaultResident?._id || '', medicationId: '', scheduledTime: '', dosageAmount: '', dosageUnit: '', notes: '' });
+    const [f, setF] = useState({
+        residentId: defaultResident?._id || '', medicationId: '',
+        scheduleType: 'one_time', // Part 13: One Time is the default
+        scheduledTime: '',
+        dosageAmount: '', dosageUnit: '', notes: '',
+        // Recurring-only fields (Part 13):
+        startDate: '', duration: '7_days', endDate: '',
+        repeat: 'every_day', selectedDays: [], times: [''],
+    });
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
     const setField = (k, v) => { setF(p => ({ ...p, [k]: v })); setErrs(p => ({ ...p, [k]: '' })); };
@@ -1271,30 +1329,83 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
         setErrs(p => ({ ...p, medicationId: '' }));
     };
 
+    const isRecurring = f.scheduleType === 'recurring';
+    const toggleDay = (key) => {
+        setF(p => ({
+            ...p,
+            selectedDays: p.selectedDays.includes(key)
+                ? p.selectedDays.filter(d => d !== key)
+                : [...p.selectedDays, key],
+        }));
+        setErrs(p => ({ ...p, selectedDays: '' }));
+    };
+    const setTimeAt = (i, v) => {
+        setF(p => ({ ...p, times: p.times.map((t, idx) => idx === i ? v : t) }));
+        setErrs(p => ({ ...p, times: '' }));
+    };
+    const addTime = () => setF(p => ({ ...p, times: [...p.times, ''] }));
+    const removeTime = (i) => setF(p => ({ ...p, times: p.times.length > 1 ? p.times.filter((_, idx) => idx !== i) : p.times }));
+
     const submit = async () => {
         const e = {};
         if (!f.residentId) e.residentId = 'Select a resident';
         if (!f.medicationId) e.medicationId = 'Select a medication';
-        if (!f.scheduledTime) e.scheduledTime = 'Select date & time';
-        if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
-            e.scheduledTime = 'Scheduled time cannot be in the past.';
-        }
-
         if (!f.dosageAmount) e.dosageAmount = 'Enter an amount';
         if (!f.dosageUnit) e.dosageUnit = 'Select a unit';
+
+        if (!isRecurring) {
+            if (!f.scheduledTime) e.scheduledTime = 'Select date & time';
+            if (f.scheduledTime && new Date(f.scheduledTime) < new Date(Date.now() - 60000)) {
+                e.scheduledTime = 'Scheduled time cannot be in the past.';
+            }
+        } else {
+            if (!f.startDate) e.startDate = 'Select a start date';
+            if (f.startDate && f.startDate < todayDateValue()) e.startDate = 'Start date cannot be in the past.';
+            if (f.duration === 'custom') {
+                if (!f.endDate) e.endDate = 'Select an end date';
+                else if (f.endDate < f.startDate) e.endDate = 'End date cannot be before the start date.';
+            }
+            if (f.repeat === 'selected_days' && f.selectedDays.length === 0) {
+                e.selectedDays = 'Select at least one day';
+            }
+            const cleanTimes = f.times.map(t => t.trim()).filter(Boolean);
+            if (!cleanTimes.length) e.times = 'Add at least one time';
+        }
+
         if (Object.keys(e).length) { setErrs(e); return; }
         setSaving(true);
-        const payload = {
-            ...f,
-            dosageAmount: f.dosageAmount ? Number(f.dosageAmount) : undefined,
-            dosageUnit: f.dosageUnit || undefined,
 
-            dosage: f.dosageAmount && f.dosageUnit ? `${f.dosageAmount} ${f.dosageUnit}` : ''
-        };
+        const dosage = f.dosageAmount && f.dosageUnit ? `${f.dosageAmount} ${f.dosageUnit}` : '';
+        const payload = isRecurring
+            ? {
+                residentId: f.residentId,
+                medicationId: f.medicationId,
+                scheduleType: 'recurring',
+                dosage,
+                notes: f.notes,
+                startDate: f.startDate,
+                duration: f.duration,
+                endDate: f.duration === 'custom' ? f.endDate : undefined,
+                repeat: f.repeat,
+                selectedDays: f.repeat === 'selected_days' ? f.selectedDays : undefined,
+                times: f.times.map(t => t.trim()).filter(Boolean),
+            }
+            : {
+                residentId: f.residentId,
+                medicationId: f.medicationId,
+                scheduleType: 'one_time',
+                scheduledTime: f.scheduledTime,
+                dosage,
+                notes: f.notes,
+            };
+
         const r = await doFetch('/head-caregiver/schedule', { method: 'POST', body: JSON.stringify(payload) });
         setSaving(false);
-        if (r.success) { toast('Medication scheduled.'); onSaved(r.data); onClose(); }
-        else toast(r.message || 'Failed.', 'error');
+        if (r.success) {
+            toast(isRecurring ? (r.message || `${r.count || (Array.isArray(r.data) ? r.data.length : 1)} doses scheduled.`) : 'Medication scheduled.');
+            onSaved(r.data);
+            onClose();
+        } else toast(r.message || 'Failed.', 'error');
     };
 
     return (
@@ -1317,40 +1428,166 @@ const AddScheduleModal = ({ residents, medications, onClose, onSaved, doFetch, t
                             {medications.map(m => <option key={m._id} value={m._id}>{m.name} {m.dosage?.value ? `${m.dosage.value}${m.dosage.unit}` : ''}</option>)}
                         </select>
                     </HCField>
-                    <div style={hcGrid2}>
-                        <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
-                            <input type="datetime-local" style={hcInputStyle(errs.scheduledTime)} value={f.scheduledTime} onChange={e => setField('scheduledTime', e.target.value)} />
-                        </HCField>
-                        <HCField label="Dosage Override" required error={errs.dosageAmount || errs.dosageUnit}>
-                            <div style={{ display: 'flex', gap: 8 }}>
+
+                    <HCField label="Schedule Type" required>
+                        <div style={hcSegWrap}>
+                            <div style={hcSegBtn(!isRecurring)} onClick={() => setField('scheduleType', 'one_time')}>One Time</div>
+                            <div style={hcSegBtn(isRecurring)} onClick={() => setField('scheduleType', 'recurring')}>Recurring</div>
+                        </div>
+                    </HCField>
+
+                    {!isRecurring && (
+                        <div style={hcGrid2}>
+                            <HCField label="Scheduled Date & Time" required error={errs.scheduledTime}>
                                 <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    min="0"
-                                    step="any"
-                                    style={{ ...hcInputStyle(errs.dosageAmount), flex: '0 0 35%' }}
-                                    value={f.dosageAmount}
-                                    onChange={e => setField('dosageAmount', e.target.value)}
-                                    placeholder="1" />
-                                <div
-                                    title="Detected automatically from the selected medication's form — not editable"
-                                    style={{
-                                        ...hcInputStyle(errs.dosageUnit),
-                                        flex: '1 1 65%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        background: '#F0EAE4',
-                                        color: f.dosageUnit ? '#1A0A00' : '#A38070',
-                                        cursor: 'not-allowed',
-                                    }}>
-                                    {f.dosageUnit || (f.medicationId ? 'Form not recognized — contact admin' : 'Select a medication first')}
+                                    type="datetime-local"
+                                    min={nowLocalDateTimeValue()}
+                                    style={hcInputStyle(errs.scheduledTime)}
+                                    value={f.scheduledTime}
+                                    onChange={e => setField('scheduledTime', e.target.value)} />
+                            </HCField>
+                            <HCField label="Dosage Override" required error={errs.dosageAmount || errs.dosageUnit}>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min="0"
+                                        step="any"
+                                        style={{ ...hcInputStyle(errs.dosageAmount), flex: '0 0 35%' }}
+                                        value={f.dosageAmount}
+                                        onChange={e => setField('dosageAmount', e.target.value)}
+                                        placeholder="1" />
+                                    <div
+                                        title="Detected automatically from the selected medication's form — not editable"
+                                        style={{
+                                            ...hcInputStyle(errs.dosageUnit),
+                                            flex: '1 1 65%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            background: '#F0EAE4',
+                                            color: f.dosageUnit ? '#1A0A00' : '#A38070',
+                                            cursor: 'not-allowed',
+                                        }}>
+                                        {f.dosageUnit || (f.medicationId ? 'Form not recognized — contact admin' : 'Select a medication first')}
+                                    </div>
                                 </div>
+                            </HCField>
+                        </div>
+                    )}
+
+                    {isRecurring && (
+                        <>
+                            <div style={hcGrid2}>
+                                <HCField label="Start Date" required error={errs.startDate}>
+                                    <input
+                                        type="date"
+                                        min={todayDateValue()}
+                                        style={hcInputStyle(errs.startDate)}
+                                        value={f.startDate}
+                                        onChange={e => setField('startDate', e.target.value)} />
+                                </HCField>
+                                <HCField label="Dosage Override" required error={errs.dosageAmount || errs.dosageUnit}>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            min="0"
+                                            step="any"
+                                            style={{ ...hcInputStyle(errs.dosageAmount), flex: '0 0 35%' }}
+                                            value={f.dosageAmount}
+                                            onChange={e => setField('dosageAmount', e.target.value)}
+                                            placeholder="1" />
+                                        <div
+                                            title="Detected automatically from the selected medication's form — not editable"
+                                            style={{
+                                                ...hcInputStyle(errs.dosageUnit),
+                                                flex: '1 1 65%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                background: '#F0EAE4',
+                                                color: f.dosageUnit ? '#1A0A00' : '#A38070',
+                                                cursor: 'not-allowed',
+                                            }}>
+                                            {f.dosageUnit || (f.medicationId ? 'Form not recognized — contact admin' : 'Select a medication first')}
+                                        </div>
+                                    </div>
+                                </HCField>
                             </div>
-                        </HCField>
-                    </div>
+
+                            <div style={hcGrid2}>
+                                <HCField label="Duration" required>
+                                    <select style={hcInputStyle(false)} value={f.duration} onChange={e => setField('duration', e.target.value)}>
+                                        <option value="7_days">7 Days</option>
+                                        <option value="2_weeks">2 Weeks</option>
+                                        <option value="custom">Custom</option>
+                                    </select>
+                                </HCField>
+                                {f.duration === 'custom' ? (
+                                    <HCField label="End Date" required error={errs.endDate}>
+                                        <input
+                                            type="date"
+                                            min={f.startDate || todayDateValue()}
+                                            style={hcInputStyle(errs.endDate)}
+                                            value={f.endDate}
+                                            onChange={e => setField('endDate', e.target.value)} />
+                                    </HCField>
+                                ) : (
+                                    <HCField label="Repeat" required>
+                                        <select style={hcInputStyle(false)} value={f.repeat} onChange={e => setField('repeat', e.target.value)}>
+                                            <option value="every_day">Every Day</option>
+                                            <option value="selected_days">Selected Days</option>
+                                        </select>
+                                    </HCField>
+                                )}
+                            </div>
+
+                            {f.duration === 'custom' && (
+                                <HCField label="Repeat" required>
+                                    <select style={hcInputStyle(false)} value={f.repeat} onChange={e => setField('repeat', e.target.value)}>
+                                        <option value="every_day">Every Day</option>
+                                        <option value="selected_days">Selected Days</option>
+                                    </select>
+                                </HCField>
+                            )}
+
+                            {f.repeat === 'selected_days' && (
+                                <HCField label="Days" required error={errs.selectedDays}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 8 }}>
+                                        {WEEKDAYS.map(d => (
+                                            <div key={d.key} style={hcDayChip(f.selectedDays.includes(d.key))} onClick={() => toggleDay(d.key)}>
+                                                {d.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </HCField>
+                            )}
+
+                            <HCField label="Time(s)" required error={errs.times} hint="Times already past today will be skipped for today's dose only.">
+                                {f.times.map((t, i) => (
+                                    <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                        <input
+                                            type="time"
+                                            style={{ ...hcInputStyle(false), flex: '1 1 auto' }}
+                                            value={t}
+                                            onChange={e => setTimeAt(i, e.target.value)} />
+                                        <div style={hcIconBtn} onClick={() => removeTime(i)} title="Remove time">
+                                            <FaTrashAlt />
+                                        </div>
+                                    </div>
+                                ))}
+                                <div style={{ ...hcSegBtn(false), flex: '0 1 160px', textAlign: 'center' }} onClick={addTime}>
+                                    <FaPlus style={{ marginRight: 6 }} /> Add another time
+                                </div>
+                            </HCField>
+                        </>
+                    )}
+
                     <HCField label="Notes" style={{ marginBottom: 6 }}>
                         <textarea rows={3} maxLength="500" style={{ ...hcInputStyle(false), resize: 'vertical', minHeight: 70 }} value={f.notes} onChange={e => setField('notes', e.target.value)} placeholder="Special instructions…" />
                     </HCField>
@@ -2752,7 +2989,7 @@ const HeadCaregiverDashboard = () => {
                 onSaved={updated => { setResidents(p => p.map(r => r._id === updated._id ? updated : r)); loadAll(); }}
             />}
             {modal?.type === 'history' && <HistoryModal onClose={() => setModal(null)} resident={modal.data} doFetch={doFetch} />}
-            {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, l]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
+            {modal?.type === 'addSchedule' && <AddScheduleModal onClose={() => setModal(null)} residents={residents} medications={medications} onSaved={l => { setSchedule(p => [...p, ...(Array.isArray(l) ? l : [l])]); refreshStats(); }} doFetch={doFetch} toast={toast} defaultResident={modal.data ? { _id: modal.data.residentId } : null} />}
             {modal?.type === 'editSchedule' && <EditScheduleModal onClose={() => setModal(null)} log={modal.data} onSaved={u => { setSchedule(p => p.map(l => l._id === u._id ? { ...l, ...u } : l)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'deleteMedication' && <DeleteMedicationModal onClose={() => setModal(null)} log={modal.data} onSaved={id => { setSchedule(p => p.filter(l => l._id !== id)); refreshStats(); }} doFetch={doFetch} toast={toast} />}
             {modal?.type === 'requestStock' && <RequestStockModal onClose={() => setModal(null)} items={requestableItems} doFetch={doFetch} toast={toast} onSubmitted={refreshStockRequests} />}

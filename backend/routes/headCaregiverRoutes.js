@@ -114,6 +114,8 @@ function shapeLog(l) {
         status: l.status,
         notes: l.notes || '',
         verificationMethod: l.verificationMethod,
+        scheduleType: l.scheduleType || 'one_time',
+        recurringGroupId: l.recurringGroupId || null,
     };
 }
 
@@ -823,21 +825,116 @@ router.get('/schedule/all', async (req, res) => {
     }
 });
 
+// ── Part 13: recurring schedule generation ──────────────────────────────
+//
+// A "Recurring" submission never becomes its own system — it just expands
+// into ordinary MedicationLog rows (one per dose), created up front, the
+// same way a single "One Time" submission always has. These helpers only
+// compute WHICH calendar dates/times those rows should land on; everything
+// downstream (administration, stock deduction, missed-dose detection,
+// compliance) is unchanged because it's still just MedicationLog documents.
+
+// Small buffer so a submission doesn't get rejected purely because a few
+// hundred ms elapsed between the browser building the request and the
+// server receiving it. Never used to *allow* a genuinely past dose — see
+// callers below, which still compare against a live `new Date()`.
+const SCHEDULE_PAST_GRACE_MS = 30 * 1000;
+
+function isPastSchedule(date) {
+    return !(date instanceof Date) || isNaN(date) || date.getTime() < (Date.now() - SCHEDULE_PAST_GRACE_MS);
+}
+
+const WEEKDAY_NAME_TO_NUM = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+    thursday: 4, friday: 5, saturday: 6,
+};
+
+// Pure calendar-date arithmetic (no timezone conversion involved) — used
+// only to walk the day-by-day range and figure out which weekday each date
+// falls on. The actual scheduled instant for each dose is computed
+// separately via parseManilaDateTime(`${dateStr}T${time}`), same helper the
+// existing One Time path already relies on.
+function addDaysToDateString(dateStr, days) {
+    const [y, m, d] = String(dateStr).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+}
+
+function weekdayOfDateString(dateStr) {
+    const [y, m, d] = String(dateStr).split('-').map(Number);
+    return new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay();
+}
+
+// Returns the list of 'YYYY-MM-DD' calendar dates a recurring schedule
+// should fire on. Throws a plain Error with a user-facing message on any
+// invalid combination — callers turn that into a 400.
+function generateRecurringDateStrings({ startDate, duration, endDate, repeat, selectedDays }) {
+    if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        throw new Error('A valid start date is required.');
+    }
+
+    let totalDays;
+    if (duration === '7_days') totalDays = 7;
+    else if (duration === '2_weeks') totalDays = 14;
+    else if (duration === 'custom') {
+        if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+            throw new Error('An end date is required for a custom duration.');
+        }
+        const start = new Date(`${startDate}T00:00:00Z`);
+        const end = new Date(`${endDate}T00:00:00Z`);
+        totalDays = Math.round((end - start) / (24 * 60 * 60 * 1000)) + 1;
+    } else {
+        throw new Error('Invalid duration.');
+    }
+    if (!Number.isFinite(totalDays) || totalDays < 1) {
+        throw new Error('End date cannot be before the start date.');
+    }
+    if (totalDays > 366) {
+        throw new Error('Recurring schedule range is too long (max 366 days).');
+    }
+
+    let selectedDayNums = null;
+    if (repeat === 'selected_days') {
+        selectedDayNums = (Array.isArray(selectedDays) ? selectedDays : [])
+            .map(d => WEEKDAY_NAME_TO_NUM[String(d).toLowerCase()])
+            .filter(n => n !== undefined);
+        if (!selectedDayNums.length) {
+            throw new Error('Select at least one day of the week.');
+        }
+    } else if (repeat !== 'every_day') {
+        throw new Error('Invalid repeat option.');
+    }
+
+    const dateStrings = [];
+    for (let i = 0; i < totalDays; i++) {
+        const ds = addDaysToDateString(startDate, i);
+        if (repeat === 'every_day' || selectedDayNums.includes(weekdayOfDateString(ds))) {
+            dateStrings.push(ds);
+        }
+    }
+    return dateStrings;
+}
+
 // ─────────────────────────────────────────────────────────────
-// CREATE SCHEDULE
+// CREATE SCHEDULE  (Part 13: One Time — unchanged behavior — or Recurring)
 // ─────────────────────────────────────────────────────────────
 router.post('/schedule', async (req, res) => {
     try {
         if (!requireOnDuty(req, res)) return;
         const {
-            residentId, medicationId, scheduledTime,
-            dosage, frequency, nextDose, notes
+            residentId, medicationId,
+            scheduleType,
+            scheduledTime,
+            dosage, frequency, nextDose, notes,
+            // Recurring-only fields (Part 13):
+            startDate, duration, endDate, repeat, selectedDays, times,
         } = req.body;
 
-        if (!residentId || !medicationId || !scheduledTime) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Resident ID, medication ID, and scheduled time are required.' 
+        if (!residentId || !medicationId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Resident ID and medication ID are required.'
             });
         }
 
@@ -845,7 +942,7 @@ router.post('/schedule', async (req, res) => {
             Resident.findById(residentId),
             Medication.findById(medicationId),
         ]);
-        
+
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
         if (!medication) return res.status(404).json({ success: false, message: 'Medication not found.' });
 
@@ -854,10 +951,7 @@ router.post('/schedule', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dosage is required.' });
         }
 
-        const logId = `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-        const log = new MedicationLog({
-            logId,
+        const baseFields = {
             residentId: resident._id,
             medicationId: medication._id,
             caregiverId: resident.primaryCaregiverId || resident.assignedStaff?.primaryCaregiverId || req.user._id,
@@ -870,9 +964,91 @@ router.post('/schedule', async (req, res) => {
             dosage: finalDosage,
             frequency: frequency || '',
             nextDose: nextDose || '',
-            scheduledTime: parseManilaDateTime(scheduledTime),
             notes: notes || '',
             status: 'scheduled',
+        };
+
+        // ── RECURRING ────────────────────────────────────────────────
+        if (scheduleType === 'recurring') {
+            if (!Array.isArray(times) || !times.length) {
+                return res.status(400).json({ success: false, message: 'Select at least one time.' });
+            }
+            const cleanTimes = [...new Set(times)].filter(t => /^([01]\d|2[0-3]):([0-5]\d)$/.test(t));
+            if (!cleanTimes.length) {
+                return res.status(400).json({ success: false, message: 'Invalid time format.' });
+            }
+
+            // Start date can't be a past calendar day (Manila). Individual
+            // past occurrences within an otherwise-valid range (e.g. a
+            // 7:00 AM dose today when it's already past 7 AM) are skipped
+            // per-dose below rather than rejecting the whole submission.
+            const todayStr = startOfManilaDay().toISOString().slice(0, 10);
+            if (typeof startDate === 'string' && startDate < todayStr) {
+                return res.status(400).json({ success: false, message: 'Start date cannot be in the past.' });
+            }
+
+            let dateStrings;
+            try {
+                dateStrings = generateRecurringDateStrings({ startDate, duration, endDate, repeat, selectedDays });
+            } catch (genErr) {
+                return res.status(400).json({ success: false, message: genErr.message });
+            }
+            if (!dateStrings.length) {
+                return res.status(400).json({ success: false, message: 'No matching days found in the selected range.' });
+            }
+
+            const recurringGroupId = `RG-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            const docs = [];
+            let seq = 0;
+            for (const ds of dateStrings) {
+                for (const t of cleanTimes) {
+                    const when = parseManilaDateTime(`${ds}T${t}`);
+                    if (isPastSchedule(when)) continue; // silently drop past occurrences
+                    seq += 1;
+                    docs.push({
+                        ...baseFields,
+                        logId: `LOG-${Date.now()}-${seq}-${Math.floor(Math.random() * 100000)}`,
+                        scheduledTime: when,
+                        scheduleType: 'recurring',
+                        recurringGroupId,
+                    });
+                }
+            }
+
+            if (!docs.length) {
+                return res.status(400).json({ success: false, message: 'All selected dates and times are in the past.' });
+            }
+
+            const created = await MedicationLog.insertMany(docs);
+            return res.status(201).json({
+                success: true,
+                message: `${created.length} dose${created.length === 1 ? '' : 's'} scheduled.`,
+                data: created.map(shapeLog),
+                count: created.length,
+                recurringGroupId,
+            });
+        }
+
+        // ── ONE TIME (default — existing behavior, unchanged) ───────────
+        if (!scheduledTime) {
+            return res.status(400).json({
+                success: false,
+                message: 'Resident ID, medication ID, and scheduled time are required.'
+            });
+        }
+
+        const when = parseManilaDateTime(scheduledTime);
+        if (isPastSchedule(when)) {
+            return res.status(400).json({ success: false, message: 'Scheduled time cannot be in the past.' });
+        }
+
+        const logId = `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        const log = new MedicationLog({
+            ...baseFields,
+            logId,
+            scheduledTime: when,
+            scheduleType: 'one_time',
         });
         await log.save();
 
@@ -1185,7 +1361,13 @@ router.put('/schedule/:id', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dosage is required.' });
         }
         const update = {};
-        if (scheduledTime !== undefined) update.scheduledTime = parseManilaDateTime(scheduledTime);
+        if (scheduledTime !== undefined) {
+            const when = parseManilaDateTime(scheduledTime);
+            if (isPastSchedule(when)) {
+                return res.status(400).json({ success: false, message: 'Scheduled time cannot be in the past.' });
+            }
+            update.scheduledTime = when;
+        }
         if (dosage !== undefined) update.dosage = dosage;
         if (notes !== undefined) update.notes = notes;
         if (nextDose !== undefined) update.nextDose = nextDose;
@@ -1597,20 +1779,5 @@ router.get('/compliance-history', async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 });
-
-// ─────────────────────────────────────────────────────────────
-// PART 8 — NOTIFICATIONS
-// ─────────────────────────────────────────────────────────────
-// Head Caregiver notifications are served by the project's existing,
-// already-wired Alert system — GET/PUT /api/alerts, /api/alerts/
-// unread-count, /api/alerts/:id/read, /api/alerts/mark-all-read (see
-// routes/alertRoutes.js) — not a duplicate set of routes here. Those
-// routes already scope every non-admin read/write to
-// relatedUser === req.user._id, which is exactly the per-HC isolation
-// Part 8 §6 asks for. The three notification TRIGGERS Part 8 needs
-// (stock request approved/rejected, medication administered) call
-// Alert.create() directly from inside the workflows that already existed
-// — see the medication-administration success path above (this file) and
-// the stock-request approve/reject handler in routes/adminRoutes.js.
 
 module.exports = router;
