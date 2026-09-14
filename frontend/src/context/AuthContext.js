@@ -34,11 +34,13 @@ export const AuthProvider = ({ children }) => {
                         setIsAuthenticated(true);
                     } else {
                         localStorage.removeItem('token');
+                        localStorage.removeItem('user');
                         setToken(null);
                     }
                 } catch (err) {
                     console.error('Token validation error:', err);
                     localStorage.removeItem('token');
+                    localStorage.removeItem('user');
                     setToken(null);
                 }
             }
@@ -101,7 +103,13 @@ export const AuthProvider = ({ children }) => {
             console.error('Logout request error:', err);
         }
 
+        // Clear every trace of the departing account. 'token' is the only
+        // key this file writes, but something outside AuthContext (e.g. the
+        // Login component) may be writing a 'user' cache directly — clear
+        // it here too so a stale account's data can never survive a logout
+        // and bleed into whoever logs in next on this browser.
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setToken(null);
         setUser(null);
         setIsAuthenticated(false);

@@ -37,8 +37,11 @@ const ViewProfile = () => {
                 });
                 const data = await res.json();
                 if (data.success) {
-                    const cached = JSON.parse(localStorage.getItem('user') || '{}');
-                    setProfile({ ...data.user, photoUrl: data.user.photoUrl || cached.photoUrl || null });
+                    // The backend is the single source of truth for photoUrl.
+                    // Never fall back to a cached/localStorage value here — a
+                    // shared, unscoped cache key is exactly what let one
+                    // account's photo bleed into another account's profile.
+                    setProfile({ ...data.user, photoUrl: data.user.photoUrl || null });
                 }
                 else setError('Failed to load profile.');
             } catch {
@@ -105,9 +108,11 @@ const ViewProfile = () => {
             });
             const data = await res.json();
             if (data.success) {
+                // Only React state is updated — the backend record (persisted
+                // via the PUT above) is the source of truth. No localStorage
+                // write, so no stale/shared cache can leak into another
+                // account's profile later.
                 setProfile(p => ({ ...(p || ctxUser), photoUrl: data.photoUrl }));
-                const stored = JSON.parse(localStorage.getItem('user') || '{}');
-                localStorage.setItem('user', JSON.stringify({ ...stored, photoUrl: data.photoUrl }));
                 if (photoPreview) URL.revokeObjectURL(photoPreview);
                 setPhotoPreview('');
                 setPhotoFile(null);

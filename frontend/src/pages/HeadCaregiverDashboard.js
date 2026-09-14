@@ -2983,6 +2983,7 @@ const HeadCaregiverDashboard = () => {
                 fetchCaregivers={fetchCaregivers}
             />}
             {modal?.type === 'editResident' && <AddResidentModal
+                key={modal.data?._id}
                 resident={modal.data}
                 onClose={() => setModal(null)}
                 onSaved={updated => { setResidents(p => p.map(r => r._id === updated._id ? { ...r, ...updated } : r)); loadAll(); }}
@@ -2999,6 +3000,7 @@ const HeadCaregiverDashboard = () => {
                 toast={toast}
             />}
             {modal?.type === 'profile' && <ProfileModal
+                key={modal.data?._id}
                 onClose={() => setModal(null)}
                 resident={modal.data}
                 schedule={schedule}
