@@ -11,6 +11,13 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     phone: { type: String, default: '' }, // REMOVED unique: true
+
+    // ── Profile photo ────────────────────────────────────────────────────────
+    // Stored on Cloudinary. photoPublicId is kept (but not sent to clients)
+    // so a re-upload can overwrite the old image and a removal can delete it.
+    photoUrl:      { type: String, default: null },
+    photoPublicId: { type: String, default: null, select: false },
+
     department: {
         type: String,
         trim: true,

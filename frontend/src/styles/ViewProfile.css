@@ -78,7 +78,7 @@
 .back-btn:hover { background: var(--ka-orange-lt); border-color: var(--ka-orange); transform: translateX(-2px); }
 .back-btn:focus-visible { outline: 2px solid var(--ka-orange); outline-offset: 2px; }
 
-/* ── ERROR BANNER ─────────────────────────────────────────────── */
+/* ── ERROR / SUCCESS BANNERS ───────────────────────────────────── */
 .profile-error-banner {
   background: #FFF0F0;
   border: 1.5px solid #FFCDD2;
@@ -88,6 +88,22 @@
   font-size: .88rem;
   font-weight: 600;
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.profile-success-banner {
+  background: #EEFBF5;
+  border: 1.5px solid #1E7D5640;
+  color: #1E7D56;
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: .88rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* ── PROFILE CARD ─────────────────────────────────────────────
@@ -126,6 +142,14 @@
    conic-gradient ring (orange → gold → orange) behind the
    avatar, with a white gap, so it reads as a pin/badge.
    ─────────────────────────────────────────────────────────── */
+.profile-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .profile-avatar-wrap {
   position: relative;
   display: inline-flex;
@@ -149,6 +173,61 @@
   display: block;
   filter: drop-shadow(0 2px 6px rgba(249,107,56,.2));
 }
+.profile-avatar-photo {
+  position: relative;
+  z-index: 1;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+.profile-avatar-upload-btn {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ka-orange);
+  border: 2.5px solid var(--ka-white);
+  color: var(--ka-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .85rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  transition: background .18s, transform .15s;
+}
+.profile-avatar-upload-btn:hover:not(:disabled) { background: var(--ka-orange-dk); transform: translateY(-1px); }
+.profile-avatar-upload-btn:disabled { background: #ccc; cursor: not-allowed; }
+.profile-avatar-uploading {
+  position: absolute;
+  inset: 6px;
+  z-index: 2;
+  border-radius: 50%;
+  background: rgba(0,0,0,.4);
+  color: var(--ka-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+}
+.profile-avatar-uploading .spin { animation: profileSpin .8s linear infinite; }
+@keyframes profileSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.profile-photo-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.profile-photo-edit-actions .cancel-btn,
+.profile-photo-edit-actions .brand-btn {
+  padding: 7px 16px;
+  font-size: .8rem;
+}
+
 .profile-status-dot {
   position: absolute;
   bottom: 8px;
@@ -310,6 +389,7 @@
   .profile-card { padding: 24px 18px; }
   .profile-top  { flex-direction: column; text-align: center; gap: 16px; margin: -24px -18px 24px; padding: 28px 18px 24px; }
   .profile-avatar { font-size: 60px; }
+  .profile-avatar-photo { width: 64px; height: 64px; }
   .profile-title h1 { font-size: 1.5rem; }
   .info-box { padding-left: 18px; }
 }

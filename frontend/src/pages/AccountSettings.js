@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaShieldAlt, FaEye, FaEyeSlash,
-    FaCheckCircle, FaTimesCircle, FaPhone, FaCheck, FaLock
+    FaCheckCircle, FaTimesCircle, FaPhone, FaCheck, FaLock,
+    FaCamera, FaUserCircle, FaSpinner
 } from 'react-icons/fa';
 import '../styles/AccountSettings.css';
 
@@ -40,6 +41,69 @@ const AccountSettings = () => {
     const [phoneSuccess, setPhoneSuccess] = useState('');
 
     const token = () => localStorage.getItem('token');
+
+    // Profile photo (staged until "Save Photo" is clicked)
+    const fileInputRef = useRef(null);
+    const [photoUrl, setPhotoUrl] = useState(user?.photoUrl || '');
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState('');
+    const [photoLoading, setPhotoLoading] = useState(false);
+    const [photoErr, setPhotoErr] = useState('');
+    const [photoSuccess, setPhotoSuccess] = useState('');
+
+    const pickPhoto = () => { if (!photoLoading) fileInputRef.current?.click(); };
+
+    const handlePhotoChange = (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) { setPhotoErr('Please choose an image file.'); return; }
+        if (file.size > 5 * 1024 * 1024) { setPhotoErr('Image must be smaller than 5MB.'); return; }
+
+        if (photoPreview) URL.revokeObjectURL(photoPreview);
+        setPhotoPreview(URL.createObjectURL(file));
+        setPhotoFile(file);
+        setPhotoErr('');
+    };
+
+    const discardPhotoEdit = () => {
+        if (photoPreview) URL.revokeObjectURL(photoPreview);
+        setPhotoPreview('');
+        setPhotoFile(null);
+        setPhotoErr('');
+    };
+
+    const handlePhotoSave = async () => {
+        if (!photoFile) return;
+        setPhotoLoading(true); setPhotoErr(''); setPhotoSuccess('');
+        try {
+            const body = new FormData();
+            body.append('photo', photoFile);
+            const res  = await fetch(`${API_BASE_URL}/users/photo`, {
+                method:  'PUT',
+                headers: { Authorization: `Bearer ${token()}` },
+                body,
+            });
+            const data = await res.json();
+            if (data.success) {
+                setPhotoUrl(data.photoUrl);
+                const stored = JSON.parse(localStorage.getItem('user') || '{}');
+                localStorage.setItem('user', JSON.stringify({ ...stored, photoUrl: data.photoUrl }));
+                if (photoPreview) URL.revokeObjectURL(photoPreview);
+                setPhotoPreview('');
+                setPhotoFile(null);
+                setPhotoSuccess('Profile photo updated successfully.');
+                setTimeout(() => setPhotoSuccess(''), 4000);
+            } else {
+                setPhotoErr(data.message || 'Failed to upload photo.');
+            }
+        } catch {
+            setPhotoErr('Network error. Please try again.');
+        } finally {
+            setPhotoLoading(false);
+        }
+    };
 
     // Password strength checker
     const getStrength = (p) => {
@@ -151,8 +215,70 @@ const AccountSettings = () => {
                     <h2>Account Settings</h2>
                 </div>
 
-                {/* ── Update Password ── */}
+                {/* ── Profile Photo ── */}
                 <div className="settings-card">
+                    <div className="settings-card-header">
+                        <FaCamera className="header-icon" />
+                        <div>
+                            <h3>Profile Photo</h3>
+                            <p className="settings-card-sub">Update the photo shown on your staff profile.</p>
+                        </div>
+                    </div>
+
+                    {photoSuccess && (
+                        <div className="settings-success-banner">
+                            <FaCheckCircle /> {photoSuccess}
+                        </div>
+                    )}
+
+                    <div className="settings-photo-row">
+                        <div className="settings-avatar-wrap">
+                            {(photoPreview || photoUrl) ? (
+                                <img src={photoPreview || photoUrl} alt="Your profile" className="settings-avatar-img" />
+                            ) : (
+                                <FaUserCircle className="settings-avatar-placeholder" />
+                            )}
+                            <button
+                                type="button"
+                                className="settings-avatar-upload-btn"
+                                onClick={pickPhoto}
+                                disabled={photoLoading}
+                                title="Change photo"
+                            >
+                                <FaCamera />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={handlePhotoChange}
+                            />
+                            {photoLoading && <div className="settings-avatar-uploading"><FaSpinner className="spin" /></div>}
+                        </div>
+
+                        <div className="settings-photo-actions">
+                            {photoErr && <span className="input-err-msg"><FaTimesCircle /> {photoErr}</span>}
+                            {photoFile ? (
+                                <div className="settings-photo-btn-row">
+                                    <button type="button" className="cancel-btn" onClick={discardPhotoEdit} disabled={photoLoading}>
+                                        Discard
+                                    </button>
+                                    <button type="button" className="brand-btn" onClick={handlePhotoSave} disabled={photoLoading}>
+                                        {photoLoading ? 'Saving…' : <><FaCheck /> Save Photo</>}
+                                    </button>
+                                </div>
+                            ) : (
+                                <button type="button" className="cancel-btn" onClick={pickPhoto}>
+                                    <FaCamera /> Choose Photo
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Update Password ── */}
+                <div className="settings-card" style={{ marginTop:20 }}>
                     <div className="settings-card-header">
                         <FaShieldAlt className="header-icon" />
                         <div>

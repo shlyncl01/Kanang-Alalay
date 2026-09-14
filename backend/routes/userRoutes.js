@@ -9,6 +9,8 @@ const express = require('express');
 const router  = express.Router();
 const User    = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const cloudinary  = require('../config/cloudinary');
+const imageUpload = require('../middleware/imageUpload');
 
 /**
  * PUT /api/users/update-profile
@@ -122,6 +124,7 @@ router.put('/update-profile', protect, async (req, res) => {
                 lastName:      user.lastName,
                 middleName:    user.middleName,
                 phone:         user.phone,
+                photoUrl:      user.photoUrl,
                 shift:         user.shift,
                 assignedFloor: user.assignedFloor,
                 assignedRoom:  user.assignedRoom,
@@ -163,6 +166,58 @@ router.put('/push-token', protect, async (req, res) => {
         res.json({ success: true, message: 'Push token saved.' });
     } catch (error) {
         console.error('Save push token error:', error);
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+    }
+});
+
+/**
+ * PUT /api/users/photo
+ *
+ * Lets an authenticated user upload/replace their own profile photo.
+ * Accepts multipart/form-data with a single "photo" file field.
+ * Reuses the same Cloudinary config + multer memory-storage middleware
+ * as the resident photo upload — no second storage system.
+ */
+router.put('/photo', protect, imageUpload.single('photo'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No image file provided.' });
+        }
+
+        const user = await User.findById(req.user._id).select('+photoPublicId');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+
+        const uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'kanang-alalay/users',
+                    public_id: `user_${user._id}_${Date.now()}`,
+                    overwrite: true,
+                    resource_type: 'image',
+                    transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
+                },
+                (err, result) => (err ? reject(err) : resolve(result))
+            );
+            stream.end(req.file.buffer);
+        });
+
+        const oldPublicId = user.photoPublicId;
+
+        user.photoUrl = uploadResult.secure_url;
+        user.photoPublicId = uploadResult.public_id;
+        await user.save();
+
+        // Best-effort cleanup of the previous image — don't fail the
+        // request if this errors, the new photo already saved fine.
+        if (oldPublicId && oldPublicId !== uploadResult.public_id) {
+            cloudinary.uploader.destroy(oldPublicId).catch(() => {});
+        }
+
+        res.json({ success: true, message: 'Profile photo updated.', photoUrl: user.photoUrl });
+    } catch (error) {
+        console.error('Update user photo error:', error);
         res.status(500).json({ success: false, message: 'Server error: ' + error.message });
     }
 });
