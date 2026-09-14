@@ -2419,7 +2419,11 @@ const AdminDashboard = () => {
                                     className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`}
                                     onClick={() => { setAccountMenuOpen(o => !o); setNotifOpen(false); }}
                                 >
-                                    <FaUserCircle className="topbar-user-avatar" />
+                                    {user?.photoUrl ? (
+                                        <img src={user.photoUrl} alt="" className="topbar-user-avatar-img" />
+                                    ) : (
+                                        <FaUserCircle className="topbar-user-avatar" />
+                                    )}
                                     <div className="topbar-user-info">
                                         <span className="topbar-user-name">{user?.firstName} {user?.lastName}</span>
                                         <span className="topbar-user-role">{user?.role?.toUpperCase() || 'ADMIN'}</span>

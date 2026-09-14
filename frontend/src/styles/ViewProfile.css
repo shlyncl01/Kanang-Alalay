@@ -218,14 +218,37 @@
 .profile-avatar-uploading .spin { animation: profileSpin .8s linear infinite; }
 @keyframes profileSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
-.profile-photo-edit-actions {
+.profile-photo-pending-bar {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--ka-orange-pale);
+  border: 1.5px solid var(--ka-orange-lt);
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  animation: fadeIn .2s ease;
 }
-.profile-photo-edit-actions .cancel-btn,
-.profile-photo-edit-actions .brand-btn {
-  padding: 7px 16px;
-  font-size: .8rem;
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.profile-photo-pending-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ka-orange-dk);
+  font-size: .9rem;
+  font-weight: 700;
+}
+.profile-photo-pending-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.profile-photo-pending-actions .cancel-btn,
+.profile-photo-pending-actions .brand-btn {
+  padding: 9px 20px;
+  font-size: .85rem;
 }
 
 .profile-status-dot {

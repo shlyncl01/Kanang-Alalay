@@ -383,6 +383,14 @@ body {
 .topbar-user-trigger:hover,
 .topbar-user-trigger.active { background: var(--d-orange-lt); border-color: var(--d-orange); }
 .topbar-user-avatar { font-size: 1.7rem; color: var(--d-orange); flex-shrink: 0; }
+.topbar-user-avatar-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid var(--d-orange-lt);
+}
 .topbar-user-info { display: flex; flex-direction: column; min-width: 0; }
 .topbar-user-name {
   font-size: .85rem;

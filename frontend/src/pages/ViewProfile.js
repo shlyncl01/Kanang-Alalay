@@ -36,7 +36,10 @@ const ViewProfile = () => {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const data = await res.json();
-                if (data.success) setProfile(data.user);
+                if (data.success) {
+                    const cached = JSON.parse(localStorage.getItem('user') || '{}');
+                    setProfile({ ...data.user, photoUrl: data.user.photoUrl || cached.photoUrl || null });
+                }
                 else setError('Failed to load profile.');
             } catch {
                 // Fallback to context user
@@ -164,6 +167,18 @@ const ViewProfile = () => {
                     </div>
                 )}
 
+                {photoFile && (
+                    <div className="profile-photo-pending-bar">
+                        <span className="profile-photo-pending-text"><FaCamera /> New profile photo selected</span>
+                        <div className="profile-photo-pending-actions">
+                            <button type="button" className="cancel-btn" onClick={discardPhotoEdit} disabled={photoUploading}>Discard</button>
+                            <button type="button" className="brand-btn" onClick={savePhotoEdit} disabled={photoUploading}>
+                                {photoUploading ? 'Saving…' : 'Save Photo'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="profile-card">
                     {/* Top section */}
                     <div className="profile-top">
@@ -197,14 +212,6 @@ const ViewProfile = () => {
                                 />
                                 {photoUploading && <div className="profile-avatar-uploading"><FaSpinner className="spin" /></div>}
                             </div>
-                            {photoFile && (
-                                <div className="profile-photo-edit-actions">
-                                    <button type="button" className="cancel-btn" onClick={discardPhotoEdit} disabled={photoUploading}>Discard</button>
-                                    <button type="button" className="brand-btn" onClick={savePhotoEdit} disabled={photoUploading}>
-                                        {photoUploading ? 'Saving…' : 'Save Photo'}
-                                    </button>
-                                </div>
-                            )}
                         </div>
                         <div className="profile-title">
                             <h1>{u?.firstName} {u?.lastName || ''}</h1>
