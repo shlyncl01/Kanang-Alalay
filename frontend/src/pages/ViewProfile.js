@@ -15,7 +15,7 @@ const API_BASE_URL =
         : 'http://localhost:5000/api');
 
 const ViewProfile = () => {
-    const { user: ctxUser, logout } = useAuth();
+    const { user: ctxUser, logout, patchUser } = useAuth();
     const navigate = useNavigate();
 
     // Back always returns through the user's dashboard (not raw browser
@@ -42,6 +42,11 @@ const ViewProfile = () => {
                     // shared, unscoped cache key is exactly what let one
                     // account's photo bleed into another account's profile.
                     setProfile({ ...data.user, photoUrl: data.user.photoUrl || null });
+                    // /auth/profile is returning richer data than
+                    // /validate-token gave AuthContext at login — share the
+                    // photo with the rest of the app (topbar avatar) so it
+                    // doesn't look stale next to this page.
+                    patchUser({ photoUrl: data.user.photoUrl || null });
                 }
                 else setError('Failed to load profile.');
             } catch {
@@ -113,6 +118,7 @@ const ViewProfile = () => {
                 // write, so no stale/shared cache can leak into another
                 // account's profile later.
                 setProfile(p => ({ ...(p || ctxUser), photoUrl: data.photoUrl }));
+                patchUser({ photoUrl: data.photoUrl });
                 if (photoPreview) URL.revokeObjectURL(photoPreview);
                 setPhotoPreview('');
                 setPhotoFile(null);
@@ -188,7 +194,15 @@ const ViewProfile = () => {
                     {/* Top section */}
                     <div className="profile-top">
                         <div className="profile-avatar-col">
-                            <div className="profile-avatar-wrap">
+                            <div
+                                className="profile-avatar-wrap"
+                                onClick={pickPhoto}
+                                role="button"
+                                tabIndex={0}
+                                title="Change photo"
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') pickPhoto(); }}
+                                style={{ cursor: photoUploading ? 'default' : 'pointer' }}
+                            >
                                 {(photoPreview || u?.photoUrl) ? (
                                     <img
                                         src={photoPreview || u.photoUrl}
@@ -199,15 +213,6 @@ const ViewProfile = () => {
                                     <FaUserCircle className="profile-avatar" />
                                 )}
                                 <span className={`profile-status-dot ${u?.isActive ? 'online' : 'offline'}`} title={u?.isActive ? 'Active' : 'Inactive'} />
-                                <button
-                                    type="button"
-                                    className="profile-avatar-upload-btn"
-                                    onClick={pickPhoto}
-                                    disabled={photoUploading}
-                                    title="Change photo"
-                                >
-                                    <FaCamera />
-                                </button>
                                 <input
                                     ref={fileInputRef}
                                     type="file"

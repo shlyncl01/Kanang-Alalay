@@ -149,6 +149,15 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Merge fresh fields (e.g. photoUrl) into the current context user, in
+    // memory only. Lets a page that fetched richer data than validate-token
+    // gave us (like ViewProfile hitting /auth/profile) share it with every
+    // other component reading `user` from this context — the topbar avatar
+    // included — without writing anything to localStorage.
+    const patchUser = (patch) => {
+        setUser(prev => (prev ? { ...prev, ...patch } : prev));
+    };
+
     const value = {
         user,
         token,
@@ -159,6 +168,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         register,
         updateUser,
+        patchUser,
         showOTPModal,
         setShowOTPModal,
         pendingUserId,
