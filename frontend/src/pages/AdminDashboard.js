@@ -2308,15 +2308,6 @@ const AdminDashboard = () => {
                         ))}
                     </ul>
 
-                    <div className="sidebar-footer-user" style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => navigate('/profile')}>
-                        <FaUserCircle style={{ fontSize: 38, opacity: 0.85, flexShrink: 0 }} />
-                        <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {user?.firstName} {user?.lastName}
-                            </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>{user?.role?.toUpperCase() || 'ADMIN'}</div>
-                        </div>
-                    </div>
                     <div className="sidebar-footer" onClick={handleLogout} style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
                         <FaSignOutAlt /> <span>Sign Out</span>
                     </div>
