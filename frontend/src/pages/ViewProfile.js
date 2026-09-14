@@ -18,6 +18,12 @@ const ViewProfile = () => {
     const { user: ctxUser, logout, patchUser } = useAuth();
     const navigate = useNavigate();
 
+    // Keep a live reference to ctxUser for the catch-block fallback below,
+    // without making the fetch effect depend on it (see note by the
+    // useEffect for why that matters).
+    const ctxUserRef = useRef(ctxUser);
+    useEffect(() => { ctxUserRef.current = ctxUser; }, [ctxUser]);
+
     // Back always returns through the user's dashboard (not raw browser
     // history) so it can never leave the app or land on a blank page.
     // replace:true removes this page from history entirely, so the
@@ -27,7 +33,14 @@ const ViewProfile = () => {
     const [loading, setLoading] = useState(true);
     const [error,   setError]   = useState('');
 
-    // Fetch fresh profile from backend
+    // Fetch fresh profile from backend.
+    //
+    // Deliberately runs ONCE on mount ([] deps), not on every ctxUser
+    // change. patchUser() below updates ctxUser, and ctxUser was
+    // previously in this effect's dependency array — so every fetch
+    // triggered another fetch, forever (visible in devtools as
+    // continuous /auth/profile requests). ctxUserRef (set up above) gives
+    // the catch-block fallback fresh data without re-creating that loop.
     useEffect(() => {
         const fetchProfile = async () => {
             const token = localStorage.getItem('token');
@@ -51,13 +64,14 @@ const ViewProfile = () => {
                 else setError('Failed to load profile.');
             } catch {
                 // Fallback to context user
-                setProfile(ctxUser);
+                setProfile(ctxUserRef.current);
             } finally {
                 setLoading(false);
             }
         };
         fetchProfile();
-    }, [ctxUser]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const u = profile || ctxUser;
 
