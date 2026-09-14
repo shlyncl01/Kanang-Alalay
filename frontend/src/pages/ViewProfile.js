@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     FaArrowLeft, FaUserCircle, FaEnvelope, FaIdCard,
     FaUserTag, FaPhone, FaBuilding, FaBed, FaClock,
-    FaCheckCircle, FaTimesCircle, FaEdit, FaCamera, FaSpinner
+    FaCheckCircle, FaTimesCircle, FaEdit
 } from 'react-icons/fa';
 import '../styles/ViewProfile.css';
 
@@ -15,7 +15,7 @@ const API_BASE_URL =
         : 'http://localhost:5000/api');
 
 const ViewProfile = () => {
-    const { user: ctxUser, logout, patchUser } = useAuth();
+    const { user: ctxUser, logout } = useAuth();
     const navigate = useNavigate();
 
     // Keep a live reference to ctxUser for the catch-block fallback below,
@@ -36,11 +36,9 @@ const ViewProfile = () => {
     // Fetch fresh profile from backend.
     //
     // Deliberately runs ONCE on mount ([] deps), not on every ctxUser
-    // change. patchUser() below updates ctxUser, and ctxUser was
-    // previously in this effect's dependency array — so every fetch
-    // triggered another fetch, forever (visible in devtools as
-    // continuous /auth/profile requests). ctxUserRef (set up above) gives
-    // the catch-block fallback fresh data without re-creating that loop.
+    // change, to avoid unnecessary refetching. ctxUserRef (set up above)
+    // gives the catch-block fallback fresh data without needing ctxUser
+    // in the dependency array.
     useEffect(() => {
         const fetchProfile = async () => {
             const token = localStorage.getItem('token');
@@ -50,16 +48,7 @@ const ViewProfile = () => {
                 });
                 const data = await res.json();
                 if (data.success) {
-                    // The backend is the single source of truth for photoUrl.
-                    // Never fall back to a cached/localStorage value here — a
-                    // shared, unscoped cache key is exactly what let one
-                    // account's photo bleed into another account's profile.
-                    setProfile({ ...data.user, photoUrl: data.user.photoUrl || null });
-                    // /auth/profile is returning richer data than
-                    // /validate-token gave AuthContext at login — share the
-                    // photo with the rest of the app (topbar avatar) so it
-                    // doesn't look stale next to this page.
-                    patchUser({ photoUrl: data.user.photoUrl || null });
+                    setProfile(data.user);
                 }
                 else setError('Failed to load profile.');
             } catch {
@@ -74,79 +63,6 @@ const ViewProfile = () => {
     }, []);
 
     const u = profile || ctxUser;
-
-    // ── Profile photo (staged until "Save Photo" is clicked) ────────────────
-    const fileInputRef = useRef(null);
-    const [photoFile, setPhotoFile] = useState(null);
-    const [photoPreview, setPhotoPreview] = useState('');
-    const [photoUploading, setPhotoUploading] = useState(false);
-    const [photoMsg, setPhotoMsg] = useState('');
-
-    const pickPhoto = () => { if (!photoUploading) fileInputRef.current?.click(); };
-
-    const handlePhotoChange = (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = '';
-        if (!file) return;
-
-        if (!file.type.startsWith('image/')) {
-            setPhotoMsg('error:Please choose an image file.');
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            setPhotoMsg('error:Image must be smaller than 5MB.');
-            return;
-        }
-
-        if (photoPreview) URL.revokeObjectURL(photoPreview);
-        setPhotoPreview(URL.createObjectURL(file));
-        setPhotoFile(file);
-        setPhotoMsg('');
-    };
-
-    const discardPhotoEdit = () => {
-        if (photoPreview) URL.revokeObjectURL(photoPreview);
-        setPhotoPreview('');
-        setPhotoFile(null);
-    };
-
-    useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
-
-    const savePhotoEdit = async () => {
-        if (!photoFile) return;
-        setPhotoUploading(true);
-        setPhotoMsg('');
-        try {
-            const token = localStorage.getItem('token');
-            const body = new FormData();
-            body.append('photo', photoFile);
-            const res  = await fetch(`${API_BASE_URL}/users/photo`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body,
-            });
-            const data = await res.json();
-            if (data.success) {
-                // Only React state is updated — the backend record (persisted
-                // via the PUT above) is the source of truth. No localStorage
-                // write, so no stale/shared cache can leak into another
-                // account's profile later.
-                setProfile(p => ({ ...(p || ctxUser), photoUrl: data.photoUrl }));
-                patchUser({ photoUrl: data.photoUrl });
-                if (photoPreview) URL.revokeObjectURL(photoPreview);
-                setPhotoPreview('');
-                setPhotoFile(null);
-                setPhotoMsg('success:Profile photo updated.');
-                setTimeout(() => setPhotoMsg(''), 4000);
-            } else {
-                setPhotoMsg(`error:${data.message || 'Failed to upload photo.'}`);
-            }
-        } catch {
-            setPhotoMsg('error:Network error. Please try again.');
-        } finally {
-            setPhotoUploading(false);
-        }
-    };
 
     const SHIFT_LABELS = {
         morning:   'Morning (6AM–2PM)',
@@ -186,55 +102,13 @@ const ViewProfile = () => {
 
                 {error && <div className="profile-error-banner">{error}</div>}
 
-                {photoMsg && (
-                    <div className={photoMsg.startsWith('success:') ? 'profile-success-banner' : 'profile-error-banner'}>
-                        {photoMsg.startsWith('success:') ? <FaCheckCircle /> : <FaTimesCircle />} {photoMsg.slice(photoMsg.indexOf(':') + 1)}
-                    </div>
-                )}
-
-                {photoFile && (
-                    <div className="profile-photo-pending-bar">
-                        <span className="profile-photo-pending-text"><FaCamera /> New profile photo selected</span>
-                        <div className="profile-photo-pending-actions">
-                            <button type="button" className="cancel-btn" onClick={discardPhotoEdit} disabled={photoUploading}>Discard</button>
-                            <button type="button" className="brand-btn" onClick={savePhotoEdit} disabled={photoUploading}>
-                                {photoUploading ? 'Saving…' : 'Save Photo'}
-                            </button>
-                        </div>
-                    </div>
-                )}
-
                 <div className="profile-card">
                     {/* Top section */}
                     <div className="profile-top">
                         <div className="profile-avatar-col">
-                            <div
-                                className="profile-avatar-wrap"
-                                onClick={pickPhoto}
-                                role="button"
-                                tabIndex={0}
-                                title="Change photo"
-                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') pickPhoto(); }}
-                                style={{ cursor: photoUploading ? 'default' : 'pointer' }}
-                            >
-                                {(photoPreview || u?.photoUrl) ? (
-                                    <img
-                                        src={photoPreview || u.photoUrl}
-                                        alt={`${u?.firstName || ''} ${u?.lastName || ''}`.trim()}
-                                        className="profile-avatar-photo"
-                                    />
-                                ) : (
-                                    <FaUserCircle className="profile-avatar" />
-                                )}
+                            <div className="profile-avatar-wrap">
+                                <FaUserCircle className="profile-avatar" />
                                 <span className={`profile-status-dot ${u?.isActive ? 'online' : 'offline'}`} title={u?.isActive ? 'Active' : 'Inactive'} />
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    style={{ display: 'none' }}
-                                    onChange={handlePhotoChange}
-                                />
-                                {photoUploading && <div className="profile-avatar-uploading"><FaSpinner className="spin" /></div>}
                             </div>
                         </div>
                         <div className="profile-title">

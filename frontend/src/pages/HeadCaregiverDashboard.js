@@ -2859,11 +2859,7 @@ const HeadCaregiverDashboard = () => {
                         ))}
                     </ul>
                     <div className="sidebar-footer-user" style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => navigate('/profile')}>
-                        {user?.photoUrl ? (
-                            <img src={user.photoUrl} alt="" className="sidebar-user-avatar-img" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                        ) : (
-                            <FaUserCircle style={{ fontSize: 38, opacity: 0.85, flexShrink: 0 }} />
-                        )}
+                        <FaUserCircle style={{ fontSize: 38, opacity: 0.85, flexShrink: 0 }} />
                         <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {user?.firstName} {user?.lastName}
@@ -2961,11 +2957,7 @@ const HeadCaregiverDashboard = () => {
                             </div>
                             <div className="topbar-user-menu">
                                 <div className={`topbar-user-trigger ${accountMenuOpen ? 'active' : ''}`} onClick={() => { setAcctMenu(o => !o); setNotifOpen(false); }}>
-                                    {user?.photoUrl ? (
-                                        <img src={user.photoUrl} alt="" className="topbar-user-avatar-img" />
-                                    ) : (
-                                        <FaUserCircle className="topbar-user-avatar" />
-                                    )}
+                                    <FaUserCircle className="topbar-user-avatar" />
                                     <div className="topbar-user-info">
                                         <span className="topbar-user-name">{user?.firstName} {user?.lastName}</span>
                                         <span className="topbar-user-role">HEAD CAREGIVER</span>

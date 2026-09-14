@@ -32,23 +32,6 @@ export const AuthProvider = ({ children }) => {
                     if (response.data.success) {
                         setUser(response.data.user);
                         setIsAuthenticated(true);
-
-                        // validate-token returns a slim user object (no
-                        // photoUrl). Follow up with /auth/profile so a page
-                        // refresh doesn't wipe photoUrl until some other
-                        // page happens to fetch it. Best-effort: if this
-                        // fails, the app still works with the slim user.
-                        try {
-                            const profileRes = await axios.get(`${API_BASE_URL}/auth/profile`, {
-                                headers: { Authorization: `Bearer ${token}` },
-                                withCredentials: true,
-                            });
-                            if (profileRes.data.success) {
-                                setUser(prev => prev ? { ...prev, ...profileRes.data.user } : prev);
-                            }
-                        } catch (profileErr) {
-                            console.error('Profile enrichment error:', profileErr);
-                        }
                     } else {
                         localStorage.removeItem('token');
                         localStorage.removeItem('user');
@@ -166,11 +149,11 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // Merge fresh fields (e.g. photoUrl) into the current context user, in
-    // memory only. Lets a page that fetched richer data than validate-token
-    // gave us (like ViewProfile hitting /auth/profile) share it with every
-    // other component reading `user` from this context — the topbar avatar
-    // included — without writing anything to localStorage.
+    // Merge fresh fields into the current context user, in memory only.
+    // Lets a page that fetched richer data than validate-token gave us
+    // (like ViewProfile hitting /auth/profile) share it with every other
+    // component reading `user` from this context, without writing
+    // anything to localStorage.
     //
     // Bails out (returns the SAME object reference) when nothing in the
     // patch actually differs from what's already on `user`. This matters
