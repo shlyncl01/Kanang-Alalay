@@ -2084,11 +2084,27 @@ const HeadCaregiverDashboard = () => {
             const mC = filterCaregiver === 'All' || String(l.caregiverId || '') === filterCaregiver;
             return mQ && mSt && mR && mC;
         });
-        return [...arr].sort((a, b) => {
-            const ta = new Date(a.scheduledTime || a.createdAt).getTime();
-            const tb = new Date(b.scheduledTime || b.createdAt).getTime();
-            return sortTime === 'Asc' ? ta - tb : tb - ta;
-        });
+
+        const getTime = (l) => new Date(l.scheduledTime || l.createdAt).getTime();
+        const dir = sortTime === 'Asc' ? 1 : -1;
+
+        // Group so every dose of the same medication for the same resident
+        // stays together (e.g. recurring schedules), instead of interleaving
+        // with other residents'/medications' rows that happen to fall at the
+        // same time. Groups themselves are still ordered by time, and doses
+        // within a group are sorted by time too, so the chosen Sort: Time
+        // direction is preserved overall.
+        const groups = new Map();
+        for (const item of arr) {
+            const key = `${item.residentId || item.residentName || ''}::${item.medicationId || item.medicationName || ''}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(item);
+        }
+
+        const groupArrs = [...groups.values()].map(g => [...g].sort((a, b) => dir * (getTime(a) - getTime(b))));
+        groupArrs.sort((ga, gb) => dir * (getTime(ga[0]) - getTime(gb[0])));
+
+        return groupArrs.flat();
     }, [schedule, searchQuery, filterStatus, filterResident, filterCaregiver, sortTime]);
 
     const filteredRes = useMemo(() => {
@@ -2544,12 +2560,20 @@ const HeadCaregiverDashboard = () => {
                                     </td></tr>
                                 ) : (
                                     pagedSched.map(item => {
-                                        const tStr = item.scheduledTime ? new Date(item.scheduledTime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—';
+                                        const schedDate = item.scheduledTime ? new Date(item.scheduledTime) : null;
+                                        const isToday = schedDate && schedDate.toDateString() === new Date().toDateString();
+                                        const tStr = schedDate ? schedDate.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) : '—';
+                                        // Recurring schedules span multiple dates, and this list also carries
+                                        // over unresolved doses from prior days — show the date whenever a
+                                        // row isn't from today so grouped/overdue rows aren't mistaken for
+                                        // duplicates of today's dose.
+                                        const dStr = schedDate && !isToday ? schedDate.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : null;
                                         const mins = item.status === 'overdue' ? getMinutesSince(item.scheduledTime) : null;
                                         return (
                                             <tr key={item._id}>
                                                 <td><Badge s={item.status} /></td>
                                                 <td className="sched-time-cell">
+                                                    {dStr && <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#b85c2d', marginBottom: 2 }}>{dStr}</div>}
                                                     {tStr}
                                                     {mins !== null && <div className="sched-overdue-min">({mins} min ago)</div>}
                                                 </td>
