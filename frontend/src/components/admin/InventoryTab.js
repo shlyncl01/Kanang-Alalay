@@ -976,7 +976,7 @@ const BulkReductionModal = ({ inventory, onClose, onReduced }) => {
     const header  = { padding: '18px 24px', background: 'linear-gradient(135deg, #b85c2d, #7d3a06)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 };
     const body    = { padding: '24px', overflowY: 'auto', flex: 1 };
     const footer  = { padding: '16px 24px', borderTop: '1.5px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FFF8F3', flexShrink: 0 };
-    const qtyInp  = (hasErr) => ({ width: 90, padding: '6px 9px', border: `1.5px solid ${hasErr ? '#dc3545' : '#E8D6CC'}`, borderRadius: 7, fontSize: '.82rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', fontFamily: "'DM Sans', sans-serif" });
+    const qtyInp  = (hasErr) => ({ width: '100%', maxWidth: 90, padding: '6px 9px', border: `1.5px solid ${hasErr ? '#dc3545' : '#E8D6CC'}`, borderRadius: 7, fontSize: '.82rem', background: '#FFF8F3', color: '#1A0A00', outline: 'none', boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" });
 
     return (
         <div style={overlay}>
@@ -1029,8 +1029,8 @@ const BulkReductionModal = ({ inventory, onClose, onReduced }) => {
                                             <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Item</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Batch</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Current Stock</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Reduce By</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Remaining</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 130 }}>Reduce By</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 110 }}>Remaining</th>
                                         </tr>
                                     </thead>
                                     <tbody>
