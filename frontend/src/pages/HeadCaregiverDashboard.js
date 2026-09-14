@@ -1192,6 +1192,7 @@ const ProfileModal = ({ resident, schedule, onClose, onSaved, doFetch, toast, on
                             <InfoRow label="Age" value={resident.age} />
                             <InfoRow label="Gender" value={resident.gender} />
                             <InfoRow label="Admission Date" value={resident.admissionDate ? new Date(resident.admissionDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : null} />
+                            <InfoRow label="Date of Birth" value={resident.dateOfBirth ? new Date(resident.dateOfBirth).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not provided'} />
                             <InfoRow label="Location" value={resident.location} />
                         </div>
 
