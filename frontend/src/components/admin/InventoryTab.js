@@ -531,15 +531,15 @@ const BulkImportModal = ({ onClose, onImported }) => {
                             <div style={{ overflowX: 'auto', maxHeight: 340 }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
                                     <thead>
-                                        <tr style={{ background: '#b85c2d', position: 'sticky', top: 0 }}>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>#</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Name</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Category</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Qty</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Unit</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Min</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>Expiry</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Status</th>
+                                        <tr>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap', background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>#</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Name</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Category</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Qty</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Unit</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Min</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap', background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Expiry</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1024,13 +1024,13 @@ const BulkReductionModal = ({ inventory, onClose, onReduced }) => {
                             <div style={{ overflowX: 'auto', maxHeight: 380 }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem' }}>
                                     <thead>
-                                        <tr style={{ background: '#b85c2d', position: 'sticky', top: 0 }}>
-                                            <th style={{ padding: '10px 12px', width: 34 }}></th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Item</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Batch</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700 }}>Current Stock</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 130 }}>Reduce By</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 110 }}>Remaining</th>
+                                        <tr>
+                                            <th style={{ padding: '10px 12px', width: 34, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}></th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Item</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Batch</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1, whiteSpace: 'nowrap' }}>Current Stock</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 130, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Reduce By</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontWeight: 700, width: 110, background: '#b85c2d', position: 'sticky', top: 0, zIndex: 1 }}>Remaining</th>
                                         </tr>
                                     </thead>
                                     <tbody>
