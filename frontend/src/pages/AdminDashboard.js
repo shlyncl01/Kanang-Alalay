@@ -744,6 +744,7 @@ const AdminDashboard = () => {
     const [inventory, setInventory] = useState([]);
     const [residentStats, setResidentStats] = useState({ totalResidents: 0, averageAge: 0, conditionStats: [] });
     const [dbAlerts, setDbAlerts] = useState([]);
+    const [activityLogs, setActivityLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
@@ -1190,17 +1191,19 @@ const AdminDashboard = () => {
     const loadAllData = useCallback(async (silent = false) => {
         if (silent) setIsAutoRefreshing(true); else setLoading(true);
         setApiError(null);
-        const [bRes, dRes, sRes, iRes, complianceRes] = await Promise.all([
+        const [bRes, dRes, sRes, iRes, complianceRes, aRes] = await Promise.all([
             fetchApi('/bookings?limit=100'),
             fetchApi('/donations?limit=100'),
             fetchApi('/stats'),
             fetchApi('/inventory?limit=100'),
             fetchApi('/medications/compliance/stats'),
+            fetchApi('/admin/activity-logs?limit=15'),
         ]);
         if (bRes.success) setBookings(bRes.data || []);
         if (dRes.success) setDonations(dRes.data || []);
         if (sRes.success && sRes.data) setStats(p => ({ ...p, ...sRes.data }));
         if (iRes.success) setInventory(iRes.data || []);
+        if (aRes.success) setActivityLogs(aRes.data || []);
 
         if (complianceRes.success && complianceRes.stats) {
             setStats(p => ({
@@ -1801,7 +1804,12 @@ const AdminDashboard = () => {
     const renderOverview = () => (
         <OverviewTab
             stats={stats}
-            activities={[]}
+            activities={activityLogs.map(log => ({
+                time: timeAgo(log.createdAt),
+                details: log.user
+                    ? `${log.user.firstName} ${log.user.lastName}: ${log.details}`
+                    : log.details,
+            }))}
             setActiveSection={setActiveSection}
             bookings={bookings}
             donations={donations}

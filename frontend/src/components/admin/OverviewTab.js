@@ -147,7 +147,7 @@ const ReportsSection = ({ stats = {}, bookings = [], donations = [], staff = [],
         { icon: <FaMoneyBillWave />, bg: '#28a745', title: 'Donations Summary', value: `₱${totalDonationAmount.toLocaleString()}`, subtext: `${filteredDonations.length} total donations`, actions: [{ label: 'PDF', fn: () => exportPDF('Donations Summary') }, { label: 'CSV', fn: () => exportCSV('donations') }] },
         { icon: <FaBox />, bg: lowStockCount > 0 ? '#dc3545' : '#17a2b8', title: 'Inventory Status', value: inventory.length, subtext: `${lowStockCount} low stock · ${inventory.filter(i => i.quantity === 0).length} out of stock`, actions: [{ label: 'PDF', fn: () => exportPDF('Inventory Report') }, { label: 'CSV', fn: () => exportCSV('inventory') }] },
         { icon: <FaExclamationTriangle />, bg: '#6c757d', title: 'Pending Approvals', value: pendingBookings, subtext: 'Bookings awaiting review', actions: [{ label: 'PDF', fn: () => exportPDF('Bookings Summary') }] },
-        { icon: <FaChartBar />, bg: '#6f42c1', title: 'Compliance Rate', value: `${stats.complianceRate || 92}%`, subtext: 'Medication adherence', actions: [{ label: 'PDF', fn: () => exportPDF('Compliance Report') }] },
+        { icon: <FaChartBar />, bg: '#6f42c1', title: 'Compliance Rate', value: stats.complianceRate != null ? `${stats.complianceRate}%` : '—', subtext: 'Medication adherence', actions: [{ label: 'PDF', fn: () => exportPDF('Compliance Report') }] },
     ];
 
     return (
@@ -361,7 +361,7 @@ const OverviewTab = ({
         {
             bg: '#ffc107',
             icon: <FaChartBar />,
-            val: `${stats.complianceRate || 92}%`,
+            val: stats.complianceRate != null ? `${stats.complianceRate}%` : '—',
             label: 'Compliance Rate',
             section: null,
         },

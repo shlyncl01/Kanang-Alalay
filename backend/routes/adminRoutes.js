@@ -452,6 +452,13 @@ router.put('/bookings/:id/status', async (req, res) => {
 
         await booking.save();
 
+        await ActivityLog.create({
+            action: `BOOKING_${status.toUpperCase()}`,
+            details: `Booking for ${booking.name || `${booking.firstName} ${booking.lastName}`} on ${new Date(booking.visitDate).toLocaleDateString()} marked "${status}"${rejectionReason ? ` — ${rejectionReason}` : ''}`,
+            user: req.user._id,
+            targetId: booking._id,
+        }).catch(() => {});
+
         if (status === 'rejected' && rejectionReason) {
             try {
                 const { generateBookingRejectionTemplate } = require('../models/mailer');
@@ -779,6 +786,13 @@ router.delete('/staff/:id', async (req, res) => {
             });
         }
 
+        await ActivityLog.create({
+            action: 'STAFF_DELETED',
+            details: `Staff member ${deleted.firstName} ${deleted.lastName} (${deleted.role || 'no role'}) was permanently deleted`,
+            user: req.user._id,
+            targetId: deleted._id,
+        }).catch(() => {});
+
         res.json({
             success: true,
             message: 'Staff member deleted successfully.'
@@ -790,6 +804,26 @@ router.delete('/staff/:id', async (req, res) => {
             success: false,
             message: 'Server error deleting staff'
         });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/admin/activity-logs
+// ─────────────────────────────────────────────────────────────
+router.get('/activity-logs', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 15, 100);
+
+        const logs = await ActivityLog.find()
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .populate('user', 'firstName lastName role')
+            .lean();
+
+        res.json({ success: true, data: logs });
+    } catch (error) {
+        console.error('Fetch activity logs error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch activity logs.' });
     }
 });
 
