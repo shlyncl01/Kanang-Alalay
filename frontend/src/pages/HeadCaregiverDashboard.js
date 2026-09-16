@@ -2320,7 +2320,7 @@ const HeadCaregiverDashboard = () => {
                     <h6>Quick Actions</h6>
                     <div className="quick-actions-grid">
                         {[
-                            { icon: <FaPlus />, label: 'Add Medication', action: () => openModal({ type: 'addSchedule' }), onDutyOnly: true },
+                            { icon: <FaPlus />, label: 'Schedule Medication', action: () => openModal({ type: 'addSchedule' }), onDutyOnly: true },
                             { icon: <FaUsers />, label: 'Add Resident', action: () => openModal({ type: 'addResident' }), onDutyOnly: true },
                             { icon: <FaBoxOpen />, label: 'Request Stock', action: () => openModal({ type: 'requestStock' }), onDutyOnly: true },
                             { icon: <FaFileAlt />, label: 'Med Reports', action: () => setSection('medicines') },
@@ -2540,7 +2540,7 @@ const HeadCaregiverDashboard = () => {
                     </select>
                     <div className="med-action-btns">
                         <RefreshBtn onClick={refreshMedicinesPage} title="Refresh medication tables" />
-                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Add Medication</button>
+                        <button className="btn-primary-sm" onClick={() => openModal({ type: 'addSchedule' })} disabled={!onDuty} title={onDuty ? undefined : "Not available while off duty"}><FaPlus /> Schedule Medication</button>
                     </div>
                 </div>
 
@@ -2645,7 +2645,7 @@ const HeadCaregiverDashboard = () => {
                                                             <button
                                                                 className="res-action-icon"
                                                                 onClick={() => openModal({ type: 'addSchedule', data: { residentId: m.residentId } })}
-                                                                title={onDuty ? "Add Medication" : "Not available while off duty"}
+                                                                title={onDuty ? "Schedule Medication" : "Not available while off duty"}
                                                                 disabled={!onDuty}
                                                             >
                                                                 <FaPlus />
@@ -2850,7 +2850,7 @@ const HeadCaregiverDashboard = () => {
                         {[
                             { key: 'home', icon: <FaHome />, label: 'Home' },
                             { key: 'residents', icon: <FaUsers />, label: 'Residents' },
-                            { key: 'medicines', icon: <FaPills />, label: 'Medicines', badge: stats.overdue },
+                            { key: 'medicines', icon: <FaPills />, label: 'Medication', badge: stats.overdue },
                             { key: 'stock', icon: <FaBoxOpen />, label: 'Shared Stock' },
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key} className={activeSection === key ? 'active' : ''} onClick={() => { setSection(key); setMobileMenuOpen(false); }}>
