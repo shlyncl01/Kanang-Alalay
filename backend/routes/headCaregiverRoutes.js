@@ -20,6 +20,7 @@ const Alert = require('../models/Alert');
 const ComplianceHistory = require('../models/ComplianceHistory');
 const { getStockStatus } = require('../utils/stockStatus');
 const { protect } = require('../middleware/authMiddleware');
+const { logAudit } = require('../utils/auditLog');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
 const { isOnDuty } = require('../utils/shiftUtils');
 
@@ -378,6 +379,15 @@ router.post('/residents', async (req, res) => {
         });
         await resident.save();
 
+        logAudit(req, {
+            action: 'RESIDENT_ADDED',
+            module: 'Residents',
+            description: `Added resident ${resident.firstName} ${resident.lastName || ''}`.trim() + ` — Room ${resident.roomNumber}${resident.floor ? ' (' + resident.floor + ')' : ''}`,
+            targetId: resident._id,
+            targetLabel: `${resident.firstName} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
+
         // Fetch the full resident with populated caregiver info for response
         const savedResident = await Resident.findById(resident._id)
             .populate('primaryCaregiverId', 'firstName lastName role');
@@ -459,6 +469,15 @@ router.put('/residents/:id', async (req, res) => {
             .populate('primaryCaregiverId', 'firstName lastName role');
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found.' });
 
+        logAudit(req, {
+            action: 'RESIDENT_EDITED',
+            module: 'Residents',
+            description: `Updated resident ${resident.firstName} ${resident.lastName || ''}`.trim(),
+            targetId: resident._id,
+            targetLabel: `${resident.firstName} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
+
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'update' });
 
@@ -528,6 +547,15 @@ router.put('/residents/:id/discharge', async (req, res) => {
         resident.bed = '';
 
         await resident.save();
+
+        logAudit(req, {
+            action: 'RESIDENT_DISCHARGED',
+            module: 'Residents',
+            description: `${resident.firstName} ${resident.lastName || ''}`.trim() + ` marked as ${resident.status} (reason: ${reason})${reason === 'deceased' ? ` — ${causeOfDeath.trim()}` : ''}`,
+            targetId: resident._id,
+            targetLabel: `${resident.firstName} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'discharge' });
@@ -603,6 +631,15 @@ async function assignCaregiverToResident(req, res) {
             },
             { new: true, runValidators: true }
         ).populate('primaryCaregiverId', 'firstName lastName role');
+
+        logAudit(req, {
+            action: 'RESIDENT_EDITED',
+            module: 'Residents',
+            description: `${caregiverName} assigned as primary caregiver for ${updated.firstName} ${updated.lastName}`.trim(),
+            targetId: updated._id,
+            targetLabel: `${updated.firstName} ${updated.lastName}`.trim(),
+            targetModel: 'Resident',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: updated._id, reason: 'assign-caregiver' });
@@ -1021,6 +1058,16 @@ router.post('/schedule', async (req, res) => {
             }
 
             const created = await MedicationLog.insertMany(docs);
+
+            logAudit(req, {
+                action: 'MEDICATION_SCHEDULED',
+                module: 'Medication',
+                description: `Scheduled ${created.length} recurring dose(s) of ${medication.name} (${finalDosage}) for ${resident.firstName} ${resident.lastName}`.trim(),
+                targetId: resident._id,
+                targetLabel: `${resident.firstName} ${resident.lastName}`.trim(),
+                targetModel: 'Resident',
+            });
+
             return res.status(201).json({
                 success: true,
                 message: `${created.length} dose${created.length === 1 ? '' : 's'} scheduled.`,
@@ -1052,6 +1099,15 @@ router.post('/schedule', async (req, res) => {
             scheduleType: 'one_time',
         });
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_SCHEDULED',
+            module: 'Medication',
+            description: `Scheduled ${medication.name} (${finalDosage}) for ${resident.firstName} ${resident.lastName} at ${when.toLocaleString()}`.trim(),
+            targetId: log._id,
+            targetLabel: `${resident.firstName} ${resident.lastName}`.trim(),
+            targetModel: 'MedicationLog',
+        });
 
         res.status(201).json({ success: true, data: shapeLog(log) });
     } catch (err) {
@@ -1316,6 +1372,15 @@ router.put('/schedule/:id/status', async (req, res) => {
                     console.error('Failed to create medication administration alert:', notifyErr);
                 }
 
+                logAudit(req, {
+                    action: 'MEDICATION_ADMINISTERED',
+                    module: 'Medication',
+                    description: `${medication.name} administered for ${claimed.residentName || 'resident'} — ${administeredQuantity} ${product.unit} deducted from assigned stock`,
+                    targetId: claimed._id,
+                    targetLabel: claimed.residentName || '',
+                    targetModel: 'MedicationLog',
+                });
+
                 return res.json({
                     success: true,
                     data: shapeLog(claimed),
@@ -1344,6 +1409,22 @@ router.put('/schedule/:id/status', async (req, res) => {
         // be inferred from req.user at administer time.
         if (status === 'pending') log.preparingHeadCaregiverId = req.user._id;
         await log.save();
+
+        const STATUS_ACTION = {
+            missed: 'MEDICATION_MARKED_MISSED',
+            overdue: 'MEDICATION_MARKED_OVERDUE',
+            skipped: 'MEDICATION_CANCELLED',
+            pending: 'MEDICATION_PREPARED',
+            scheduled: 'MEDICATION_STATUS_CHANGED',
+        };
+        logAudit(req, {
+            action: STATUS_ACTION[status] || 'MEDICATION_STATUS_CHANGED',
+            module: 'Medication',
+            description: `${log.medicationName || 'Medication'} for ${log.residentName || 'resident'} marked "${status}"${notes ? ` — ${notes}` : ''}`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
 
         res.json({ success: true, data: shapeLog(log), message: `Medication marked as ${status}.` });
     } catch (err) {
@@ -1379,6 +1460,16 @@ router.put('/schedule/:id', async (req, res) => {
             .populate('medicationId', 'name dosage form purpose');
 
         if (!log) return res.status(404).json({ success: false, message: 'Log not found.' });
+
+        logAudit(req, {
+            action: 'MEDICATION_SCHEDULE_EDITED',
+            module: 'Medication',
+            description: `Edited schedule for ${log.medicationName || 'medication'} — ${[log.residentId?.firstName, log.residentId?.lastName].filter(Boolean).join(' ') || 'resident'}`,
+            targetId: log._id,
+            targetLabel: [log.residentId?.firstName, log.residentId?.lastName].filter(Boolean).join(' '),
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: shapeLog(log) });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -1395,6 +1486,15 @@ router.delete('/schedule/:id', async (req, res) => {
         if (!log) return res.status(404).json({ success: false, message: 'Medication log not found.' });
 
         await MedicationLog.deleteOne({ _id: req.params.id });
+
+        logAudit(req, {
+            action: 'MEDICATION_SCHEDULE_CANCELLED',
+            module: 'Medication',
+            description: `Cancelled schedule for ${log.medicationName || 'medication'} — ${log.residentName || 'resident'}`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: log.residentId, reason: 'medication-deleted' });
@@ -1589,6 +1689,15 @@ router.post('/inventory/request', async (req, res) => {
         });
         await request.save();
         await request.populate('requestedBy', 'firstName lastName role');
+
+        logAudit(req, {
+            action: 'STOCK_REQUEST_SUBMITTED',
+            module: 'Inventory',
+            description: `Requested ${quantity} ${product.unit} of "${product.name}"${reason ? ` — ${reason.trim()}` : ''}`,
+            targetId: request._id,
+            targetLabel: product.name,
+            targetModel: 'StockRequest',
+        });
 
         // NOTE: intentionally no Inventory or HCAssignedStock write here —
         // see the Part 5 "IMPORTANT STOCK RULE": Admin Central Stock and

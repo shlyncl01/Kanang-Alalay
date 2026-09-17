@@ -12,6 +12,7 @@
 // See server.js.
 const Donation = require('../models/Donation');
 const paymentService = require('../services/paymentService');
+const { logAudit } = require('../utils/auditLog');
 
 // Best-effort mapping from PayMongo's payment source type to the donation's
 // existing paymentMethod enum. Falls back to 'qrph' for anything unmapped
@@ -118,12 +119,30 @@ module.exports = async function paymongoWebhookHandler(req, res) {
             await donation.save();
             console.log('[PayMongo Webhook] Donation marked PAID:', donation.donationId);
 
+            logAudit(req, {
+                action: 'DONATION_VERIFIED',
+                module: 'Donations',
+                description: `PayMongo confirmed payment for donation ${donation.donationId} — ₱${donation.amount} via ${donation.paymentMethod}${donation.receiptNumber ? `, receipt ${donation.receiptNumber}` : ''}`,
+                targetId: donation._id,
+                targetLabel: donation.donorName,
+                targetModel: 'Donation',
+            });
+
             if (io) io.emit('update_donation', donation);
         } else if (eventType === 'checkout_session.payment.failed') {
             const donation = await findDonationForSession(resource);
             if (donation && donation.paymentStatus === 'pending') {
                 donation.paymentStatus = 'failed';
                 await donation.save();
+                logAudit(req, {
+                    action: 'DONATION_PAYMENT_FAILED',
+                    module: 'Donations',
+                    status: 'failed',
+                    description: `PayMongo reported failed payment for donation ${donation.donationId}`,
+                    targetId: donation._id,
+                    targetLabel: donation.donorName,
+                    targetModel: 'Donation',
+                });
                 if (io) io.emit('update_donation', donation);
             }
         }

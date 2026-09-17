@@ -6,23 +6,7 @@ const User = require('../models/User');
 const RegistrationCode = require('../models/VerificationCode');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { protect } = require('../middleware/authMiddleware');
-
-// ActivityLog is optional — wrapped in try/catch everywhere it's used so a
-// missing/mismatched field in your existing schema never breaks the reset flow.
-let ActivityLog = null;
-try {
-    ActivityLog = require('../models/ActivityLog');
-} catch (e) {
-    console.warn('ActivityLog model not found — password reset attempts will not be audit-logged.');
-}
-const logActivity = async (fields) => {
-    if (!ActivityLog) return;
-    try {
-        await ActivityLog.create(fields);
-    } catch (err) {
-        console.error('ActivityLog write failed (non-fatal):', err.message);
-    }
-};
+const { logAudit } = require('../utils/auditLog');
 
 // ── OTP hashing ───────────────────────────────────────────────────────────────
 // OTPs are never stored in plain text — only their SHA-256 hash is persisted.
@@ -139,6 +123,24 @@ router.post('/login', async (req, res) => {
         const user = await User.findOne({ $or: [{ email: username }, { username }] });
 
         if (!user || !(await user.comparePassword(password))) {
+            if (user) {
+                logAudit({ user }, {
+                    action: 'LOGIN_FAILED',
+                    module: 'Login/Account Security',
+                    status: 'failed',
+                    description: `Failed login attempt (incorrect password) for ${user.username || user.email}`,
+                    targetId: user._id,
+                    targetLabel: user.username || user.email,
+                    targetModel: 'User',
+                });
+            } else {
+                logAudit({}, {
+                    action: 'LOGIN_FAILED',
+                    module: 'Login/Account Security',
+                    status: 'failed',
+                    description: `Failed login attempt for unknown account "${username}"`,
+                });
+            }
             return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         }
 
@@ -191,6 +193,15 @@ router.post('/login', async (req, res) => {
                 restricted: 'This account has been blocked.',
                 suspended: 'This account has been blocked.',
             };
+            logAudit({ user }, {
+                action: 'LOGIN_BLOCKED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Login attempt on ${user.status} account (${user.username || user.email})`,
+                targetId: user._id,
+                targetLabel: user.username || user.email,
+                targetModel: 'User',
+            });
             return res.status(403).json({
                 success: false,
                 message: (statusMessages[user.status] || `Your account is ${user.status.replace('_', ' ')}.`) + ' Please contact your administrator.',
@@ -240,6 +251,15 @@ router.post('/login', async (req, res) => {
 
         setTokenCookie(res, token);
 
+        logAudit({ user }, {
+            action: 'LOGIN_SUCCESS',
+            module: 'Login/Account Security',
+            description: `${user.username || user.email} logged in (${isMobileLogin ? 'mobile' : 'web'})`,
+            targetId: user._id,
+            targetLabel: user.username || user.email,
+            targetModel: 'User',
+        });
+
         res.json({
             success: true,
             token,
@@ -266,6 +286,25 @@ router.post('/login', async (req, res) => {
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 router.post('/logout', (req, res) => {
+    // Logout is otherwise stateless (the client just discards the cookie), so
+    // this decode is purely for attribution and never blocks the logout
+    // response — an expired/missing/invalid token just means no log entry.
+    try {
+        const token = req.cookies?.[COOKIE_NAME] || req.headers.authorization?.replace('Bearer ', '');
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+            logAudit({ user: { _id: decoded.userId, role: decoded.role } }, {
+                action: 'LOGOUT',
+                module: 'Login/Account Security',
+                description: `${decoded.username || decoded.email || 'User'} logged out`,
+                targetId: decoded.userId,
+                targetLabel: decoded.username || decoded.email || '',
+                targetModel: 'User',
+            });
+        }
+    } catch (err) {
+        // Invalid/expired token — nothing to attribute, logout proceeds regardless.
+    }
     clearTokenCookie(res);
     res.json({ success: true, message: 'Logged out successfully.' });
 });
@@ -326,6 +365,15 @@ router.post('/verify-first-login', async (req, res) => {
         );
 
         setTokenCookie(res, token);
+
+        logAudit({ user }, {
+            action: 'LOGIN_SUCCESS',
+            module: 'Login/Account Security',
+            description: `${user.username || user.email} completed first-login verification (${isMobileLogin ? 'mobile' : 'web'})`,
+            targetId: user._id,
+            targetLabel: user.username || user.email,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
@@ -613,7 +661,12 @@ router.post('/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, k
 
         const user = await User.findOne({ email: email.trim() });
         if (!user) {
-            await logActivity({ action: 'password_reset_requested', details: `Forgot-password request for unregistered email: ${email.trim()}` });
+            logAudit({}, {
+                action: 'PASSWORD_RESET_REQUESTED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Password reset requested for unregistered email: ${email.trim()}`,
+            });
             return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
         }
 
@@ -631,7 +684,14 @@ router.post('/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, k
             console.error('Email send FAILED (OTP still saved in DB):', mailError.message);
         }
 
-        await logActivity({ user: user._id, action: 'password_reset_requested', details: `OTP sent to ${user.email} for password reset` });
+        logAudit({ user }, {
+            action: 'PASSWORD_RESET_REQUESTED',
+            module: 'Login/Account Security',
+            description: `Password reset OTP sent to ${user.email}`,
+            targetId: user._id,
+            targetLabel: user.email,
+            targetModel: 'User',
+        });
 
         res.json({ success: true, message: 'A verification code has been sent to your email.' });
     } catch (error) {
@@ -661,7 +721,15 @@ router.post('/verify-reset-otp', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, 
             user.resetPasswordOtp = undefined;
             user.resetPasswordOtpExpires = undefined;
             await user.save();
-            await logActivity({ user: user._id, action: 'password_reset_otp_locked', details: `Reset OTP locked after ${MAX_OTP_ATTEMPTS} failed attempts for ${user.email}` });
+            logAudit({ user }, {
+                action: 'PASSWORD_RESET_OTP_LOCKED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Reset OTP locked after ${MAX_OTP_ATTEMPTS} failed attempts for ${user.email}`,
+                targetId: user._id,
+                targetLabel: user.email,
+                targetModel: 'User',
+            });
             return res.status(429).json({ success: false, message: 'Too many incorrect attempts. Please request a new verification code.' });
         }
 
@@ -674,7 +742,15 @@ router.post('/verify-reset-otp', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, 
         if (hashOtp(otp) !== user.resetPasswordOtp) {
             user.resetOtpAttempts = (user.resetOtpAttempts || 0) + 1;
             await user.save();
-            await logActivity({ user: user._id, action: 'password_reset_otp_failed', details: `Incorrect reset OTP entered for ${user.email} (attempt ${user.resetOtpAttempts})` });
+            logAudit({ user }, {
+                action: 'PASSWORD_RESET_OTP_FAILED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Incorrect reset OTP entered for ${user.email} (attempt ${user.resetOtpAttempts})`,
+                targetId: user._id,
+                targetLabel: user.email,
+                targetModel: 'User',
+            });
             return res.status(400).json({ success: false, message: 'Invalid verification code.' });
         }
 
@@ -690,7 +766,14 @@ router.post('/verify-reset-otp', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, 
             { expiresIn: '10m' }
         );
 
-        await logActivity({ user: user._id, action: 'password_reset_otp_verified', details: `Reset OTP verified successfully for ${user.email}` });
+        logAudit({ user }, {
+            action: 'PASSWORD_RESET_OTP_VERIFIED',
+            module: 'Login/Account Security',
+            description: `Reset OTP verified successfully for ${user.email}`,
+            targetId: user._id,
+            targetLabel: user.email,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
@@ -744,6 +827,15 @@ router.post('/reset-password', async (req, res) => {
         user.resetPasswordOtpExpires = undefined;
         await user.save();
 
+        logAudit({ user }, {
+            action: 'PASSWORD_RESET_COMPLETED',
+            module: 'Login/Account Security',
+            description: `Password successfully reset for ${user.email}`,
+            targetId: user._id,
+            targetLabel: user.email,
+            targetModel: 'User',
+        });
+
         res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
     } catch (error) {
         console.error('Reset password error:', error);
@@ -789,7 +881,14 @@ router.post('/reset-password-with-otp', async (req, res) => {
         user.resetOtpResendWindowStart = undefined;
         await user.save();
 
-        await logActivity({ user: user._id, action: 'password_reset_completed', details: `Password successfully reset for ${user.email}` });
+        logAudit({ user }, {
+            action: 'PASSWORD_RESET_COMPLETED',
+            module: 'Login/Account Security',
+            description: `Password successfully reset for ${user.email}`,
+            targetId: user._id,
+            targetLabel: user.email,
+            targetModel: 'User',
+        });
 
         res.json({ success: true, message: 'Your password has been successfully updated. Please log in with your new password.' });
     } catch (error) {
@@ -835,7 +934,14 @@ router.post('/resend-reset-otp', async (req, res) => {
             console.error('Email error:', mailError.message);
         }
 
-        await logActivity({ user: user._id, action: 'password_reset_otp_resent', details: `Reset OTP resent to ${user.email} (resend ${user.resetOtpResendCount}/${MAX_RESENDS})` });
+        logAudit({ user }, {
+            action: 'PASSWORD_RESET_OTP_RESENT',
+            module: 'Login/Account Security',
+            description: `Reset OTP resent to ${user.email} (resend ${user.resetOtpResendCount}/${MAX_RESENDS})`,
+            targetId: user._id,
+            targetLabel: user.email,
+            targetModel: 'User',
+        });
 
         res.json({ success: true, message: 'New verification code sent to your email.' });
     } catch (error) {

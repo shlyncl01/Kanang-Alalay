@@ -721,7 +721,7 @@ router.put('/staff/:id/status', async (req, res) => {
 
         logAudit(req, {
             action: 'STATUS_CHANGE',
-            module: 'User Management',
+            module: 'Staff Roster',
             description: `Status changed to "${status}" for ${target.firstName} ${target.lastName}${reason ? ` — ${reason}` : ''}`,
             targetId: target._id,
             targetLabel: `${target.firstName} ${target.lastName}`,
@@ -783,7 +783,7 @@ router.put('/staff/:id/role', async (req, res) => {
 
         logAudit(req, {
             action: 'ROLE_CHANGE',
-            module: 'User Management',
+            module: 'Staff Roster',
             description: `Role changed from "${oldRole}" to "${role}" for ${user.firstName} ${user.lastName}`,
             targetId: user._id,
             targetLabel: `${user.firstName} ${user.lastName}`,
@@ -824,7 +824,7 @@ router.delete('/staff/:id', async (req, res) => {
 
         logAudit(req, {
             action: 'STAFF_DELETED',
-            module: 'User Management',
+            module: 'Staff Roster',
             description: `Staff member ${deleted.firstName} ${deleted.lastName} (${deleted.role || 'no role'}) was permanently deleted`,
             targetId: deleted._id,
             targetLabel: `${deleted.firstName} ${deleted.lastName}`,
@@ -1004,6 +1004,14 @@ router.post('/generate-codes', async (req, res) => {
             await newCode.save();
             codes.push(newCode);
         }
+
+        logAudit(req, {
+            action: 'REGISTRATION_CODES_GENERATED',
+            module: 'User Management',
+            description: `Generated ${count} registration code(s) for role "${role}"`,
+            targetLabel: `${count} code(s) — ${role}`,
+            targetModel: 'RegistrationCode',
+        });
 
         res.json({
             success: true,
@@ -1566,11 +1574,13 @@ router.post('/staff/:id/attendance', async (req, res) => {
             });
         }
 
-        await ActivityLog.create({
+        logAudit(req, {
             action: 'ATTENDANCE',
-            details: `Attendance logged for ${user.firstName} ${user.lastName} at ${new Date().toLocaleTimeString()}`,
-            user: req.user._id,
+            module: 'Staff Roster',
+            description: `Attendance logged for ${user.firstName} ${user.lastName} at ${new Date().toLocaleTimeString()}`,
             targetId: user._id,
+            targetLabel: `${user.firstName} ${user.lastName}`,
+            targetModel: 'User',
         });
 
         res.json({
@@ -2009,7 +2019,7 @@ router.post('/staff/:id/action-log', async (req, res) => {
 
         logAudit(req, {
             action: (action || 'STAFF_ACTION').toUpperCase(),
-            module: 'User Management',
+            module: 'Staff Roster',
             description: `${action}${target ? ` for ${target.firstName} ${target.lastName}` : ''}: ${reason || 'No reason provided'} | Effective: ${effectiveDate || 'Immediate'} | New status: ${newStatus || 'N/A'} | Notes: ${notes || 'None'}`,
             targetId: req.params.id,
             targetLabel: target ? `${target.firstName} ${target.lastName}` : '',

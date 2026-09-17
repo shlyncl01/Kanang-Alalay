@@ -6,6 +6,7 @@ const Resident = require('../models/Resident');
 const MedicationLog = require('../models/MedicationLog');
 const ScanHistory = require('../models/ScanHistory');
 const { protect } = require('../middleware/authMiddleware');
+const { logAudit } = require('../utils/auditLog');
 
 const canSeeAllScans = (user) => ['admin', 'head_caregiver'].includes(user.role);
 
@@ -212,6 +213,15 @@ router.post('/confirm', protect, async (req, res) => {
       embeddedMedication.status = 'administered';
       embeddedMedication.lastAdministered = new Date();
       await resident.save();
+
+      logAudit(req, {
+        action: 'MEDICATION_ADMINISTERED',
+        module: 'Medication',
+        description: `${embeddedMedication.name || medicationName} administered (scan) for ${resident.fullName || `${resident.firstName || ''} ${resident.lastName || ''}`.trim()}`,
+        targetId: resident._id,
+        targetLabel: resident.fullName || `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+        targetModel: 'Resident',
+      });
     }
 
     scanHistory.status = 'confirmed';

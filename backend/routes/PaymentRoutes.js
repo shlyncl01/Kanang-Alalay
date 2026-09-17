@@ -4,6 +4,7 @@ const Payment = require('../models/Payment');
 const Donation = require('../models/Donation');
 const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
 const paymentService = require('../services/paymentService');
+const { logAudit } = require('../utils/auditLog');
 
 // Create payment intent
 router.post('/create-intent', async (req, res) => {
@@ -25,6 +26,15 @@ router.post('/create-intent', async (req, res) => {
                 status: paymentMethod === 'cash' ? 'pending' : 'processing'
             });
             await payment.save();
+
+            logAudit(req, {
+                action: 'DONATION_STATUS_CHANGED',
+                module: 'Donations',
+                description: `Payment record created for donation ${donationId} — method: ${paymentMethod}, status: ${payment.status}`,
+                targetId: donation._id,
+                targetLabel: donation.donorName,
+                targetModel: 'Donation',
+            });
 
             return res.json({
                 paymentId: payment.paymentId,
@@ -92,6 +102,14 @@ router.get('/status/:paymentId', async (req, res) => {
                 await Donation.findByIdAndUpdate(payment.donationId, { 
                     status: 'completed',
                     paymentMethod: payment.paymentMethod
+                });
+
+                logAudit(req, {
+                    action: 'DONATION_VERIFIED',
+                    module: 'Donations',
+                    description: `Donation ${payment.donationId} marked completed via payment status check — ₱${payment.amount} via ${payment.paymentMethod}`,
+                    targetId: payment.donationId,
+                    targetModel: 'Donation',
                 });
             }
         }

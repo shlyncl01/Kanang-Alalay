@@ -10,6 +10,7 @@ const { isOnDuty } = require('../utils/shiftUtils');
 const imageUpload = require('../middleware/imageUpload');
 const streamifier = require('streamifier');
 const cloudinary = require('../config/cloudinary');
+const { logAudit } = require('../utils/auditLog');
 
 // A caregiver may only administer medication while on duty — re-checked
 // fresh against the real clock on every request. Scanning a medication for
@@ -333,6 +334,15 @@ router.post('/:id/administer/:medId', protect, async (req, res) => {
             },
         }).catch((err) => console.error('[Alert] Failed to notify administered:', err.message));
 
+        logAudit(req, {
+            action: 'MEDICATION_ADMINISTERED',
+            module: 'Medication',
+            description: `${log.medicationName || 'Medication'} administered (scan) for ${log.residentName || resident.fullName || 'resident'}`,
+            targetId: log._id,
+            targetLabel: log.residentName || resident.fullName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: log });
     } catch (error) {
         console.error(error);
@@ -421,6 +431,15 @@ router.post('/', protect, adminOnly, async (req, res) => {
         const resident = new Resident({ residentId, ...req.body });
         await resident.save();
 
+        logAudit(req, {
+            action: 'RESIDENT_ADDED',
+            module: 'Residents',
+            description: `Added resident ${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+            targetId: resident._id,
+            targetLabel: `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
+
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'create' });
 
@@ -445,6 +464,15 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
 
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
 
+        logAudit(req, {
+            action: 'RESIDENT_EDITED',
+            module: 'Residents',
+            description: `Updated resident ${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+            targetId: resident._id,
+            targetLabel: `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
+
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'update' });
 
@@ -460,6 +488,15 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
     try {
         const resident = await Resident.findByIdAndDelete(req.params.id);
         if (!resident) return res.status(404).json({ success: false, message: 'Resident not found' });
+
+        logAudit(req, {
+            action: 'RESIDENT_REMOVED',
+            module: 'Residents',
+            description: `Resident ${resident.firstName || ''} ${resident.lastName || ''} was permanently deleted`.trim(),
+            targetId: resident._id,
+            targetLabel: `${resident.firstName || ''} ${resident.lastName || ''}`.trim(),
+            targetModel: 'Resident',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('residentsUpdated', { residentId: resident._id, reason: 'delete' });

@@ -3,6 +3,7 @@ const router = express.Router();
 const Booking = require('../models/Booking');
 const { sendEmail, generateBookingTemplate, generateBookingConfirmationTemplate, generateBookingRejectionTemplate, generateBookingCancelledTemplate } = require('../models/mailer');
 const { autoCompletePastBookings } = require('../utils/bookingAutoComplete');
+const { logAudit } = require('../utils/auditLog');
 
 // Validation helper function
 const validateBookingInput = (data) => {
@@ -107,6 +108,15 @@ router.post('/', async (req, res) => {
 
         const booking = new Booking(bookingData);
         await booking.save();
+
+        logAudit(req, {
+            action: 'BOOKING_CREATED',
+            module: 'Bookings',
+            description: `Booking request submitted by ${booking.name} for ${new Date(booking.visitDate).toLocaleDateString()} at ${booking.visitTime} (${booking.purpose})`,
+            targetId: booking._id,
+            targetLabel: booking.name,
+            targetModel: 'Booking',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('new_booking', booking);
@@ -244,7 +254,16 @@ router.put('/:id/status', async (req, res) => {
         }
         
         await booking.save();
-        
+
+        logAudit(req, {
+            action: `BOOKING_${status.toUpperCase()}`,
+            module: 'Bookings',
+            description: `Booking for ${booking.name} on ${new Date(booking.visitDate).toLocaleDateString()} marked "${status}"${status === 'rejected' && rejectionReason ? ` — ${rejectionReason.trim()}` : ''}`,
+            targetId: booking._id,
+            targetLabel: booking.name,
+            targetModel: 'Booking',
+        });
+
         // Send email notification based on status change
         let emailSent = false;
         let emailError = null;
@@ -327,7 +346,16 @@ router.delete('/:id', async (req, res) => {
         }
         
         await Booking.findByIdAndDelete(req.params.id);
-        
+
+        logAudit(req, {
+            action: 'BOOKING_DELETED',
+            module: 'Bookings',
+            description: `Booking for ${booking.name} on ${new Date(booking.visitDate).toLocaleDateString()} was deleted`,
+            targetId: booking._id,
+            targetLabel: booking.name,
+            targetModel: 'Booking',
+        });
+
         const io = req.app.get('io');
         if (io) io.emit('delete_booking', booking._id);
         

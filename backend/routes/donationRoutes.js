@@ -6,6 +6,7 @@ const fs = require('fs');
 const Donation = require('../models/Donation');
 const { sendEmail, generateDonationTemplate } = require('../models/mailer');
 const paymentService = require('../services/paymentService');
+const { logAudit } = require('../utils/auditLog');
 
 // ── Multer storage config ─────────────────────────────────────────────────────
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -134,6 +135,15 @@ router.post('/checkout', async (req, res) => {
         donation.paymongoCheckoutSessionId = session.id;
         donation.checkoutUrl = session.attributes?.checkout_url || null;
         await donation.save();
+
+        logAudit(req, {
+            action: 'DONATION_SUBMITTED',
+            module: 'Donations',
+            description: `Online donation checkout started — ₱${amountNum} from ${isAnonymous ? 'Anonymous Donor' : donation.donorName} (${donation.donationId})`,
+            targetId: donation._id,
+            targetLabel: isAnonymous ? 'Anonymous Donor' : donation.donorName,
+            targetModel: 'Donation',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('new_donation', donation);
@@ -287,6 +297,15 @@ router.post('/', upload.single('proofOfPayment'), async (req, res) => {
 
         console.log('Donation saved successfully:', donation._id, 'Donation ID:', donation.donationId);
 
+        logAudit(req, {
+            action: 'DONATION_SUBMITTED',
+            module: 'Donations',
+            description: `Cash donation submitted — appointment ${appointmentDate} ${appointmentTime} (${donation.donationId})`,
+            targetId: donation._id,
+            targetLabel: isAnonymous ? 'Anonymous Donor' : donation.donorName,
+            targetModel: 'Donation',
+        });
+
         // Emit socket event if available
         const io = req.app.get('io');
         if (io) io.emit('new_donation', donation);
@@ -369,6 +388,16 @@ router.put('/:id/payment', async (req, res) => {
         }
 
         await donation.save();
+
+        logAudit(req, {
+            action: paymentStatus === 'paid' ? 'DONATION_VERIFIED' : 'DONATION_STATUS_CHANGED',
+            module: 'Donations',
+            status: paymentStatus === 'failed' ? 'failed' : 'success',
+            description: `Donation ${donation.donationId} payment status set to "${paymentStatus}"${donation.receiptNumber ? ` — receipt ${donation.receiptNumber}` : ''}`,
+            targetId: donation._id,
+            targetLabel: donation.donorName,
+            targetModel: 'Donation',
+        });
 
         const io = req.app.get('io');
         if (io) io.emit('update_donation', donation);

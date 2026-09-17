@@ -11,6 +11,7 @@ const User    = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
 const cloudinary  = require('../config/cloudinary');
 const imageUpload = require('../middleware/imageUpload');
+const { logAudit } = require('../utils/auditLog');
 
 /**
  * PUT /api/users/update-profile
@@ -110,6 +111,17 @@ router.put('/update-profile', protect, async (req, res) => {
         user.verificationOtpExpires = undefined;
 
         await user.save();
+
+        if (shift !== undefined || assignedFloor !== undefined || assignedRoom !== undefined) {
+            logAudit(req, {
+                action: 'STAFF_ASSIGNMENT_UPDATED',
+                module: 'Staff Roster',
+                description: `${user.firstName} ${user.lastName} updated their assignment — shift: ${user.shift || 'N/A'}, floor: ${user.assignedFloor || 'N/A'}, room: ${user.assignedRoom || 'N/A'}`,
+                targetId: user._id,
+                targetLabel: `${user.firstName} ${user.lastName}`,
+                targetModel: 'User',
+            });
+        }
 
         res.json({
             success: true,

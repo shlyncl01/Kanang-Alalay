@@ -10,6 +10,7 @@ const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware
 const { getManilaDayBounds, parseManilaDateTime } = require('../utils/dateHelpers');
 const { notifyCaregiverAndOverseers } = require('../services/alertService');
 const { isOnDuty } = require('../utils/shiftUtils');
+const { logAudit } = require('../utils/auditLog');
 
 // A caregiver may only administer medication while on duty — re-checked
 // fresh against the real clock on every request. Looking up drug info via
@@ -228,6 +229,16 @@ router.post('/', authMiddleware, roleMiddleware('admin', 'head_caregiver'), asyn
         });
 
         await medication.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_CATALOG_ADDED',
+            module: 'Medication',
+            description: `Added "${medication.name}" to the medication catalog (${medication.medicationId})`,
+            targetId: medication._id,
+            targetLabel: medication.name,
+            targetModel: 'Medication',
+        });
+
         res.status(201).json({ success: true, data: medication });
     } catch (error) {
         console.error(error);
@@ -251,6 +262,16 @@ router.put('/:id', authMiddleware, roleMiddleware('admin', 'head_caregiver'), as
         });
 
         if (!medication) return res.status(404).json({ success: false, message: 'Medication not found' });
+
+        logAudit(req, {
+            action: 'MEDICATION_CATALOG_EDITED',
+            module: 'Medication',
+            description: `Edited catalog entry for "${medication.name}"`,
+            targetId: medication._id,
+            targetLabel: medication.name,
+            targetModel: 'Medication',
+        });
+
         res.json({ success: true, data: medication });
     } catch (error) {
         console.error(error);
@@ -263,6 +284,16 @@ router.delete('/:id', authMiddleware, roleMiddleware('admin', 'head_caregiver'),
     try {
         const medication = await Medication.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
         if (!medication) return res.status(404).json({ success: false, message: 'Medication not found' });
+
+        logAudit(req, {
+            action: 'MEDICATION_CATALOG_ARCHIVED',
+            module: 'Medication',
+            description: `Archived catalog entry for "${medication.name}"`,
+            targetId: medication._id,
+            targetLabel: medication.name,
+            targetModel: 'Medication',
+        });
+
         res.json({ success: true, message: 'Medication archived', data: medication });
     } catch (error) {
         console.error(error);
@@ -316,6 +347,16 @@ router.post('/prepare/:residentId', authMiddleware, roleMiddleware('head_caregiv
         });
 
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_SCHEDULED',
+            module: 'Medication',
+            description: `Prepared ${medicationName} (${dosage || 'N/A'}) for ${log.residentName || 'resident'}`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.status(201).json({ success: true, data: log });
     } catch (error) {
         console.error('Prepare medication error:', error);
@@ -350,6 +391,16 @@ router.post('/hold', authMiddleware, async (req, res) => {
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
         });
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_CANCELLED',
+            module: 'Medication',
+            description: `Hold recorded for ${medicationName} — ${log.residentName || 'resident'} (${reason || 'No reason provided'})`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: log });
     } catch (error) {
         console.error('Hold medication error:', error);
@@ -385,6 +436,16 @@ router.post('/delay', authMiddleware, async (req, res) => {
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
         });
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_MARKED_OVERDUE',
+            module: 'Medication',
+            description: `Delay recorded for ${medicationName} — ${log.residentName || 'resident'} (${reason || 'No reason provided'})${delayedUntil ? `, delayed until ${delayedUntil}` : ''}`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: log });
     } catch (error) {
         console.error('Delay medication error:', error);
@@ -418,6 +479,16 @@ router.post('/refuse', authMiddleware, async (req, res) => {
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
         });
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_MARKED_MISSED',
+            module: 'Medication',
+            description: `Refusal recorded for ${medicationName} — ${log.residentName || 'resident'} (${reason || 'No reason provided'})`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: log });
     } catch (error) {
         console.error('Refuse medication error:', error);
@@ -451,6 +522,16 @@ router.post('/side-effect', authMiddleware, async (req, res) => {
             scanData: scanId ? { medicationCode: scanId, scanTime: new Date(), match: true } : undefined
         });
         await log.save();
+
+        logAudit(req, {
+            action: 'MEDICATION_SIDE_EFFECT_REPORTED',
+            module: 'Medication',
+            description: `Side effect reported for ${medicationName} — ${log.residentName || 'resident'} (severity: ${severity || 'unknown'})${emergencyProtocol ? ' — emergency protocol activated' : ''}`,
+            targetId: log._id,
+            targetLabel: log.residentName || '',
+            targetModel: 'MedicationLog',
+        });
+
         res.json({ success: true, data: log });
     } catch (error) {
         console.error('Side effect error:', error);
@@ -626,6 +707,15 @@ router.post('/administer/:logId', authMiddleware, async (req, res) => {
                 logId: claimed._id,
             },
         }).catch((err) => console.error('[Alert] Failed to notify administered:', err.message));
+
+        logAudit(req, {
+            action: 'MEDICATION_ADMINISTERED',
+            module: 'Medication',
+            description: `${claimed.medicationName || 'Medication'} administered for ${claimed.residentName || 'resident'}${deductionNote}`,
+            targetId: claimed._id,
+            targetLabel: claimed.residentName || '',
+            targetModel: 'MedicationLog',
+        });
 
         res.json({
             message: `Medication administered successfully.${deductionNote}`,
