@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
     FaSearch, FaFilter, FaTimes, FaChevronLeft, FaChevronRight,
     FaHistory, FaUserCircle, FaCheckCircle, FaTimesCircle,
 } from 'react-icons/fa';
 import { API_URL } from '../../config/api';
+import { useSocket } from '../../hooks/useSocket';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,9 @@ const AuditTrailTab = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
 
+    const [prevIds, setPrevIds] = useState(new Set());
+    const [highlightIds, setHighlightIds] = useState(new Set());
+
     // Debounce free-text search so we're not hitting the API on every keystroke.
     useEffect(() => {
         const t = setTimeout(() => setSearch(searchInput), 400);
@@ -89,7 +93,23 @@ const AuditTrailTab = () => {
                 headers: { Authorization: `Bearer ${token}` },
                 params,
             });
-            setLogs(res.data.data || []);
+            const freshLogs = res.data.data || [];
+
+            // Flag rows that weren't in the previous fetch so they can get a
+            // brief highlight — only meaningful on page 1 with no filters,
+            // where a live push actually lands at the top of the list.
+            setPrevIds((prevIdSet) => {
+                const newlyArrived = new Set(
+                    freshLogs.filter((l) => prevIdSet.size > 0 && !prevIdSet.has(l._id)).map((l) => l._id)
+                );
+                if (newlyArrived.size > 0) {
+                    setHighlightIds(newlyArrived);
+                    setTimeout(() => setHighlightIds(new Set()), 2500);
+                }
+                return new Set(freshLogs.map((l) => l._id));
+            });
+
+            setLogs(freshLogs);
             setTotalPages(res.data.pagination?.totalPages || 1);
             setTotal(res.data.pagination?.total || 0);
         } catch (e) {
@@ -100,6 +120,32 @@ const AuditTrailTab = () => {
     }, [page, search, roleFilter, moduleFilter, statusFilter, dateFrom, dateTo]);
 
     useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+    // ── Real-time updates ───────────────────────────────────────────────────
+    // Every logAudit() write on the backend emits 'new_audit_log' the moment
+    // it's saved (see utils/auditLog.js), so this tab stays live instead of
+    // only refreshing on manual reload — same io.emit()/useSocket() pattern
+    // AdminDashboard.js already uses for bookings, staff, and inventory.
+    const { on, off } = useSocket();
+    const refetchTimer = useRef(null);
+
+    useEffect(() => {
+        const handleNewAuditLog = () => {
+            // A burst of actions (e.g. a bulk import) can fire several log
+            // entries within milliseconds of each other — coalesce those into
+            // a single refetch instead of hammering the API once per entry.
+            clearTimeout(refetchTimer.current);
+            refetchTimer.current = setTimeout(() => {
+                fetchLogs();
+            }, 600);
+        };
+
+        on('new_audit_log', handleNewAuditLog);
+        return () => {
+            off('new_audit_log', handleNewAuditLog);
+            clearTimeout(refetchTimer.current);
+        };
+    }, [on, off, fetchLogs]);
 
     const clearFilters = () => {
         setSearchInput(''); setSearch('');
@@ -115,6 +161,16 @@ const AuditTrailTab = () => {
 
     return (
         <div>
+            <style>{`
+                @keyframes auditLivePulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: .4; transform: scale(1.3); }
+                }
+                @keyframes auditNewRow {
+                    0% { background-color: #FFF3E0; }
+                    100% { background-color: transparent; }
+                }
+            `}</style>
             {/* Controls */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
@@ -159,7 +215,13 @@ const AuditTrailTab = () => {
             {/* Table */}
             <div className="card-white" style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid #E8D6CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h5 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><FaHistory /> Audit Trail</h5>
+                    <h5 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <FaHistory /> Audit Trail
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6, padding: '2px 9px', borderRadius: 20, background: '#EEFBF5', color: '#1E7D56', fontSize: '.68rem', fontWeight: 700, letterSpacing: '.03em' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#1E7D56', animation: 'auditLivePulse 1.6s ease-in-out infinite' }} />
+                            LIVE
+                        </span>
+                    </h5>
                     <small style={{ color: '#7A5C4E', fontSize: '.8rem' }}>{total} record{total !== 1 ? 's' : ''} found</small>
                 </div>
 
@@ -193,8 +255,9 @@ const AuditTrailTab = () => {
                                     const roleStyle = ROLE_COLOR[log.role || log.user?.role] || { bg: '#6c757d', color: '#fff' };
                                     const stStyle = STATUS_STYLE[log.status] || STATUS_STYLE.success;
                                     const userName = log.user ? `${log.user.firstName} ${log.user.lastName}` : 'System';
+                                    const isNew = highlightIds.has(log._id);
                                     return (
-                                        <tr key={log._id}>
+                                        <tr key={log._id} style={isNew ? { animation: 'auditNewRow 2.5s ease-out' } : undefined}>
                                             <td style={{ fontSize: '.85rem', whiteSpace: 'nowrap' }}>{formatDateTime(log.createdAt)}</td>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -20,10 +20,18 @@ const ActivityLog = require('../models/ActivityLog');
  * @param {*}      [opts.targetId]   - id of the affected record, if any
  * @param {string} [opts.targetLabel]- human-readable name of the affected record
  * @param {string} [opts.targetModel]- e.g. 'User', 'Inventory', 'Booking'
+ *
+ * Also emits a 'new_audit_log' socket event (same io.emit() pattern used
+ * throughout adminRoutes.js/bookingRoutes.js/etc.) so the Admin Audit Trail
+ * tab can update live instead of only on manual refresh. The emit is
+ * best-effort exactly like the write above — req may be a real Express
+ * request or a minimal { user } stand-in (used for pre-auth events like
+ * failed logins), so req.app may not exist; that's fine, it just means no
+ * live push for that entry, the row itself is still safely on disk.
  */
 async function logAudit(req, opts) {
     try {
-        await ActivityLog.create({
+        const entry = await ActivityLog.create({
             action: opts.action,
             details: opts.description,
             user: req.user?._id,
@@ -34,6 +42,19 @@ async function logAudit(req, opts) {
             targetLabel: opts.targetLabel || '',
             targetModel: opts.targetModel || '',
         });
+
+        try {
+            const io = req?.app?.get?.('io');
+            if (io) {
+                // Populate the same 'user' fields the GET /admin/audit-trail
+                // list uses, so the row the frontend receives over the socket
+                // renders identically to one it would get from a page fetch.
+                await entry.populate('user', 'firstName lastName role username');
+                io.emit('new_audit_log', entry);
+            }
+        } catch (emitErr) {
+            console.error('[AuditLog] Failed to emit real-time update:', emitErr.message);
+        }
     } catch (err) {
         // Never let a logging failure affect the outcome of the action that
         // triggered it — just surface it loudly in the server logs so a
