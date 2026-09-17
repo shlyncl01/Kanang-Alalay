@@ -20,9 +20,11 @@ const ActivityLog = require('../models/ActivityLog');
 const MedicationLog = require('../models/MedicationLog');
 const Resident = require('../models/Resident');
 
-const { protect, adminOrHeadCaregiver } = require('../middleware/authMiddleware');
+const { protect, adminOrHeadCaregiver, adminOnly } = require('../middleware/authMiddleware');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { generateRandomPassword, generateUsername } = require('../utils/userHelpers');
+// Part 15 — Audit Trail
+const { logAudit } = require('../utils/auditLog');
 
 router.use(protect, adminOrHeadCaregiver);
 
@@ -145,6 +147,15 @@ router.post('/create-user', async (req, res) => {
         });
 
         await user.save();
+
+        logAudit(req, {
+            action: 'USER_CREATED',
+            module: 'User Management',
+            description: `Created ${role} account for ${user.firstName} ${user.lastName} (${user.email})`,
+            targetId: user._id,
+            targetLabel: `${user.firstName} ${user.lastName}`,
+            targetModel: 'User',
+        });
 
         if (!activateImmediately) {
             const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -312,6 +323,15 @@ router.post('/create-user-enhanced', async (req, res) => {
         await user.save();
         console.log('✅ User created successfully:', user._id);
 
+        logAudit(req, {
+            action: 'USER_CREATED',
+            module: 'User Management',
+            description: `Created ${role} account for ${firstName} ${lastName} (${user.email})`,
+            targetId: user._id,
+            targetLabel: `${firstName} ${lastName}`,
+            targetModel: 'User',
+        });
+
         // ── SEND WELCOME EMAIL ──────────────────────────────────────────────
         const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/entry-a96cc8350c56e2d3`;
         const roleLabel = role === 'head_caregiver' ? 'Head Caregiver' : role.charAt(0).toUpperCase() + role.slice(1);
@@ -452,12 +472,15 @@ router.put('/bookings/:id/status', async (req, res) => {
 
         await booking.save();
 
-        await ActivityLog.create({
+        const bookingName = booking.name || `${booking.firstName} ${booking.lastName}`;
+        logAudit(req, {
             action: `BOOKING_${status.toUpperCase()}`,
-            details: `Booking for ${booking.name || `${booking.firstName} ${booking.lastName}`} on ${new Date(booking.visitDate).toLocaleDateString()} marked "${status}"${rejectionReason ? ` — ${rejectionReason}` : ''}`,
-            user: req.user._id,
+            module: 'Bookings',
+            description: `Booking for ${bookingName} on ${new Date(booking.visitDate).toLocaleDateString()} marked "${status}"${rejectionReason ? ` — ${rejectionReason}` : ''}`,
             targetId: booking._id,
-        }).catch(() => {});
+            targetLabel: bookingName,
+            targetModel: 'Booking',
+        });
 
         if (status === 'rejected' && rejectionReason) {
             try {
@@ -574,6 +597,15 @@ router.post('/inventory/bulk-import', async (req, res) => {
             }
         }
 
+        if (successCount > 0) {
+            logAudit(req, {
+                action: 'INVENTORY_BULK_IMPORT',
+                module: 'Inventory',
+                description: `Bulk-imported ${successCount} inventory item(s)${failedCount ? ` (${failedCount} row(s) failed)` : ''}`,
+                status: failedCount > 0 && successCount === 0 ? 'failed' : 'success',
+            });
+        }
+
         res.status(201).json({
             success: true,
             count: successCount,
@@ -687,12 +719,14 @@ router.put('/staff/:id/status', async (req, res) => {
 
         await target.save();
 
-        await ActivityLog.create({
+        logAudit(req, {
             action: 'STATUS_CHANGE',
-            details: `Status changed to "${status}" for ${target.firstName} ${target.lastName}`,
-            user: req.user._id,
+            module: 'User Management',
+            description: `Status changed to "${status}" for ${target.firstName} ${target.lastName}${reason ? ` — ${reason}` : ''}`,
             targetId: target._id,
-        }).catch(() => {});
+            targetLabel: `${target.firstName} ${target.lastName}`,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
@@ -747,12 +781,14 @@ router.put('/staff/:id/role', async (req, res) => {
         user.role = role;
         await user.save();
 
-        await ActivityLog.create({
+        logAudit(req, {
             action: 'ROLE_CHANGE',
-            details: `Role changed from "${oldRole}" to "${role}" for ${user.firstName} ${user.lastName}`,
-            user: req.user._id,
+            module: 'User Management',
+            description: `Role changed from "${oldRole}" to "${role}" for ${user.firstName} ${user.lastName}`,
             targetId: user._id,
-        }).catch(() => {});
+            targetLabel: `${user.firstName} ${user.lastName}`,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
@@ -786,12 +822,14 @@ router.delete('/staff/:id', async (req, res) => {
             });
         }
 
-        await ActivityLog.create({
+        logAudit(req, {
             action: 'STAFF_DELETED',
-            details: `Staff member ${deleted.firstName} ${deleted.lastName} (${deleted.role || 'no role'}) was permanently deleted`,
-            user: req.user._id,
+            module: 'User Management',
+            description: `Staff member ${deleted.firstName} ${deleted.lastName} (${deleted.role || 'no role'}) was permanently deleted`,
             targetId: deleted._id,
-        }).catch(() => {});
+            targetLabel: `${deleted.firstName} ${deleted.lastName}`,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
@@ -824,6 +862,94 @@ router.get('/activity-logs', async (req, res) => {
     } catch (error) {
         console.error('Fetch activity logs error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch activity logs.' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Part 15 — AUDIT TRAIL (full, filterable, paginated)
+// GET /api/admin/audit-trail
+//
+// Deliberately a SEPARATE route from GET /activity-logs above rather than
+// modifying it: /activity-logs is already relied on by the Admin Overview
+// "recent activity" widget (see AdminDashboard.js) under the router's
+// existing `adminOrHeadCaregiver` gate. The full Audit Trail must be
+// admin-only per the Part 15 spec, so it gets its own route with `adminOnly`
+// layered on top, instead of tightening a feed a Head Caregiver may already
+// rely on for something else.
+// ─────────────────────────────────────────────────────────────
+router.get('/audit-trail', adminOnly, async (req, res) => {
+    try {
+        const {
+            page = 1,
+            pageSize = 20,
+            search = '',
+            role,
+            module: moduleFilter,
+            action,
+            status,
+            dateFrom,
+            dateTo,
+        } = req.query;
+
+        const query = {};
+        if (role && role !== 'all') query.role = role;
+        if (moduleFilter && moduleFilter !== 'all') query.module = moduleFilter;
+        if (action && action !== 'all') query.action = action;
+        if (status && status !== 'all') query.status = status;
+
+        if (dateFrom || dateTo) {
+            query.createdAt = {};
+            if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
+            if (dateTo) {
+                const end = new Date(dateTo);
+                end.setHours(23, 59, 59, 999);
+                query.createdAt.$lte = end;
+            }
+        }
+
+        if (search && search.trim()) {
+            const s = search.trim();
+            const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp(escaped, 'i');
+
+            const matchingUsers = await User.find({
+                $or: [{ firstName: re }, { lastName: re }, { username: re }],
+            }).select('_id');
+
+            query.$or = [
+                { details: re },
+                { action: re },
+                { targetLabel: re },
+                ...(matchingUsers.length ? [{ user: { $in: matchingUsers.map(u => u._id) } }] : []),
+            ];
+        }
+
+        const pageNum = Math.max(1, parseInt(page) || 1);
+        const size = Math.min(100, Math.max(1, parseInt(pageSize) || 20));
+
+        const [logs, total] = await Promise.all([
+            ActivityLog.find(query)
+                .populate('user', 'firstName lastName role username')
+                .sort({ createdAt: -1 })
+                .skip((pageNum - 1) * size)
+                .limit(size)
+                .lean(),
+            ActivityLog.countDocuments(query),
+        ]);
+
+        res.json({
+            success: true,
+            data: logs,
+            pagination: {
+                page: pageNum,
+                pageSize: size,
+                total,
+                totalPages: Math.max(1, Math.ceil(total / size)),
+            },
+        });
+    } catch (error) {
+        console.error('Fetch audit trail error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch audit trail.' });
     }
 });
 
@@ -1044,6 +1170,15 @@ router.post('/inventory', async (req, res) => {
 
         await item.save();
 
+        logAudit(req, {
+            action: 'INVENTORY_ITEM_ADDED',
+            module: 'Inventory',
+            description: `Added ${quantity || 0} ${product.unit} of "${product.name}" (Batch #${batchNumber})`,
+            targetId: item._id,
+            targetLabel: product.name,
+            targetModel: 'Inventory',
+        });
+
         res.status(201).json({
             success: true,
             data: item,
@@ -1129,6 +1264,15 @@ router.put('/inventory/:id', async (req, res) => {
             });
         }
 
+        logAudit(req, {
+            action: 'INVENTORY_ITEM_EDITED',
+            module: 'Inventory',
+            description: `Edited "${item.name}" (Batch #${item.batchNumber || '—'})`,
+            targetId: item._id,
+            targetLabel: item.name,
+            targetModel: 'Inventory',
+        });
+
         res.json({
             success: true,
             data: item,
@@ -1154,6 +1298,15 @@ router.delete('/inventory/:id', async (req, res) => {
                 message: 'Item not found'
             });
         }
+
+        logAudit(req, {
+            action: 'INVENTORY_ITEM_DELETED',
+            module: 'Inventory',
+            description: `Deleted "${item.name}" (Batch #${item.batchNumber || '—'})`,
+            targetId: item._id,
+            targetLabel: item.name,
+            targetModel: 'Inventory',
+        });
 
         res.json({
             success: true,
@@ -1345,6 +1498,12 @@ router.post('/inventory/bulk-reduce', async (req, res) => {
         } catch (auditErr) {
             console.error('Bulk reduction committed but audit log write failed:', auditErr);
         }
+
+        logAudit(req, {
+            action: 'INVENTORY_STOCK_DEDUCTED',
+            module: 'Inventory',
+            description: `Reduced stock for ${plan.length} item(s)${reason ? ` — ${reason}` : ''}: ${plan.map(p => `${p.name} (-${p.quantity} ${p.unit})`).join(', ')}`,
+        });
 
         // §8 — Note: HCAssignedStock is never read or written anywhere in
         // this route. §9 — StockRequest and MedicationLog documents are
@@ -1571,6 +1730,15 @@ router.put('/stock-requests/:id', async (req, res) => {
                 console.error('Failed to create stock request rejection alert:', notifyErr);
             }
 
+            logAudit(req, {
+                action: 'STOCK_REQUEST_REJECTED',
+                module: 'Inventory',
+                description: `Rejected stock request for ${existing.quantity} ${existing.unit} of ${existing.itemName}${adminNote ? ` — ${adminNote}` : ''}`,
+                targetId: existing._id,
+                targetLabel: existing.itemName,
+                targetModel: 'StockRequest',
+            });
+
             return res.json({ success: true, data: updated, message: 'Stock request rejected.' });
         }
 
@@ -1699,6 +1867,15 @@ router.put('/stock-requests/:id', async (req, res) => {
             console.error('Failed to create stock request approval alert:', notifyErr);
         }
 
+        logAudit(req, {
+            action: 'STOCK_REQUEST_APPROVED',
+            module: 'Inventory',
+            description: `Approved stock request for ${requestedQty} ${product.unit} of ${existing.itemName}${adminNote ? ` — ${adminNote}` : ''}`,
+            targetId: existing._id,
+            targetLabel: existing.itemName,
+            targetModel: 'StockRequest',
+        });
+
         res.json({
             success: true,
             data: updatedRequest,
@@ -1760,22 +1937,34 @@ router.put('/users/:id', async (req, res) => {
             }
         }
 
+        const changes = [];
+        if (firstName && firstName.trim() !== target.firstName) changes.push('name');
+        if (lastName && lastName.trim() !== target.lastName) changes.push('name');
+        if (email && email.trim().toLowerCase() !== target.email) changes.push('email');
+        if (phone !== undefined && phone.trim() !== target.phone) changes.push('phone');
+        const roleChanged = role && role !== target.role;
+        const oldRole = target.role;
+
         if (firstName) target.firstName = firstName.trim();
         if (lastName) target.lastName = lastName.trim();
         if (email) target.email = email.trim().toLowerCase();
         if (phone !== undefined) target.phone = phone.trim();
         if (role) target.role = role;
 
-        if (role && role !== target.role) {
-            await ActivityLog.create({
-                action: 'ROLE_CHANGE',
-                details: `Role changed to '${role}' for ${target.firstName} ${target.lastName}`,
-                user: req.user._id,
-                targetId: target._id,
-            }).catch(() => {});
-        }
-
         await target.save();
+
+        if (roleChanged || changes.length) {
+            const parts = [...new Set(changes)];
+            if (roleChanged) parts.push(`role (${oldRole} → ${role})`);
+            logAudit(req, {
+                action: roleChanged ? 'ROLE_CHANGE' : 'USER_EDITED',
+                module: 'User Management',
+                description: `Updated ${target.firstName} ${target.lastName} — changed: ${parts.join(', ')}`,
+                targetId: target._id,
+                targetLabel: `${target.firstName} ${target.lastName}`,
+                targetModel: 'User',
+            });
+        }
 
         res.json({
             success: true,
@@ -1816,12 +2005,15 @@ router.put('/users/:id', async (req, res) => {
 router.post('/staff/:id/action-log', async (req, res) => {
     try {
         const { action, reason, effectiveDate, notes, newStatus } = req.body;
+        const target = await User.findById(req.params.id).select('firstName lastName');
 
-        await ActivityLog.create({
-            action: action.toUpperCase(),
-            details: `${action}: ${reason || 'No reason provided'} | Effective: ${effectiveDate || 'Immediate'} | New status: ${newStatus || 'N/A'} | Notes: ${notes || 'None'}`,
-            user: req.user._id,
+        logAudit(req, {
+            action: (action || 'STAFF_ACTION').toUpperCase(),
+            module: 'User Management',
+            description: `${action}${target ? ` for ${target.firstName} ${target.lastName}` : ''}: ${reason || 'No reason provided'} | Effective: ${effectiveDate || 'Immediate'} | New status: ${newStatus || 'N/A'} | Notes: ${notes || 'None'}`,
             targetId: req.params.id,
+            targetLabel: target ? `${target.firstName} ${target.lastName}` : '',
+            targetModel: 'User',
         });
 
         res.json({ success: true, message: 'Action logged.' });

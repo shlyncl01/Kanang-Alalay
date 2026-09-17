@@ -23,6 +23,7 @@ import StaffRosterTab from '../components/admin/StaffRosterTab';
 import UserManagementTab from '../components/admin/UserManagementTab';
 import DonationManagementTab from '../components/admin/DonationManagementTab';
 import BookingManagementTab from '../components/admin/BookingManagementTab';
+import AuditTrailTab from '../components/admin/AuditTrailTab';
 
 import '../styles/Dashboard.css';
 import { useSocket } from '../hooks/useSocket';
@@ -2234,6 +2235,10 @@ const AdminDashboard = () => {
         </div>
     );
 
+    const renderAuditTrail = () => (
+        <AuditTrailTab currentUser={user} />
+    );
+
     // Build the real weekly adherence data from the compliance API's
     // dailyBreakdown (returned as a sibling of `stats`, keyed by date).
     // Days with no logs yet are left as `hasData: false` so the chart shows
@@ -2281,6 +2286,7 @@ const AdminDashboard = () => {
             case 'alerts': return renderAlerts();
             case 'inventory': return renderInventory();
             case 'compliance': return renderCompliance();
+            case 'audit': return renderAuditTrail();
             case 'reports': return renderOverview();
             default: return renderOverview();
         }
@@ -2316,6 +2322,7 @@ const AdminDashboard = () => {
                             { key: 'alerts', icon: <FaBell />, label: 'Alerts & Notification', badge: unreadCount },
                             { key: 'inventory', icon: <FaExclamationTriangle />, label: 'Inventory Management', badge: realLowStockCount },
                             { key: 'compliance', icon: <FaChartBar />, label: 'Compliance Chart' },
+                            { key: 'audit', icon: <FaHistory />, label: 'Audit Trail' },
 
                         ].map(({ key, icon, label, badge }) => (
                             <li key={key}
