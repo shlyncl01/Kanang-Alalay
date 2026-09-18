@@ -4,7 +4,7 @@ import OTPVerificationModal from '../components/OTPVerificationModal';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = process.env.REACT_APP_API_URL ||
+export const API_BASE_URL = process.env.REACT_APP_API_URL ||
     (process.env.NODE_ENV === 'production'
         ? 'https://kanang-alalay-backend.onrender.com/api'
         : 'http://localhost:5000/api');
@@ -87,7 +87,15 @@ export const AuthProvider = ({ children }) => {
         if (data.token) {
             localStorage.setItem('token', data.token);
             setToken(data.token);
-            setUser(data.user);
+            // /verify-first-login returns needsProfileUpdate as a top-level
+            // field alongside `user`, not inside it — merge it in here so
+            // the rest of the app can treat user.needsProfileUpdate as the
+            // single source of truth instead of every caller having to know
+            // about this one endpoint's shape.
+            setUser({
+                ...data.user,
+                needsProfileUpdate: data.needsProfileUpdate ?? data.user?.needsProfileUpdate,
+            });
             setIsAuthenticated(true);
             setShowOTPModal(false);
         }

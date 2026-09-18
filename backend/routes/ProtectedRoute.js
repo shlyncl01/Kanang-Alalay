@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import CompleteProfileModal from './CompleteProfileModal';
 
 const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
 
@@ -29,11 +30,14 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
     // Use isAuthenticated instead of just checking user
     if (!isAuthenticated || !user) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/" replace />;
     }
 
     if (!WEB_ALLOWED_ROLES.includes(user.role)) {
-        return <Navigate to="/login" replace />;
+        // Caregiver or other mobile-only roles — send back home. (The old
+        // "/login" redirect no longer renders a login form, so there's no
+        // page left to show the 'role_blocked' banner on via this path.)
+        return <Navigate to="/" replace />;
     }
 
     if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
@@ -41,7 +45,12 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         return <Navigate to={fallback} replace />;
     }
 
-    return children;
+    return (
+        <>
+            {children}
+            {user.needsProfileUpdate && <CompleteProfileModal />}
+        </>
+    );
 };
 
 export default ProtectedRoute;

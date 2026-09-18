@@ -72,6 +72,8 @@ router.get('/profile', protect, async (req, res) => {
                 isVerified: req.user.isVerified,
                 createdAt: req.user.createdAt,
                 hireDate: req.user.hireDate,
+                isFirstLogin: req.user.isFirstLogin,
+                needsProfileUpdate: req.user.needsProfileUpdate,
             }
         });
     } catch (error) {
@@ -100,6 +102,8 @@ router.get('/me', protect, async (req, res) => {
                 isVerified: req.user.isVerified,
                 createdAt: req.user.createdAt,
                 hireDate: req.user.hireDate,
+                isFirstLogin: req.user.isFirstLogin,
+                needsProfileUpdate: req.user.needsProfileUpdate,
             }
         });
     } catch (error) {
@@ -178,8 +182,14 @@ router.post('/login', async (req, res) => {
         }
 
         if (user.isFirstLogin && user.role === 'admin') {
+            // NOTE: needsProfileUpdate is intentionally left untouched here.
+            // Admin has no OTP step (see the branch above), so this /login
+            // call IS the first-login verification step for Admin — clearing
+            // isFirstLogin here is correct and mirrors what /verify-first-login
+            // does for other roles. But needsProfileUpdate must survive so the
+            // frontend can still show the "Complete Your Profile" modal; it is
+            // only cleared once PUT /update-profile actually runs.
             user.isFirstLogin       = false;
-            user.needsProfileUpdate = false;
             user.isVerified         = true;
             user.isActive           = true;
             if (user.status === 'pending') user.status = 'active';
@@ -276,6 +286,8 @@ router.post('/login', async (req, res) => {
                 phone: user.phone,
                 department: user.department,
                 shift: user.shift,
+                isFirstLogin: user.isFirstLogin,
+                needsProfileUpdate: user.needsProfileUpdate,
             }
         });
     } catch (error) {
@@ -392,6 +404,8 @@ router.post('/verify-first-login', async (req, res) => {
                 shift: user.shift,
                 assignedFloor: user.assignedFloor,
                 assignedRoom: user.assignedRoom,
+                isFirstLogin: user.isFirstLogin,
+                needsProfileUpdate: user.needsProfileUpdate,
             }
         });
     } catch (error) {
@@ -418,6 +432,8 @@ router.get('/validate-token', protect, async (req, res) => {
             shift: req.user.shift,
             isActive: req.user.isActive,
             createdAt: req.user.createdAt,
+            isFirstLogin: req.user.isFirstLogin,
+            needsProfileUpdate: req.user.needsProfileUpdate,
         }
     });
 });
@@ -1054,6 +1070,75 @@ router.put('/update-phone', protect, async (req, res) => {
         res.json({ success: true, message: 'Contact number updated successfully.' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error: ' + err.message });
+    }
+});
+
+// ── Update profile (first-login profile completion) ──────────────────────────
+// NOTE: this endpoint did not exist anywhere in this file, even though the
+// frontend (AuthContext's updateUser) already POSTs/PUTs to it. Fields mirror
+// what the app already treats as "the profile" elsewhere (Admin's Edit User
+// modal, /profile, register-staff): firstName, lastName, middleName, phone.
+router.put('/update-profile', protect, async (req, res) => {
+    try {
+        const { firstName, lastName, middleName, phone } = req.body;
+
+        if (!firstName || !firstName.trim() || !lastName || !lastName.trim()) {
+            return res.status(400).json({ success: false, message: 'First and last name are required.' });
+        }
+
+        const update = {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+        };
+        if (middleName !== undefined) {
+            update.middleName = String(middleName).trim();
+        }
+        if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+            const normalized = String(phone).trim().replace(/[\s\-()]/g, '');
+            if (!PH_MOBILE_REGEX.test(normalized)) {
+                return res.status(400).json({ success: false, message: 'Please enter a valid Philippine mobile number.' });
+            }
+            update.phone = normalized;
+        }
+
+        // Completing the profile satisfies both the first-login gate and the
+        // profile-completion requirement, so both flags clear together here —
+        // this is the one place in the app that is allowed to clear
+        // needsProfileUpdate.
+        update.isFirstLogin = false;
+        update.needsProfileUpdate = false;
+
+        const user = await User.findByIdAndUpdate(req.user._id, update, { new: true });
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Profile updated successfully.',
+            user: {
+                id: user._id,
+                staffId: user.staffId,
+                username: user.username,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                middleName: user.middleName,
+                phone: user.phone,
+                role: user.role,
+                department: user.department,
+                shift: user.shift,
+                isActive: user.isActive,
+                isVerified: user.isVerified,
+                createdAt: user.createdAt,
+                hireDate: user.hireDate,
+                isFirstLogin: user.isFirstLogin,
+                needsProfileUpdate: user.needsProfileUpdate,
+            }
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ success: false, message: 'Server error updating profile' });
     }
 });
 
