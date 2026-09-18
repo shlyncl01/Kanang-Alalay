@@ -1,7 +1,9 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import CompleteProfileModal from './CompleteProfileModal';
+// CompleteProfileModal is built in PART 18D — do not import it here until
+// then. user.needsProfileUpdate is still available to any component that
+// needs it via useAuth(); this route just doesn't render a modal for it yet.
 
 const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
 
@@ -45,12 +47,9 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         return <Navigate to={fallback} replace />;
     }
 
-    return (
-        <>
-            {children}
-            {user.needsProfileUpdate && <CompleteProfileModal />}
-        </>
-    );
+    // user.needsProfileUpdate is preserved on the context and still readable
+    // by any component via useAuth() — PART 18D wires the actual modal here.
+    return <>{children}</>;
 };
 
 export default ProtectedRoute;

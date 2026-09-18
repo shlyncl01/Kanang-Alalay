@@ -76,8 +76,21 @@ export const AuthProvider = ({ children }) => {
 
             throw new Error(data.message || 'Login failed');
         } catch (err) {
-            setError(err.response?.data?.message || err.message);
-            return { success: false, error: err.response?.data?.message };
+            // The backend attaches extra context to some error responses —
+            // accountStatus/reason on blocked accounts (403) and userId on
+            // the pending-activation case (401) — which LoginPage's existing
+            // blocked-account banner and legacy OTP fallback rely on. Only
+            // forward fields the backend actually sends; don't invent ones
+            // (e.g. no error response here includes needsOtp/requiresOTP).
+            const errData = err.response?.data;
+            setError(errData?.message || err.message);
+            return {
+                success: false,
+                error: errData?.message,
+                accountStatus: errData?.accountStatus,
+                reason: errData?.reason,
+                userId: errData?.userId,
+            };
         } finally {
             setLoading(false);
         }
