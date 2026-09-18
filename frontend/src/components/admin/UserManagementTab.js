@@ -3,10 +3,11 @@ import axios from 'axios';
 import {
     FaEdit, FaSearch, FaFilter,
     FaPrint, FaExclamationTriangle, FaChevronLeft, FaChevronRight,
-    FaUserCircle, FaTimes, FaUserCheck, FaBan, FaUserPlus,
+    FaUserCircle, FaTimes, FaUserCheck, FaBan, FaUserPlus, FaUsers,
 } from 'react-icons/fa';
 import { API_URL } from '../../config/api';
 import AddStaffModal from './AddStaffModal';
+import BulkAddStaffModal from './BulkAddStaffModal';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -164,10 +165,11 @@ const EditUserModal = ({ user, onSave, onClose }) => {
 
 // ─── UserManagementTab (main) ─────────────────────────────────────────────────
 
-const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
+const UserManagementTab = ({ users = [], setUsers, onEdit, currentUser }) => {
     const [deactivateTarget, setDeactivateTarget] = useState(null);
     const [editTarget, setEditTarget]             = useState(null);
     const [showAddModal, setShowAddModal]         = useState(false);
+    const [showBulkAddModal, setShowBulkAddModal] = useState(false);
     const [search, setSearch]                     = useState('');
     const [roleFilter, setRoleFilter]             = useState('all');
     const [statusFilter, setStatusFilter]         = useState('all');
@@ -178,6 +180,13 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
     useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter]);
 
     const existingPhones = users.map(u => u.phone).filter(Boolean);
+    const existingEmails = users.map(u => u.email).filter(Boolean);
+    // Part 16 — bulk staff import is Admin-only; Head Caregivers share this
+    // page (adminOrHeadCaregiver gate on most /admin/* routes) but the
+    // backend already rejects them on POST /staff/bulk-import via
+    // `adminOnly`, so the button is hidden for them here too rather than
+    // showing an action that will just fail.
+    const canBulkAddStaff = currentUser?.role === 'admin';
 
     const handleActivate = async (userId) => {
         setActivating(userId);
@@ -206,6 +215,11 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
 
     const handleStaffAdded = (newUser) => {
         setUsers && setUsers(prev => [newUser, ...prev]);
+    };
+
+    const handleBulkStaffImported = (newUsers) => {
+        if (!newUsers || !newUsers.length) return;
+        setUsers && setUsers(prev => [...newUsers, ...prev]);
     };
 
     const handlePrint = () => {
@@ -270,6 +284,16 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
                 >
                     <FaUserPlus size={13} /> Add New Staff
                 </button>
+                {canBulkAddStaff && (
+                    <button
+                        onClick={() => setShowBulkAddModal(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, border: '1.5px solid #b85c2d', background: 'transparent', color: '#b85c2d', cursor: 'pointer', fontWeight: 700, fontSize: '.88rem', fontFamily: "'DM Sans',sans-serif", transition: 'background .2s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#FFF8F3'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                        <FaUsers size={13} /> Add Multiple Staff
+                    </button>
+                )}
             </div>
 
             {/* Table */}
@@ -361,6 +385,14 @@ const UserManagementTab = ({ users = [], setUsers, onEdit }) => {
                 <AddStaffModal
                     onClose={() => setShowAddModal(false)}
                     onAdded={handleStaffAdded}
+                    existingPhones={existingPhones}
+                />
+            )}
+            {showBulkAddModal && canBulkAddStaff && (
+                <BulkAddStaffModal
+                    onClose={() => setShowBulkAddModal(false)}
+                    onImported={handleBulkStaffImported}
+                    existingEmails={existingEmails}
                     existingPhones={existingPhones}
                 />
             )}

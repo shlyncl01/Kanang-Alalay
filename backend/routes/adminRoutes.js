@@ -62,6 +62,206 @@ async function generateStaffId(role) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SHARED: enhanced staff-account creation core (Part 16)
+// ─────────────────────────────────────────────────────────────
+// Extracted from POST /create-user-enhanced so the new bulk-import route
+// (POST /staff/bulk-import, below) can create accounts through the exact
+// same validation, credential-generation, and persistence logic — instead
+// of a second, parallel staff-creation implementation. The single-add
+// route still does exactly what it did before; it just delegates the
+// "create one account" step to this function.
+//
+// Returns { success: true, user, staffId, username, tempPassword } on
+// success, or { success: false, message } on any validation/duplicate/
+// save failure — callers never need to catch an exception from this
+// function, only check `.success`.
+async function createEnhancedStaffAccount({
+    firstName,
+    lastName,
+    middleName = '',
+    email,
+    phone = '',
+    role = 'caregiver',
+    shift = 'DAY',
+    assignedFloor = '',
+    assignedRoom = '',
+}) {
+    try {
+        firstName = (firstName || '').toString().trim();
+        lastName  = (lastName  || '').toString().trim();
+        middleName = (middleName || '').toString().trim();
+        email = (email || '').toString().trim();
+        phone = (phone || '').toString().trim();
+        role  = (role  || 'caregiver').toString().trim();
+        shift = (shift || 'DAY').toString().trim();
+
+        // ── VALIDATIONS (identical to the single-add flow) ────────────────
+        if (!firstName || !lastName || !email) {
+            return { success: false, message: 'First name, last name, and email are required.' };
+        }
+
+        const nameRegex = /^[a-zA-Z\s\-']*$/;
+        if (!nameRegex.test(firstName) || !nameRegex.test(lastName)) {
+            return { success: false, message: 'Names cannot contain numbers.' };
+        }
+
+        if (lastName.length < 2) {
+            return { success: false, message: 'Surname must be at least 2 characters.' };
+        }
+
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+            return { success: false, message: 'Invalid email address.' };
+        }
+
+        const allowedRoles = ['admin', 'head_caregiver', 'caregiver'];
+        if (!allowedRoles.includes(role)) {
+            return { success: false, message: `Role must be one of: ${allowedRoles.join(', ')}` };
+        }
+
+        // Check if email already exists
+        const existing = await User.findOne({ email: email.toLowerCase() });
+        if (existing) {
+            return { success: false, message: 'A user with this email already exists.' };
+        }
+
+        // ── GENERATE CREDENTIALS ─────────────────────────────────────────────
+        const tempPassword = generateRandomPassword();
+
+        // Generate username from email (ensure uniqueness)
+        let username = email.split('@')[0].toLowerCase();
+        username = username.replace(/[^a-z0-9]/g, '');
+        let usernameAttempt = username;
+        let counter = 1;
+
+        while (await User.findOne({ username: usernameAttempt })) {
+            usernameAttempt = `${username}${counter}`;
+            counter++;
+        }
+        username = usernameAttempt;
+
+        // Generate staffId
+        const staffId = await generateStaffId(role);
+
+        // Generate OTP for first login
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // ── CREATE USER ──────────────────────────────────────────────────────
+        // Note: shift/role compatibility (e.g. "Admins must be FLEXIBLE") is
+        // enforced by User.js's own schema validator on save — not
+        // duplicated here, so the rule can never drift between the single
+        // and bulk creation paths.
+        const user = new User({
+            staffId,
+            firstName,
+            lastName,
+            middleName,
+            username,
+            email: email.toLowerCase(),
+            password: tempPassword,
+            phone: phone || '',
+            role,
+            shift,
+            assignedFloor: assignedFloor || '',
+            assignedRoom: assignedRoom || '',
+            status: 'pending',
+            isVerified: false,
+            isActive: false,
+            isFirstLogin: true,
+            needsProfileUpdate: true,
+            verificationOtp: otp,
+            verificationOtpExpires: new Date(Date.now() + 30 * 60 * 1000),
+            lastOtpSentAt: new Date(),
+        });
+
+        await user.save();
+
+        // ── SEND WELCOME EMAIL (best-effort — never fails the creation) ─────
+        const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/entry-a96cc8350c56e2d3`;
+        const roleLabel = role === 'head_caregiver' ? 'Head Caregiver' : role.charAt(0).toUpperCase() + role.slice(1);
+
+        const welcomeHtml = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f5f5f5">
+    <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+        <div style="background:linear-gradient(135deg,#b85c2d,#d94e1b);padding:28px 32px">
+            <h2 style="margin:0;color:#fff;font-size:1.4rem">Welcome to Kanang-Alalay!</h2>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:.9rem">
+                Your account has been created by an administrator.
+            </p>
+        </div>
+        <div style="padding:28px 32px">
+            <p style="color:#444;margin:0 0 20px">
+                Hello <strong>${firstName} ${lastName}</strong>, here are your login credentials:
+            </p>
+            <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+                <tr style="background:#fafafa">
+                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee;width:40%">Staff ID</td>
+                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;border-bottom:1px solid #eee">${staffId}</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Username</td>
+                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;border-bottom:1px solid #eee">${username}</td>
+                </tr>
+                <tr style="background:#fafafa">
+                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Temporary Password</td>
+                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;color:#d94e1b;border-bottom:1px solid #eee">${tempPassword}</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Role</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #eee">${roleLabel}</td>
+                </tr>
+                <tr style="background:#fafafa">
+                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Shift</td>
+                    <td style="padding:10px 14px;border-bottom:1px solid #eee;text-transform:capitalize">${shift}</td>
+                </tr>
+            </table>
+            <div style="background:#f0f7ff;border-radius:10px;padding:16px 20px;margin-bottom:24px">
+                <p style="margin:0 0 10px;font-weight:700;color:#1a5276;font-size:.88rem">HOW TO GET STARTED</p>
+                <ol style="margin:0;padding-left:18px;color:#444;font-size:.86rem;line-height:1.8">
+                    <li>Go to <a href="${loginUrl}" style="color:#d94e1b">${loginUrl}</a></li>
+                    <li>Log in with your username and temporary password</li>
+                    <li>Set your permanent password and complete your profile</li>
+                </ol>
+            </div>
+            <p style="color:#dc3545;font-size:.8rem;text-align:center;margin:0">
+                For your security, do not share these credentials with anyone.
+            </p>
+        </div>
+        <div style="background:#fafafa;padding:14px 32px;text-align:center;border-top:1px solid #eee">
+            <p style="margin:0;color:#aaa;font-size:.76rem">Kanang-Alalay Care Management System</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+        try {
+            await sendEmail(email.toLowerCase(), 'Your Kanang-Alalay Account Credentials', welcomeHtml);
+            console.log('📧 Welcome email sent to:', email);
+        } catch (mailErr) {
+            console.error('Welcome email error (account still created):', mailErr.message);
+        }
+
+        return { success: true, user, staffId, username, tempPassword };
+
+    } catch (error) {
+        console.error('createEnhancedStaffAccount error:', error);
+
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyPattern || {})[0] || 'field';
+            return { success: false, message: `A user with this ${field} already exists.` };
+        }
+
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map(e => e.message);
+            return { success: false, message: 'Validation error: ' + errors.join(', ') };
+        }
+
+        return { success: false, message: 'Server error: ' + error.message };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
 // CREATE USER (Standard)
 // ─────────────────────────────────────────────────────────────
 router.post('/create-user', async (req, res) => {
@@ -209,7 +409,7 @@ router.post('/create-user', async (req, res) => {
 router.post('/create-user-enhanced', async (req, res) => {
     try {
         console.log('📝 Create user request received:', JSON.stringify(req.body, null, 2));
-        
+
         const {
             firstName,
             lastName,
@@ -222,105 +422,15 @@ router.post('/create-user-enhanced', async (req, res) => {
             assignedRoom = ''
         } = req.body;
 
-        // ── VALIDATIONS ──────────────────────────────────────────────────────
-        if (!firstName || !lastName || !email) {
-            return res.status(400).json({
-                success: false,
-                message: 'First name, last name, and email are required.'
-            });
-        }
-
-        const nameRegex = /^[a-zA-Z\s\-']*$/;
-
-        if (!nameRegex.test(firstName) || !nameRegex.test(lastName)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Names cannot contain numbers.'
-            });
-        }
-
-        if (lastName.length < 2) {
-            return res.status(400).json({
-                success: false,
-                message: 'Surname must be at least 2 characters.'
-            });
-        }
-
-        if (!/^\S+@\S+\.\S+$/.test(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid email address.'
-            });
-        }
-
-        const allowedRoles = ['admin', 'head_caregiver', 'caregiver'];
-
-        if (!allowedRoles.includes(role)) {
-            return res.status(400).json({
-                success: false,
-                message: `Role must be one of: ${allowedRoles.join(', ')}`
-            });
-        }
-
-        // Check if email already exists
-        const existing = await User.findOne({
-            email: email.trim().toLowerCase()
+        const result = await createEnhancedStaffAccount({
+            firstName, lastName, middleName, email, phone, role, shift, assignedFloor, assignedRoom,
         });
 
-        if (existing) {
-            return res.status(400).json({
-                success: false,
-                message: 'A user with this email already exists.'
-            });
+        if (!result.success) {
+            return res.status(400).json({ success: false, message: result.message });
         }
 
-        // ── GENERATE CREDENTIALS ─────────────────────────────────────────────
-        const tempPassword = generateRandomPassword();
-
-        // Generate username from email (ensure uniqueness)
-        let username = email.split('@')[0].toLowerCase();
-        // Remove special characters from username
-        username = username.replace(/[^a-z0-9]/g, '');
-        let usernameAttempt = username;
-        let counter = 1;
-        
-        while (await User.findOne({ username: usernameAttempt })) {
-            usernameAttempt = `${username}${counter}`;
-            counter++;
-        }
-        username = usernameAttempt;
-
-        // Generate staffId
-        const staffId = await generateStaffId(role);
-
-        // Generate OTP for first login
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-        // ── CREATE USER ──────────────────────────────────────────────────────
-        const user = new User({
-            staffId,
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            middleName: middleName.trim(),
-            username,
-            email: email.trim().toLowerCase(),
-            password: tempPassword,
-            phone: phone.trim() || '',
-            role,
-            shift,
-            assignedFloor: assignedFloor || '',
-            assignedRoom: assignedRoom || '',
-            status: 'pending',
-            isVerified: false,
-            isActive: false,
-            isFirstLogin: true,
-            needsProfileUpdate: true,
-            verificationOtp: otp,
-            verificationOtpExpires: new Date(Date.now() + 30 * 60 * 1000),
-            lastOtpSentAt: new Date(),
-        });
-
-        await user.save();
+        const { user } = result;
         console.log('✅ User created successfully:', user._id);
 
         logAudit(req, {
@@ -331,73 +441,6 @@ router.post('/create-user-enhanced', async (req, res) => {
             targetLabel: `${firstName} ${lastName}`,
             targetModel: 'User',
         });
-
-        // ── SEND WELCOME EMAIL ──────────────────────────────────────────────
-        const loginUrl = `${process.env.FRONTEND_URL || 'https://lsae-kanangalalay.online'}/entry-a96cc8350c56e2d3`;
-        const roleLabel = role === 'head_caregiver' ? 'Head Caregiver' : role.charAt(0).toUpperCase() + role.slice(1);
-
-        const welcomeHtml = `
-<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f5f5f5">
-    <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-        <div style="background:linear-gradient(135deg,#b85c2d,#d94e1b);padding:28px 32px">
-            <h2 style="margin:0;color:#fff;font-size:1.4rem">Welcome to Kanang-Alalay!</h2>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:.9rem">
-                Your account has been created by an administrator.
-            </p>
-        </div>
-        <div style="padding:28px 32px">
-            <p style="color:#444;margin:0 0 20px">
-                Hello <strong>${firstName} ${lastName}</strong>, here are your login credentials:
-            </p>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
-                <tr style="background:#fafafa">
-                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee;width:40%">Staff ID</td>
-                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;border-bottom:1px solid #eee">${staffId}</td>
-                </tr>
-                <tr>
-                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Username</td>
-                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;border-bottom:1px solid #eee">${username}</td>
-                </tr>
-                <tr style="background:#fafafa">
-                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Temporary Password</td>
-                    <td style="padding:10px 14px;font-weight:700;font-family:monospace;font-size:1rem;color:#d94e1b;border-bottom:1px solid #eee">${tempPassword}</td>
-                </tr>
-                <tr>
-                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Role</td>
-                    <td style="padding:10px 14px;border-bottom:1px solid #eee">${roleLabel}</td>
-                </tr>
-                <tr style="background:#fafafa">
-                    <td style="padding:10px 14px;color:#888;font-size:.85rem;border-bottom:1px solid #eee">Shift</td>
-                    <td style="padding:10px 14px;border-bottom:1px solid #eee;text-transform:capitalize">${shift}</td>
-                </tr>
-            </table>
-            <div style="background:#f0f7ff;border-radius:10px;padding:16px 20px;margin-bottom:24px">
-                <p style="margin:0 0 10px;font-weight:700;color:#1a5276;font-size:.88rem">HOW TO GET STARTED</p>
-                <ol style="margin:0;padding-left:18px;color:#444;font-size:.86rem;line-height:1.8">
-                    <li>Go to <a href="${loginUrl}" style="color:#d94e1b">${loginUrl}</a></li>
-                    <li>Log in with your username and temporary password</li>
-                    <li>Set your permanent password and complete your profile</li>
-                </ol>
-            </div>
-            <p style="color:#dc3545;font-size:.8rem;text-align:center;margin:0">
-                For your security, do not share these credentials with anyone.
-            </p>
-        </div>
-        <div style="background:#fafafa;padding:14px 32px;text-align:center;border-top:1px solid #eee">
-            <p style="margin:0;color:#aaa;font-size:.76rem">Kanang-Alalay Care Management System</p>
-        </div>
-    </div>
-</body>
-</html>`;
-
-        try {
-            await sendEmail(email.trim().toLowerCase(), 'Your Kanang-Alalay Account Credentials', welcomeHtml);
-            console.log('📧 Welcome email sent to:', email);
-        } catch (mailErr) {
-            console.error('Welcome email error (account still created):', mailErr.message);
-        }
 
         res.status(201).json({
             success: true,
@@ -416,23 +459,6 @@ router.post('/create-user-enhanced', async (req, res) => {
 
     } catch (error) {
         console.error('Create enhanced user error:', error);
-        
-        if (error.code === 11000) {
-            const field = Object.keys(error.keyPattern)[0];
-            return res.status(400).json({
-                success: false,
-                message: `A user with this ${field} already exists.`
-            });
-        }
-        
-        if (error.name === 'ValidationError') {
-            const errors = Object.values(error.errors).map(e => e.message);
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error: ' + errors.join(', ')
-            });
-        }
-        
         res.status(500).json({
             success: false,
             message: 'Server error: ' + error.message
@@ -841,6 +867,122 @@ router.delete('/staff/:id', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Server error deleting staff'
+        });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// BULK STAFF IMPORT (Part 16)
+// ─────────────────────────────────────────────────────────────
+// Mirrors the shape of POST /inventory/bulk-import above: every row runs
+// through the exact same createEnhancedStaffAccount() pipeline that the
+// single "Add New Staff" flow uses (POST /create-user-enhanced), so the
+// two paths can never disagree on what's a valid staff account, and
+// bulk-created accounts behave identically to individually-created ones
+// (same password/username/staffId generation, same welcome email, same
+// pending/first-login state).
+//
+// Admin-only per the Part 16 spec — layered on top of the router's
+// existing `adminOrHeadCaregiver` gate, the same way /audit-trail does it
+// above, rather than tightening a route Head Caregivers may rely on for
+// something else.
+router.post('/staff/bulk-import', adminOnly, async (req, res) => {
+    try {
+        const { staff } = req.body;
+
+        if (!staff || !Array.isArray(staff) || staff.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Staff array is required.'
+            });
+        }
+
+        const results = [];
+        let successCount = 0;
+        let failedCount = 0;
+        const seenEmails = new Set(); // catches duplicates WITHIN this same upload
+
+        for (let i = 0; i < staff.length; i++) {
+            const row = staff[i] || {};
+            const { firstName, lastName, middleName, email, phone, role, shift, assignedFloor, assignedRoom } = row;
+            const displayName = `${firstName || ''} ${lastName || ''}`.trim() || `Row ${i + 1}`;
+            const normalizedEmail = (email || '').toString().trim().toLowerCase();
+
+            if (normalizedEmail && seenEmails.has(normalizedEmail)) {
+                failedCount++;
+                results.push({ row: i + 1, name: displayName, email: normalizedEmail, success: false, message: 'Duplicate email within this file.' });
+                continue;
+            }
+            if (normalizedEmail) seenEmails.add(normalizedEmail);
+
+            const result = await createEnhancedStaffAccount({
+                firstName, lastName, middleName, email, phone, role, shift, assignedFloor, assignedRoom,
+            });
+
+            if (!result.success) {
+                failedCount++;
+                results.push({ row: i + 1, name: displayName, email: normalizedEmail, success: false, message: result.message });
+                continue;
+            }
+
+            successCount++;
+            results.push({
+                row: i + 1,
+                name: displayName,
+                email: result.user.email,
+                success: true,
+                staffId: result.staffId,
+                role: result.user.role,
+                // Full-enough shape for the frontend to prepend straight
+                // into its staff list without a refetch — mirrors the
+                // `user` object POST /create-user-enhanced already returns,
+                // plus the extra fields the User Management table reads
+                // (username, status, isActive, isVerified).
+                user: {
+                    id: result.user._id,
+                    firstName: result.user.firstName,
+                    lastName: result.user.lastName,
+                    middleName: result.user.middleName,
+                    username: result.username,
+                    email: result.user.email,
+                    phone: result.user.phone,
+                    role: result.user.role,
+                    shift: result.user.shift,
+                    staffId: result.staffId,
+                    status: 'pending',
+                    isActive: false,
+                    isVerified: false,
+                },
+            });
+        }
+
+        // One summary audit record for the whole batch — not one per CSV
+        // row parsed/validated, and not one per row rejected. Only the
+        // actual successful account creations are represented, as a single
+        // event identifying this as a bulk import (matching the
+        // INVENTORY_BULK_IMPORT pattern above).
+        if (successCount > 0) {
+            logAudit(req, {
+                action: 'STAFF_BULK_IMPORT',
+                module: 'User Management',
+                description: `Bulk-imported ${successCount} staff account(s)${failedCount ? ` (${failedCount} row(s) failed)` : ''}`,
+                status: failedCount > 0 && successCount === 0 ? 'failed' : 'success',
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            count: successCount,
+            failed: failedCount,
+            results,
+            message: `${successCount} staff account(s) created${failedCount ? `, ${failedCount} failed` : ''}.`
+        });
+
+    } catch (error) {
+        console.error('Staff bulk import error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Bulk import failed: ' + error.message
         });
     }
 });

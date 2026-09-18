@@ -1933,6 +1933,7 @@ const AdminDashboard = () => {
                 setStaff(prev => prev.map(u => u._id === updated._id ? updated : u));
                 toast(`User ${updated.firstName} ${updated.lastName} updated successfully.`);
             }}
+            currentUser={user}
         />
     );
 
