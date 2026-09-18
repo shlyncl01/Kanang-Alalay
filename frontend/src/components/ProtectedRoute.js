@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import CompleteProfileModal from './CompleteProfileModal';
 
 const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
 
@@ -44,7 +45,12 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         return <Navigate to={fallback} replace />;
     }
 
-    return children;
+    return (
+        <>
+            {children}
+            {user.needsProfileUpdate && <CompleteProfileModal />}
+        </>
+    );
 };
 
 export default ProtectedRoute;
