@@ -7,6 +7,7 @@ const RegistrationCode = require('../models/VerificationCode');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { protect } = require('../middleware/authMiddleware');
 const { logAudit } = require('../utils/auditLog');
+const { sendPhilSmsOtp } = require('../utils/philsms');
 
 // ── OTP hashing ───────────────────────────────────────────────────────────────
 // OTPs are never stored in plain text — only their SHA-256 hash is persisted.
@@ -65,6 +66,7 @@ router.get('/profile', protect, async (req, res) => {
                 lastName: req.user.lastName,
                 middleName: req.user.middleName,
                 phone: req.user.phone,
+                phoneVerified: req.user.phoneVerified,
                 role: req.user.role,
                 department: req.user.department,
                 shift: req.user.shift,
@@ -95,6 +97,7 @@ router.get('/me', protect, async (req, res) => {
                 lastName: req.user.lastName,
                 middleName: req.user.middleName,
                 phone: req.user.phone,
+                phoneVerified: req.user.phoneVerified,
                 role: req.user.role,
                 department: req.user.department,
                 shift: req.user.shift,
@@ -427,6 +430,7 @@ router.get('/validate-token', protect, async (req, res) => {
             lastName: req.user.lastName,
             middleName: req.user.middleName,
             phone: req.user.phone,
+            phoneVerified: req.user.phoneVerified,
             role: req.user.role,
             department: req.user.department,
             shift: req.user.shift,
@@ -1139,6 +1143,227 @@ router.put('/update-profile', protect, async (req, res) => {
     } catch (error) {
         console.error('Update profile error:', error);
         res.status(500).json({ success: false, message: 'Server error updating profile' });
+    }
+});
+
+// ── Phone verification (PhilSMS) ──────────────────────────────────────────────
+// Backend-only capability for the future "Complete Your Profile" flow (PART
+// 18D). Reuses the exact security pattern already used for the forgot-password
+// OTP above: SHA-256-hashed code (hashOtp), a 5-minute expiry, a 5-attempt
+// verify lockout, and a 3-per-15-minutes send/resend window — plus a 60s
+// cooldown to match ResendOTPButton.js's client-side countdown.
+const PHONE_OTP_EXPIRY_MS = 5 * 60 * 1000;        // 5 minutes — matches the reset-password OTP and the SMS copy below
+const MAX_PHONE_OTP_ATTEMPTS = 5;                  // matches MAX_OTP_ATTEMPTS used for reset-password OTP
+const MAX_PHONE_OTP_SENDS = 3;                     // matches MAX_RESENDS used for reset-password OTP
+const PHONE_OTP_RESEND_WINDOW_MS = 15 * 60 * 1000; // matches RESEND_WINDOW_MS used for reset-password OTP
+const PHONE_OTP_COOLDOWN_MS = 60 * 1000;           // matches ResendOTPButton.js's COOLDOWN constant
+
+// Shared by /send-phone-otp and /resend-phone-otp — both endpoints generate,
+// hash, store, and SMS a brand-new code, invalidating whatever code (if any)
+// preceded it. The only difference is which audit action and success message
+// they use.
+async function issuePhoneOtp(user, { auditAction, successMessage }) {
+    const phone = (user.phone || '').trim().replace(/[\s\-()]/g, '');
+    if (!phone) {
+        return { status: 400, body: { success: false, message: 'No phone number is set on your account yet.' } };
+    }
+    if (!PH_MOBILE_REGEX.test(phone)) {
+        return { status: 400, body: { success: false, message: 'The phone number on your account is not a valid Philippine mobile number.' } };
+    }
+    if (user.phoneVerified) {
+        return { status: 400, body: { success: false, message: 'This phone number is already verified.' } };
+    }
+
+    const now = new Date();
+
+    if (user.phoneOtpLastSentAt && (now - user.phoneOtpLastSentAt) < PHONE_OTP_COOLDOWN_MS) {
+        const waitSecs = Math.ceil((PHONE_OTP_COOLDOWN_MS - (now - user.phoneOtpLastSentAt)) / 1000);
+        return { status: 429, body: { success: false, message: `Please wait ${waitSecs} seconds before requesting another code.` } };
+    }
+
+    if (!user.phoneOtpResendWindowStart || (now - user.phoneOtpResendWindowStart) > PHONE_OTP_RESEND_WINDOW_MS) {
+        user.phoneOtpResendWindowStart = now;
+        user.phoneOtpResendCount = 0;
+    }
+    if (user.phoneOtpResendCount >= MAX_PHONE_OTP_SENDS) {
+        return { status: 429, body: { success: false, message: 'Maximum verification codes requested. Please try again in a few minutes.' } };
+    }
+
+    const otpCode = crypto.randomInt(100000, 1000000).toString(); // secure random, not Math.random()
+    const message = `Your Kanang-Alalay verification code is ${otpCode}. It expires in 5 minutes.`;
+
+    try {
+        await sendPhilSmsOtp(phone, message);
+    } catch (smsErr) {
+        console.error('PhilSMS send error:', smsErr.code || '', smsErr.message);
+        logAudit({ user }, {
+            action: 'PHONE_OTP_SEND_FAILED',
+            module: 'Login/Account Security',
+            status: 'failed',
+            description: `Failed to send phone OTP to ${user.username || user.email}: ${smsErr.message}`,
+            targetId: user._id,
+            targetLabel: user.username || user.email,
+            targetModel: 'User',
+        });
+        // Never mark verified, never claim success, never leak the token/provider internals.
+        return { status: 502, body: { success: false, message: 'We could not send the verification code right now. Please try again in a moment.' } };
+    }
+
+    user.phoneOtp = hashOtp(otpCode);
+    user.phoneOtpExpires = new Date(now.getTime() + PHONE_OTP_EXPIRY_MS);
+    user.phoneOtpAttempts = 0;
+    user.phoneOtpResendCount += 1;
+    user.phoneOtpLastSentAt = now;
+    await user.save();
+
+    logAudit({ user }, {
+        action: auditAction,
+        module: 'Login/Account Security',
+        description: `${successMessage} for ${user.username || user.email} (resend ${user.phoneOtpResendCount}/${MAX_PHONE_OTP_SENDS})`,
+        targetId: user._id,
+        targetLabel: user.username || user.email,
+        targetModel: 'User',
+    });
+
+    return { status: 200, body: { success: true, message: 'Verification code sent successfully.' } };
+}
+
+// Request a phone OTP for the current authenticated user's own phone number.
+router.post('/send-phone-otp', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        const result = await issuePhoneOtp(user, {
+            auditAction: 'PHONE_OTP_REQUESTED',
+            successMessage: 'Phone OTP requested',
+        });
+        res.status(result.status).json(result.body);
+    } catch (error) {
+        console.error('Send phone OTP error:', error);
+        res.status(500).json({ success: false, message: 'Server error sending verification code.' });
+    }
+});
+
+// Resend — invalidates the previous code and issues a new one, subject to the
+// same cooldown/window enforced by issuePhoneOtp().
+router.post('/resend-phone-otp', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        const result = await issuePhoneOtp(user, {
+            auditAction: 'PHONE_OTP_RESENT',
+            successMessage: 'Phone OTP resent',
+        });
+        res.status(result.status).json(result.body);
+    } catch (error) {
+        console.error('Resend phone OTP error:', error);
+        res.status(500).json({ success: false, message: 'Server error resending verification code.' });
+    }
+});
+
+// Verify the OTP the user just entered. Only ever verifies/changes the phone
+// of req.user's own account — no userId is accepted from the client.
+router.post('/verify-phone-otp', protect, async (req, res) => {
+    try {
+        const { otp } = req.body;
+        if (!otp) {
+            return res.status(400).json({ success: false, message: 'Verification code is required.' });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        if (user.phoneVerified) {
+            return res.json({ success: true, message: 'Phone number is already verified.', phoneVerified: true });
+        }
+
+        if (!user.phoneOtp || !user.phoneOtpExpires) {
+            return res.status(400).json({ success: false, message: 'No active verification code found. Please request a new one.' });
+        }
+
+        if (user.phoneOtpAttempts >= MAX_PHONE_OTP_ATTEMPTS) {
+            user.phoneOtp = undefined;
+            user.phoneOtpExpires = undefined;
+            await user.save();
+            logAudit({ user }, {
+                action: 'PHONE_OTP_LOCKED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Phone OTP locked after ${MAX_PHONE_OTP_ATTEMPTS} failed attempts for ${user.username || user.email}`,
+                targetId: user._id,
+                targetLabel: user.username || user.email,
+                targetModel: 'User',
+            });
+            return res.status(429).json({ success: false, message: 'Too many incorrect attempts. Please request a new verification code.' });
+        }
+
+        // Check expiry before comparing, same as verify-reset-otp, so an
+        // expired code always gets the "expired" message rather than "invalid".
+        if (user.phoneOtpExpires < new Date()) {
+            return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new one.' });
+        }
+
+        if (hashOtp(otp) !== user.phoneOtp) {
+            user.phoneOtpAttempts = (user.phoneOtpAttempts || 0) + 1;
+            await user.save();
+            logAudit({ user }, {
+                action: 'PHONE_VERIFICATION_FAILED',
+                module: 'Login/Account Security',
+                status: 'failed',
+                description: `Incorrect phone OTP entered by ${user.username || user.email} (attempt ${user.phoneOtpAttempts})`,
+                targetId: user._id,
+                targetLabel: user.username || user.email,
+                targetModel: 'User',
+            });
+            return res.status(400).json({ success: false, message: 'Invalid verification code.' });
+        }
+
+        user.phoneVerified = true;
+        user.phoneOtp = undefined;
+        user.phoneOtpExpires = undefined;
+        user.phoneOtpAttempts = 0;
+        user.phoneOtpResendCount = 0;
+        user.phoneOtpResendWindowStart = undefined;
+        user.phoneOtpLastSentAt = undefined;
+        await user.save();
+
+        logAudit({ user }, {
+            action: 'PHONE_VERIFICATION_SUCCESS',
+            module: 'Login/Account Security',
+            description: `Phone number verified successfully for ${user.username || user.email}`,
+            targetId: user._id,
+            targetLabel: user.username || user.email,
+            targetModel: 'User',
+        });
+
+        res.json({ success: true, message: 'Phone number verified successfully.', phoneVerified: true });
+    } catch (error) {
+        console.error('Verify phone OTP error:', error);
+        res.status(500).json({ success: false, message: 'Server error verifying code.' });
+    }
+});
+
+// Safe status check for PART 18D's Complete Your Profile modal: whether a
+// phone exists, whether it's verified, and whether an OTP is currently
+// pending — never the OTP itself.
+router.get('/phone-verification-status', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        const otpPending = !!(user.phoneOtp && user.phoneOtpExpires && user.phoneOtpExpires > new Date());
+
+        res.json({
+            success: true,
+            phone: user.phone || '',
+            phoneVerified: !!user.phoneVerified,
+            otpPending,
+        });
+    } catch (error) {
+        console.error('Phone verification status error:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching phone verification status.' });
     }
 });
 

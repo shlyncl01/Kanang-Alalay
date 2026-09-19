@@ -104,6 +104,19 @@ const userSchema = new mongoose.Schema({
     lastOtpSentAt:       { type: Date },
     pushToken:           { type: String, default: null },
 
+    // ── Phone verification (PhilSMS OTP) ───────────────────────────────────
+    // Mirrors the resetPasswordOtp/resetOtp* pattern above: the OTP itself is
+    // never stored in plaintext (only its SHA-256 hash, via authRoutes.js's
+    // hashOtp()), and attempt/resend counters guard against brute force and
+    // SMS-spam abuse. Set to true only after a successful /verify-phone-otp.
+    phoneVerified:             { type: Boolean, default: false },
+    phoneOtp:                  { type: String },   // SHA-256 hash of the current code
+    phoneOtpExpires:           { type: Date },
+    phoneOtpAttempts:          { type: Number, default: 0 },  // failed verify attempts (max 5)
+    phoneOtpResendCount:       { type: Number, default: 0 },  // sends/resends used in current window (max 3)
+    phoneOtpResendWindowStart: { type: Date },                // start of the 15-min send/resend window
+    phoneOtpLastSentAt:        { type: Date },                // last send/resend, for the 60s cooldown
+
 }, { timestamps: true });
 
 // Auto-generate staffId and set shift times before saving
