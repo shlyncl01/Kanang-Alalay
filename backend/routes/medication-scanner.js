@@ -5,8 +5,24 @@ const Medication = require('../models/Medication');
 const Resident = require('../models/Resident');
 const MedicationLog = require('../models/MedicationLog');
 const ScanHistory = require('../models/ScanHistory');
+const MedicationFlag = require('../models/MedicationFlag');
+const User = require('../models/User');
+const Alert = require('../models/Alert');
 const { protect } = require('../middleware/authMiddleware');
 const { logAudit } = require('../utils/auditLog');
+const imageUpload = require('../middleware/imageUpload');
+const streamifier = require('streamifier');
+const cloudinary = require('../config/cloudinary');
+
+function streamUploadFlagPhoto(buffer, publicId) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'kanang-alalay/medication-flags', public_id: publicId, overwrite: true, resource_type: 'image' },
+      (error, result) => (error ? reject(error) : resolve(result))
+    );
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+}
 
 const canSeeAllScans = (user) => ['admin', 'head_caregiver'].includes(user.role);
 
@@ -150,6 +166,67 @@ router.post('/lookup', protect, async (req, res) => {
   } catch (error) {
     console.error('Lookup error:', error);
     res.status(500).json({ error: 'Server error during medication lookup: ' + error.message });
+  }
+});
+
+// POST /api/medication-scanner/flag — caregiver reports a barcode that
+// isn't in the Medication catalog, with a photo of the packaging as
+// evidence. Goes to Head Caregiver for approval before Admin ever sees it
+// — see MedicationFlag.js for the full status pipeline.
+router.post('/flag', protect, imageUpload.single('photo'), async (req, res) => {
+  try {
+    const { barcode } = req.body;
+    if (!barcode || !String(barcode).trim()) {
+      return res.status(400).json({ success: false, message: 'Barcode is required.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'A photo of the packaging is required.' });
+    }
+
+    const cleanedBarcode = String(barcode).replace(/[\s-]/g, '');
+    const publicId = `flag_${cleanedBarcode}_${Date.now()}`;
+    const uploadResult = await streamUploadFlagPhoto(req.file.buffer, publicId);
+
+    const flag = await MedicationFlag.create({
+      barcode: cleanedBarcode,
+      photoUrl: uploadResult.secure_url,
+      photoPublicId: uploadResult.public_id,
+      flaggedBy: req.user._id,
+    });
+
+    // Best-effort notify — a failed notification should never fail the
+    // flag submission itself.
+    try {
+      const headCaregivers = await User.find({ role: 'head_caregiver' }, { _id: 1 });
+      const recipientIds = headCaregivers.map((u) => String(u._id));
+      const flaggerName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.username || 'A caregiver';
+
+      const alert = await Alert.create({
+        type: 'medication-flag-submitted',
+        title: 'Unregistered Medication Flagged',
+        message: `${flaggerName} flagged an unrecognized medication (barcode ${cleanedBarcode}).`,
+        details: { medicationFlagId: flag._id, barcode: cleanedBarcode },
+      });
+
+      const io = req.app.get('io');
+      if (io && recipientIds.length) {
+        io.to(recipientIds).emit('newAlert', {
+          _id: alert._id,
+          type: alert.type,
+          message: alert.message,
+          subMessage: '',
+          details: alert.details,
+          isRead: false,
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Failed to notify head caregivers of medication flag:', notifyErr.message);
+    }
+
+    res.status(201).json({ success: true, data: flag });
+  } catch (error) {
+    console.error('Medication flag error:', error);
+    res.status(500).json({ success: false, message: 'Server error while submitting medication flag: ' + error.message });
   }
 });
 

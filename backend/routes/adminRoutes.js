@@ -18,6 +18,8 @@ const Alert = require('../models/Alert');
 const VitalsLog = require('../models/VitalsLog');
 const ActivityLog = require('../models/ActivityLog');
 const MedicationLog = require('../models/MedicationLog');
+const Medication = require('../models/Medication');
+const MedicationFlag = require('../models/MedicationFlag');
 const Resident = require('../models/Resident');
 
 const { protect, adminOrHeadCaregiver, adminOnly } = require('../middleware/authMiddleware');
@@ -2040,6 +2042,179 @@ router.put('/stock-requests/:id', async (req, res) => {
             success: false,
             message: err.message
         });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// LIST CAREGIVER-FLAGGED MEDICATIONS AWAITING ADMIN REGISTRATION
+// GET /api/admin/medication-flags
+// ─────────────────────────────────────────────────────────────
+router.get('/medication-flags', async (req, res) => {
+    try {
+        const flags = await MedicationFlag.find({ status: 'hc_approved' })
+            .populate('flaggedBy', 'firstName lastName username')
+            .populate('hcResolvedBy', 'firstName lastName')
+            .sort({ hcResolvedAt: -1 });
+        res.json({ success: true, data: flags });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// REGISTER (or reject) A CAREGIVER-FLAGGED MEDICATION
+// PUT /api/admin/medication-flags/:id
+// ─────────────────────────────────────────────────────────────
+// This is the only step that actually writes to Inventory in the whole
+// flag pipeline, so it's Admin-exclusive on top of the router's usual
+// adminOrHeadCaregiver gate — same extra-layering pattern used for
+// assign-caregiver in headCaregiverRoutes.js.
+router.put('/medication-flags/:id', adminOnly, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, adminNote, ...medicationFields } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid flag ID.' });
+        }
+        if (!['registered', 'admin_rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Status must be 'registered' or 'admin_rejected'." });
+        }
+
+        const existing = await MedicationFlag.findById(id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: 'Medication flag not found.' });
+        }
+        if (existing.status !== 'hc_approved') {
+            return res.status(409).json({ success: false, message: `This flag isn't awaiting Admin registration (currently ${existing.status}).` });
+        }
+
+        if (status === 'admin_rejected') {
+            const updated = await MedicationFlag.findOneAndUpdate(
+                { _id: id, status: 'hc_approved' },
+                { status: 'admin_rejected', adminNote: adminNote || '', adminResolvedBy: req.user._id, adminResolvedAt: new Date() },
+                { new: true }
+            );
+            if (!updated) {
+                return res.status(409).json({ success: false, message: 'This flag has already been resolved.' });
+            }
+
+            try {
+                await Alert.create({
+                    type: 'medication-flag-rejected',
+                    title: 'Medication Flag Rejected',
+                    message: `Your flagged medication (barcode ${existing.barcode}) was reviewed by Admin but not registered.`,
+                    relatedUser: existing.flaggedBy,
+                    details: { medicationFlagId: existing._id },
+                });
+            } catch (notifyErr) {
+                console.error('Failed to notify caregiver of flag admin-rejection:', notifyErr.message);
+            }
+
+            return res.json({ success: true, data: updated, message: 'Medication flag rejected.' });
+        }
+
+        // ── REGISTER — create the Medication + Inventory/Product entry.
+        // Same field shape as POST /api/medications and POST /inventory,
+        // with sensible auto-fill so Admin only has to actually type stock
+        // count, expiry date, and the clinical safety fields — see the
+        // plan for the full reasoning on what can/can't be auto-filled.
+        const {
+            name, genericName, brand, dosage, strength, form, route, manufacturer, ndc,
+            purpose, instructions, warnings, sideEffects, contraindications, drugInteractions,
+            pregnancy, storage, category, unit, expiryDate, stock,
+            dateOfManufacture, dateOfPurchase,
+        } = medicationFields;
+
+        if (!name || !String(name).trim()) {
+            return res.status(400).json({ success: false, message: 'Medication name is required.' });
+        }
+        if (!expiryDate) {
+            return res.status(400).json({ success: false, message: 'Expiry date is required.' });
+        }
+        if (stock?.current === undefined || stock?.current === null || stock.current === '') {
+            return res.status(400).json({ success: false, message: 'Current stock quantity is required.' });
+        }
+
+        const normalizedNameCode = name.trim().replace(/\s+/g, '_').toUpperCase();
+        const safeMedicationId = `MED-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000)}`.toUpperCase();
+        const safeUniqueCode = (existing.barcode || normalizedNameCode || safeMedicationId).toUpperCase();
+        const today = new Date();
+
+        // Product + batch, mirroring POST /inventory — lands the medication
+        // in actual stock, not just the clinical catalog.
+        const { product } = await findOrCreateProduct(Product, {
+            name,
+            category: category || 'medication',
+            unit: unit || stock?.unit || 'pcs',
+            minimumStockLevel: stock?.minimum,
+        });
+        const batchNumber = await getNextBatchNumber(Inventory, product._id);
+
+        const medication = new Medication({
+            medicationId: safeMedicationId,
+            uniqueCode: safeUniqueCode,
+            barcode: existing.barcode,
+            name,
+            brand: brand || manufacturer || name,
+            batchNumber,
+            genericName, strength, form, route, manufacturer, ndc,
+            purpose, instructions, warnings, sideEffects, contraindications, drugInteractions, pregnancy, storage,
+            dosage: typeof dosage === 'string' ? { value: null, unit: dosage } : dosage,
+            phAvailability: 'available',
+            dateOfManufacture: dateOfManufacture || today,
+            dateOfPurchase: dateOfPurchase || today,
+            expiryDate,
+            stock: {
+                current: Number(stock.current),
+                minimum: stock?.minimum !== undefined && stock.minimum !== '' ? Number(stock.minimum) : 10,
+                maximum: stock?.maximum !== undefined && stock.maximum !== '' ? Number(stock.maximum) : 100,
+                unit: stock?.unit || unit || 'pcs',
+            },
+            isActive: true,
+        });
+        await medication.save();
+
+        const batch = new Inventory({
+            productId: product._id,
+            name: product.name,
+            batchNumber,
+            quantity: Number(stock.current),
+            unit: product.unit,
+            category: product.category,
+            minThreshold: medication.stock.minimum,
+            expirationDate: expiryDate,
+            brand: medication.brand,
+            dosage: typeof dosage === 'string' ? dosage : (dosage?.value ? `${dosage.value}${dosage.unit || ''}` : undefined),
+            notes: `Registered from caregiver-flagged barcode scan (flag ${existing._id}).`,
+        });
+        await batch.save();
+
+        const updated = await MedicationFlag.findOneAndUpdate(
+            { _id: id, status: 'hc_approved' },
+            {
+                status: 'registered',
+                adminNote: adminNote || '',
+                adminResolvedBy: req.user._id,
+                adminResolvedAt: new Date(),
+                medicationId: medication._id,
+            },
+            { new: true }
+        );
+
+        logAudit(req, {
+            action: 'MEDICATION_CATALOG_ADDED',
+            module: 'Medication',
+            description: `Registered "${medication.name}" from a caregiver-flagged barcode scan`,
+            targetId: medication._id,
+            targetLabel: medication.name,
+            targetModel: 'Medication',
+        });
+
+        res.json({ success: true, data: { flag: updated, medication, inventory: batch }, message: `${medication.name} registered and added to Inventory.` });
+    } catch (err) {
+        console.error('Register medication flag error:', err);
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 

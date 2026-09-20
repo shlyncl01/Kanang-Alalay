@@ -92,4 +92,50 @@ const transcribeAudio = async (filePath) => {
   return transcription.text;
 };
 
-module.exports = { processVoice, transcribeAudio };
+// Reads a photo of medication packaging and pulls out whatever's legible,
+// so an Admin registering a caregiver-flagged medication gets a pre-filled
+// form instead of a blank one. Best-effort only — returns null on any
+// failure (bad photo, no image, parse error) rather than throwing, since
+// callers must never let this block the registration flow; a null result
+// just means Admin's form opens blank instead of pre-filled.
+const extractMedicationLabel = async (photoUrl) => {
+  if (!photoUrl) return null;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Read this medication packaging photo and extract whatever is legible. Return ONLY valid JSON in this exact format:
+{
+  "name": "medication name or null",
+  "genericName": "generic name or null",
+  "brand": "brand name or null",
+  "dosage": "dosage value+unit as a single string, e.g. '500mg', or null",
+  "form": "e.g. Tablet, Capsule, Syrup, or null",
+  "manufacturer": "manufacturer name or null",
+  "expiryDate": "expiry date in YYYY-MM-DD if printed and legible, otherwise null"
+}
+Use null for any field that isn't clearly visible — never guess or make up a value.`,
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extract the medication details from this label photo.' },
+            { type: 'image_url', image_url: { url: photoUrl } },
+          ],
+        },
+      ],
+    });
+
+    const raw = completion.choices?.[0]?.message?.content || '';
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error('Medication label extraction failed:', error.message);
+    return null;
+  }
+};
+
+module.exports = { processVoice, transcribeAudio, extractMedicationLabel };
