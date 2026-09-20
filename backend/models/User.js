@@ -90,6 +90,12 @@ const userSchema = new mongoose.Schema({
     resetOtp: { type: String },
     resetOtpExpires: { type: Date },
 
+    // Which channel the current password-reset OTP was delivered through.
+    // PART 18C.1: lets /resend-reset-otp resend via the same channel the
+    // user originally chose (Email vs SMS), without conflating this with
+    // 18C's phoneVerified (which proves phone *ownership*, not reset intent).
+    resetOtpChannel: { type: String, enum: ['email', 'sms'], default: 'email' },
+
     // Forgot-password OTP security tracking
     resetOtpAttempts: { type: Number, default: 0 },          // failed verify attempts (max 5)
     resetOtpResendCount: { type: Number, default: 0 },        // resends used in current window (max 3)

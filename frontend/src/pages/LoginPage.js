@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaUser, FaLock, FaEye, FaEyeSlash, FaSpinner, FaEnvelope, FaKey, FaCheckCircle, FaTimes, FaArrowLeft } from 'react-icons/fa';
+import { FaUser, FaLock, FaEye, FaEyeSlash, FaSpinner, FaEnvelope, FaKey, FaCheckCircle, FaTimes, FaArrowLeft, FaMobileAlt } from 'react-icons/fa';
 import '../styles/LoginPage.css';
 import mainLogo from '../assets/mainLogo.png';
 
@@ -49,9 +49,26 @@ const ForgotPasswordModal = ({ onClose }) => {
     const [resendTimer, setResendTimer] = useState(0);
     const [expiryTimer, setExpiryTimer] = useState(OTP_EXPIRY_SECONDS);
 
+    // PART 18C.1: which channel the code goes through. The user never types a
+    // phone number — SMS availability and the masked number both come from
+    // the backend's /recovery-options, which reads the account's own stored
+    // (and already-verified) phone.
+    const [method, setMethod]           = useState('email'); // 'email' | 'sms'
+    const [checkingSms, setCheckingSms] = useState(false);
+    const [smsInfo, setSmsInfo]         = useState(null);    // { maskedPhone }
+    const [smsUnavailableMsg, setSmsUnavailableMsg] = useState('');
+
     const otpRefs = React.useRef([]);
     const otp = otpDigits.join('');
     const otpComplete = otp.length === OTP_LENGTH;
+
+    // Any time the email changes, whatever SMS check we ran was for a
+    // different (or not-yet-confirmed) account — drop it and fall back to Email.
+    const resetChannelState = () => {
+        setMethod('email');
+        setSmsInfo(null);
+        setSmsUnavailableMsg('');
+    };
 
     // 60s cooldown before the Resend button becomes clickable again
     useEffect(() => {
@@ -79,6 +96,46 @@ const ForgotPasswordModal = ({ onClose }) => {
 
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+    // Called when the user taps the "SMS" tab. Never sends a phone number —
+    // only asks the backend whether THIS account (by email) has one on file
+    // and already verified, and gets back a masked form if so.
+    const handleSelectMethod = async (m) => {
+        setMsg({ text: '', type: '' });
+        if (m === 'email') { setMethod('email'); return; }
+
+        if (!emailValid) return;
+        setCheckingSms(true);
+        setSmsUnavailableMsg('');
+        try {
+            const res  = await authFetch('/auth/recovery-options', {
+                method: 'POST',
+                body:   JSON.stringify({ email: email.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                // Covers "No account is registered with this email address." —
+                // the same enumeration behavior /forgot-password already has.
+                setError(data.message || 'Could not check recovery options.');
+                return;
+            }
+            if (data.smsAvailable) {
+                setMethod('sms');
+                setSmsInfo({ maskedPhone: data.maskedPhone });
+            } else {
+                setSmsUnavailableMsg(
+                    data.phoneExists
+                        ? 'SMS recovery is unavailable because this account does not have a verified mobile number.'
+                        : 'SMS recovery is unavailable because no verified mobile number is registered for this account.'
+                );
+                setMethod('email');
+            }
+        } catch {
+            setError('Network error. Please try again.');
+        } finally {
+            setCheckingSms(false);
+        }
+    };
+
     const handleRequestOtp = async () => {
         setEmailTouched(true);
         if (!email.trim()) { setError('Please enter your email address.'); return; }
@@ -88,18 +145,19 @@ const ForgotPasswordModal = ({ onClose }) => {
         try {
             const res  = await authFetch('/auth/forgot-password', {
                 method: 'POST',
-                body:   JSON.stringify({ email: email.trim() }),
+                body:   JSON.stringify({ email: email.trim(), method }),
             });
             const data = await res.json();
             if (data.success) {
-                setOk('A verification code has been sent to your email.');
+                setOk(data.message || (method === 'sms' ? 'A verification code has been sent to your phone.' : 'A verification code has been sent to your email.'));
                 setStep('otp');
                 setOtpDigits(Array(OTP_LENGTH).fill(''));
                 setResendTimer(RESEND_COOLDOWN_SECONDS);
                 setExpiryTimer(OTP_EXPIRY_SECONDS);
                 setTimeout(() => otpRefs.current[0]?.focus(), 100);
             } else {
-                // Covers "No account is registered with this email address." from the backend
+                // Covers "No account is registered with this email address."
+                // and, for SMS, the two "SMS recovery is unavailable…" messages.
                 setError(data.message || 'Failed to send verification code.');
             }
         } catch {
@@ -208,6 +266,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                 setConfirmPass('');
                 setOtpDigits(Array(OTP_LENGTH).fill(''));
                 setEmail('');
+                resetChannelState();
                 setStep('done');
             } else {
                 setError(data.message || 'Failed to reset password.');
@@ -228,7 +287,9 @@ const ForgotPasswordModal = ({ onClose }) => {
 
     const stepSubs = {
         email:   "Enter the email address linked to your account and we'll send a one-time code.",
-        otp:     `We sent a ${OTP_LENGTH}-digit code to ${email}. Enter it below.`,
+        otp:     method === 'sms'
+            ? `We sent a ${OTP_LENGTH}-digit code to your phone number ${smsInfo?.maskedPhone || ''}. Enter it below.`
+            : `We sent a ${OTP_LENGTH}-digit code to ${email}. Enter it below.`,
         newpass: 'Choose a new password for your account.',
         done:    'Your password has been reset successfully.'
     };
@@ -271,7 +332,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                                     className="fp-input"
                                     placeholder="you@example.com"
                                     value={email}
-                                    onChange={e => { setEmail(e.target.value); setMsg({ text:'', type:'' }); }}
+                                    onChange={e => { setEmail(e.target.value); setMsg({ text:'', type:'' }); resetChannelState(); }}
                                     onBlur={() => setEmailTouched(true)}
                                     onKeyDown={e => e.key === 'Enter' && handleRequestOtp()}
                                     autoFocus
@@ -283,6 +344,51 @@ const ForgotPasswordModal = ({ onClose }) => {
                                 </span>
                             )}
                         </div>
+
+                        {/* PART 18C.1: recovery channel — SMS only ever targets the
+                            phone number already on file for this account. */}
+                        <div style={{ display: 'flex', gap: 8, margin: '2px 0 12px' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleSelectMethod('email')}
+                                style={{
+                                    flex: 1, padding: '9px 0', borderRadius: 10, fontWeight: 700, fontSize: '.82rem',
+                                    border: `2px solid ${method === 'email' ? '#F96B38' : '#E8D6CC'}`,
+                                    background: method === 'email' ? '#FFF8F3' : '#fff',
+                                    color: method === 'email' ? '#F96B38' : '#7A5C4E',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                }}
+                            >
+                                <FaEnvelope /> Email
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSelectMethod('sms')}
+                                disabled={!emailValid || checkingSms}
+                                style={{
+                                    flex: 1, padding: '9px 0', borderRadius: 10, fontWeight: 700, fontSize: '.82rem',
+                                    border: `2px solid ${method === 'sms' ? '#F96B38' : '#E8D6CC'}`,
+                                    background: method === 'sms' ? '#FFF8F3' : '#fff',
+                                    color: !emailValid ? '#bbb' : (method === 'sms' ? '#F96B38' : '#7A5C4E'),
+                                    cursor: (!emailValid || checkingSms) ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                }}
+                            >
+                                {checkingSms ? <FaSpinner className="spin" /> : <FaMobileAlt />} SMS
+                            </button>
+                        </div>
+
+                        {method === 'sms' && smsInfo?.maskedPhone && (
+                            <span style={{ color: '#7A5C4E', fontSize: '.8rem', display: 'block', marginBottom: 10 }}>
+                                Code will be sent to your registered mobile number ({smsInfo.maskedPhone}).
+                            </span>
+                        )}
+                        {smsUnavailableMsg && method === 'email' && (
+                            <span style={{ color: '#dc3545', fontSize: '.8rem', display: 'block', marginBottom: 10 }}>
+                                {smsUnavailableMsg}
+                            </span>
+                        )}
+
                         <button className="fp-btn" onClick={handleRequestOtp} disabled={loading || (emailTouched && !!email.trim() && !emailValid)}>
                             {loading ? <FaSpinner className="spin" /> : 'Send Verification Code'}
                         </button>
@@ -333,7 +439,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                             </button>
                             <button
                                 className="fp-link muted"
-                                onClick={() => { setStep('email'); setOtpDigits(Array(OTP_LENGTH).fill('')); setMsg({ text:'', type:'' }); }}
+                                onClick={() => { setStep('email'); setOtpDigits(Array(OTP_LENGTH).fill('')); setMsg({ text:'', type:'' }); resetChannelState(); }}
                             >
                                 ← Change Email
                             </button>

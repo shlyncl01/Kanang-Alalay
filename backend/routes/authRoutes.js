@@ -13,6 +13,14 @@ const { sendPhilSmsOtp } = require('../utils/philsms');
 // OTPs are never stored in plain text — only their SHA-256 hash is persisted.
 const hashOtp = (otp) => crypto.createHash('sha256').update(String(otp)).digest('hex');
 
+// PART 18C.1: masks a stored phone number for safe display, e.g. "09171234567" -> "******4567".
+// Never expose the full stored number through any password-recovery response.
+const maskPhone = (phone) => {
+    if (!phone) return null;
+    const digits = String(phone).replace(/\D/g, '');
+    return `******${digits.slice(-4)}`;
+};
+
 // ── Lightweight in-memory rate limiter ────────────────────────────────────────
 // Per-IP brute-force guard for the forgot-password endpoints. For multi-instance
 // deployments, swap this Map for a shared store (e.g. Redis) or the
@@ -662,6 +670,46 @@ router.post('/verify-otp', async (req, res) => {
     }
 });
 
+// ── Password-recovery options (PART 18C.1) ────────────────────────────────────
+// Tells the frontend, for a given account email, which recovery channels are
+// available — email is always offered; SMS only if the account has a phone
+// AND it's already verified (18C's phoneVerified). The phone number itself
+// never comes from the client: this endpoint returns at most a masked form
+// of the number MongoDB already has on file for that account.
+// NOTE: like /forgot-password below, this endpoint reveals whether the email
+// is registered — that's the same pre-existing product trade-off, not a new
+// enumeration surface.
+router.post('/recovery-options', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'recovery-options' }), async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+        }
+
+        const user = await User.findOne({ email: email.trim() });
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
+        }
+
+        const phoneExists = !!user.phone;
+        const smsAvailable = phoneExists && !!user.phoneVerified;
+
+        res.json({
+            success: true,
+            emailAvailable: true,
+            smsAvailable,
+            phoneExists,
+            maskedPhone: smsAvailable ? maskPhone(user.phone) : null,
+        });
+    } catch (error) {
+        console.error('Recovery options error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // ── Forgot password ───────────────────────────────────────────────────────────
 // NOTE on security trade-off: this endpoint explicitly reveals whether an email
 // is registered (per product decision). This is convenient for users but is a
@@ -671,7 +719,12 @@ router.post('/verify-otp', async (req, res) => {
 // generic "If that email exists, an OTP has been sent." response.
 router.post('/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'forgot-password' }), async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, method } = req.body;
+        // Only ever 'email' or 'sms'; anything else (or omitted) defaults to
+        // 'email' so existing frontend callers that don't send `method` keep
+        // working exactly as before.
+        const channel = method === 'sms' ? 'sms' : 'email';
+
         if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -689,6 +742,64 @@ router.post('/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, k
             });
             return res.status(404).json({ success: false, message: 'No account is registered with this email address.' });
         }
+
+        // ── SMS channel (PART 18C.1) ────────────────────────────────────────
+        // The destination number is ALWAYS the one already stored on this
+        // User document — never anything the client sends. Only a phone that
+        // has already passed 18C's phone verification may be used to receive
+        // a reset code; this is a distinct purpose from that verification
+        // (recovery destination, not proof of ownership), so phoneVerified
+        // itself is never touched here.
+        if (channel === 'sms') {
+            if (!user.phone) {
+                return res.status(400).json({ success: false, message: 'SMS recovery is unavailable because no verified mobile number is registered for this account.' });
+            }
+            if (!user.phoneVerified) {
+                return res.status(400).json({ success: false, message: 'SMS recovery is unavailable because this account does not have a verified mobile number.' });
+            }
+
+            const otpCode = crypto.randomInt(100000, 1000000).toString();
+            const message = `Your Kanang-Alalay password reset code is ${otpCode}. It expires in 5 minutes.`;
+
+            try {
+                await sendPhilSmsOtp(user.phone, message);
+            } catch (smsErr) {
+                console.error('PhilSMS reset send error:', smsErr.code || '', smsErr.message);
+                logAudit({ user }, {
+                    action: 'PASSWORD_RESET_OTP_SEND_FAILED',
+                    module: 'Login/Account Security',
+                    status: 'failed',
+                    description: `Failed to send SMS password-reset OTP to ${user.email}: ${smsErr.message}`,
+                    targetId: user._id,
+                    targetLabel: user.email,
+                    targetModel: 'User',
+                });
+                // Never report success and never persist an OTP that was never delivered.
+                return res.status(502).json({ success: false, message: 'We could not send the verification code right now. Please try again in a moment.' });
+            }
+
+            user.resetPasswordOtp = hashOtp(otpCode);
+            user.resetPasswordOtpExpires = new Date(Date.now() + 5 * 60 * 1000);
+            user.resetOtpAttempts = 0;
+            user.resetOtpResendCount = 0;
+            user.resetOtpResendWindowStart = new Date();
+            user.resetOtpChannel = 'sms';
+            await user.save();
+
+            logAudit({ user }, {
+                action: 'PASSWORD_RESET_REQUESTED',
+                module: 'Login/Account Security',
+                description: `Password reset OTP sent via SMS to ${user.email} (${maskPhone(user.phone)})`,
+                targetId: user._id,
+                targetLabel: user.email,
+                targetModel: 'User',
+            });
+
+            return res.json({ success: true, message: `A verification code has been sent to your phone number (${maskPhone(user.phone)}).` });
+        }
+
+        // ── Email channel (existing behavior, unchanged) ────────────────────
+        user.resetOtpChannel = 'email';
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         user.resetPasswordOtp = hashOtp(otpCode);
@@ -845,6 +956,7 @@ router.post('/reset-password', async (req, res) => {
         user.password = newPassword;
         user.resetPasswordOtp = undefined;
         user.resetPasswordOtpExpires = undefined;
+        user.resetOtpChannel = undefined;
         await user.save();
 
         logAudit({ user }, {
@@ -899,6 +1011,7 @@ router.post('/reset-password-with-otp', async (req, res) => {
         user.resetOtpAttempts = 0;
         user.resetOtpResendCount = 0;
         user.resetOtpResendWindowStart = undefined;
+        user.resetOtpChannel = undefined;
         await user.save();
 
         logAudit({ user }, {
@@ -940,6 +1053,53 @@ router.post('/resend-reset-otp', async (req, res) => {
         if (user.resetOtpResendCount >= MAX_RESENDS) {
             return res.status(429).json({ success: false, message: 'Maximum resend attempts reached. Please try again in a few minutes.' });
         }
+
+        // ── SMS channel (PART 18C.1) ────────────────────────────────────────
+        // Resend through whichever channel the pending OTP was originally
+        // sent on — never accept a channel/phone override from the client.
+        if (user.resetOtpChannel === 'sms') {
+            if (!user.phone || !user.phoneVerified) {
+                return res.status(400).json({ success: false, message: 'SMS recovery is unavailable because this account does not have a verified mobile number.' });
+            }
+
+            const otpCode = crypto.randomInt(100000, 1000000).toString();
+            const message = `Your Kanang-Alalay password reset code is ${otpCode}. It expires in 5 minutes.`;
+
+            try {
+                await sendPhilSmsOtp(user.phone, message);
+            } catch (smsErr) {
+                console.error('PhilSMS reset resend error:', smsErr.code || '', smsErr.message);
+                logAudit({ user }, {
+                    action: 'PASSWORD_RESET_OTP_SEND_FAILED',
+                    module: 'Login/Account Security',
+                    status: 'failed',
+                    description: `Failed to resend SMS password-reset OTP to ${user.email}: ${smsErr.message}`,
+                    targetId: user._id,
+                    targetLabel: user.email,
+                    targetModel: 'User',
+                });
+                return res.status(502).json({ success: false, message: 'We could not send the verification code right now. Please try again in a moment.' });
+            }
+
+            user.resetPasswordOtp = hashOtp(otpCode); // invalidates the previous code
+            user.resetPasswordOtpExpires = new Date(now.getTime() + 5 * 60 * 1000);
+            user.resetOtpAttempts = 0;
+            user.resetOtpResendCount += 1;
+            await user.save();
+
+            logAudit({ user }, {
+                action: 'PASSWORD_RESET_OTP_RESENT',
+                module: 'Login/Account Security',
+                description: `Reset OTP resent via SMS to ${user.email} (${maskPhone(user.phone)}) (resend ${user.resetOtpResendCount}/${MAX_RESENDS})`,
+                targetId: user._id,
+                targetLabel: user.email,
+                targetModel: 'User',
+            });
+
+            return res.json({ success: true, message: `A new verification code has been sent to your phone number (${maskPhone(user.phone)}).` });
+        }
+
+        // ── Email channel (existing behavior, unchanged) ────────────────────
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         user.resetPasswordOtp = hashOtp(otpCode); // invalidates the previous code
