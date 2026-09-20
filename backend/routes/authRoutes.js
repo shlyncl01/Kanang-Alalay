@@ -159,7 +159,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         }
 
-        if (user.isFirstLogin && user.role !== 'admin') {
+        if (user.isFirstLogin) {
             const otp = Math.floor(100000 + Math.random() * 900000).toString();
             user.verificationOtp = otp;
             user.verificationOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
@@ -190,21 +190,6 @@ router.post('/login', async (req, res) => {
             }
 
             return res.json({ success: true, requiresOTP: true, userId: user._id });
-        }
-
-        if (user.isFirstLogin && user.role === 'admin') {
-            // NOTE: needsProfileUpdate is intentionally left untouched here.
-            // Admin has no OTP step (see the branch above), so this /login
-            // call IS the first-login verification step for Admin — clearing
-            // isFirstLogin here is correct and mirrors what /verify-first-login
-            // does for other roles. But needsProfileUpdate must survive so the
-            // frontend can still show the "Complete Your Profile" modal; it is
-            // only cleared once PUT /update-profile actually runs.
-            user.isFirstLogin       = false;
-            user.isVerified         = true;
-            user.isActive           = true;
-            if (user.status === 'pending') user.status = 'active';
-            await user.save();
         }
 
         const BLOCKED_STATUSES = ['restricted', 'suspended', 'deactivated', 'on_leave', 'terminated'];
