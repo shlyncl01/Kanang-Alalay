@@ -1500,6 +1500,261 @@ const StockRequestsPanel = ({ onApproved, showConfirm, closeConfirm }) => {
     );
 };
 
+// ── Caregiver-flagged medications awaiting Admin registration ───────────────
+// Only lists flags a Head Caregiver has already approved (hc_approved) —
+// this is the final gate before anything actually lands in Inventory.
+const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConfirm }) => {
+    const [flags, setFlags] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [registering, setRegistering] = useState(null); // the flag being registered, or null
+
+    const authHeaders = () => {
+        const token = localStorage.getItem('token');
+        return { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) };
+    };
+
+    const fetchFlags = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/medication-flags`, { headers: authHeaders() });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed to load medication flags.');
+            setFlags(data.data || []);
+        } catch (e) {
+            setError(e.message || 'Failed to load medication flags.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchFlags(); }, [fetchFlags]);
+
+    const rejectFlag = async (flag) => {
+        const doReject = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/admin/medication-flags/${flag._id}`, {
+                    method: 'PUT',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ status: 'admin_rejected' }),
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message || 'Failed to reject flag.');
+                setFlags(prev => prev.filter(f => f._id !== flag._id));
+            } catch (e) {
+                setError(e.message || 'Failed to reject flag.');
+            }
+        };
+        if (!showConfirm) return doReject();
+        showConfirm('Reject Medication Flag', `Reject the flagged medication (barcode ${flag.barcode})? This cannot be undone.`, async () => {
+            if (closeConfirm) closeConfirm();
+            await doReject();
+        }, true, 'Reject');
+    };
+
+    return (
+        <div className="card-white" style={{ marginBottom: 20 }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <h5 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                    <FaClipboardCheck /> Medications Awaiting Registration
+                    {flags.length > 0 && (
+                        <span style={{ background: '#dc3545', color: '#fff', fontSize: '.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+                            {flags.length} pending
+                        </span>
+                    )}
+                </h5>
+                <button className="btn-outline-sm" onClick={fetchFlags} title="Refresh">
+                    <FaSyncAlt size={12} className={loading ? 'spin' : ''} />
+                </button>
+            </div>
+
+            {error && (
+                <div style={{ background: '#f8d7da', color: '#721c24', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: '.85rem' }}>
+                    ⚠️ {error}
+                </div>
+            )}
+
+            {loading ? (
+                <p style={{ padding: '1rem', color: '#7A5C4E', textAlign: 'center' }}>Loading…</p>
+            ) : flags.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#7A5C4E' }}>
+                    <FaClipboardCheck style={{ fontSize: '2rem', opacity: .3, display: 'block', margin: '0 auto 10px' }} />
+                    <p style={{ margin: 0 }}>No medications awaiting registration.</p>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                    {flags.map(flag => (
+                        <div key={flag._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 220 }}>
+                            {flag.photoUrl && (
+                                <img src={flag.photoUrl} alt="Medication packaging" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 8, cursor: 'zoom-in' }} onClick={() => window.open(flag.photoUrl, '_blank')} />
+                            )}
+                            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
+                            <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
+                                {flag.extractedData?.name || (flag.extractionError ? 'Could not auto-read label' : 'Extracting…')}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button className="btn-outline-sm" style={{ flex: 1, borderColor: '#b85c2d', color: '#b85c2d', fontWeight: 700 }} onClick={() => setRegistering(flag)}>
+                                    Register
+                                </button>
+                                <button className="btn-outline-sm" style={{ flex: 1 }} onClick={() => rejectFlag(flag)}>
+                                    Reject
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {registering && (
+                <MedicationFlagRegisterModal
+                    flag={registering}
+                    onClose={() => setRegistering(null)}
+                    onSaved={() => {
+                        setFlags(prev => prev.filter(f => f._id !== registering._id));
+                        setRegistering(null);
+                        if (onRegistered) onRegistered();
+                    }}
+                />
+            )}
+        </div>
+    );
+};
+
+const MedicationFlagRegisterModal = ({ flag, onClose, onSaved }) => {
+    const d = flag.extractedData || {};
+    const [f, setF] = useState({
+        name: d.name || '', genericName: d.genericName || '', brand: d.brand || '',
+        dosage: d.dosage || '', form: d.form || '', manufacturer: d.manufacturer || '',
+        strength: '', route: '', purpose: '', instructions: '', warnings: '',
+        sideEffects: '', contraindications: '', drugInteractions: '', pregnancy: '', storage: '',
+        category: 'medication', unit: 'pcs',
+        expiryDate: d.expiryDate || '',
+        stockCurrent: '', stockMinimum: '', stockMaximum: '',
+    });
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const setField = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+    const authHeaders = () => {
+        const token = localStorage.getItem('token');
+        return { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) };
+    };
+
+    const submit = async () => {
+        if (!f.name.trim()) return setError('Medication name is required.');
+        if (!f.expiryDate) return setError('Expiry date is required.');
+        if (f.stockCurrent === '' || Number(f.stockCurrent) < 0) return setError('Current stock quantity is required.');
+
+        setSaving(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/admin/medication-flags/${flag._id}`, {
+                method: 'PUT',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    status: 'registered',
+                    name: f.name, genericName: f.genericName, brand: f.brand,
+                    dosage: f.dosage, strength: f.strength, form: f.form, route: f.route,
+                    manufacturer: f.manufacturer,
+                    purpose: f.purpose, instructions: f.instructions, warnings: f.warnings,
+                    sideEffects: f.sideEffects, contraindications: f.contraindications,
+                    drugInteractions: f.drugInteractions, pregnancy: f.pregnancy, storage: f.storage,
+                    category: f.category, unit: f.unit,
+                    expiryDate: f.expiryDate,
+                    stock: {
+                        current: Number(f.stockCurrent),
+                        minimum: f.stockMinimum !== '' ? Number(f.stockMinimum) : undefined,
+                        maximum: f.stockMaximum !== '' ? Number(f.stockMaximum) : undefined,
+                        unit: f.unit,
+                    },
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed to register medication.');
+            onSaved();
+        } catch (e) {
+            setError(e.message || 'Failed to register medication.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const inputStyle = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #E8D6CC', fontSize: '.88rem' };
+    const labelStyle = { fontSize: '.78rem', fontWeight: 700, color: '#7A5C4E', marginBottom: 4, display: 'block' };
+    const field = (label, key, opts = {}) => (
+        <div style={{ marginBottom: 10, ...opts.wrapStyle }}>
+            <label style={labelStyle}>{label}{opts.required && ' *'}</label>
+            {opts.textarea ? (
+                <textarea rows={2} style={inputStyle} value={f[key]} onChange={e => setField(key, e.target.value)} />
+            ) : (
+                <input type={opts.type || 'text'} style={inputStyle} value={f[key]} onChange={e => setField(key, e.target.value)} />
+            )}
+        </div>
+    );
+
+    return (
+        <div className="modal-overlay">
+            <div className="registration-modal" style={{ maxWidth: 760, width: '95%', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 14, padding: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <h5 style={{ margin: 0 }}>Register Medication — Barcode {flag.barcode}</h5>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FaTimes /></button>
+                </div>
+
+                {flag.extractionError && (
+                    <div style={{ background: '#fff8e1', color: '#7c5a00', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '.82rem' }}>
+                        Auto-read from the photo didn't fully work — please fill in the fields manually using the photo below as reference.
+                    </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: flag.photoUrl ? '220px 1fr' : '1fr', gap: 16 }}>
+                    {flag.photoUrl && (
+                        <img src={flag.photoUrl} alt="Medication packaging" style={{ width: '100%', borderRadius: 10, cursor: 'zoom-in', alignSelf: 'flex-start' }} onClick={() => window.open(flag.photoUrl, '_blank')} />
+                    )}
+                    <div>
+                        {error && (
+                            <div style={{ background: '#f8d7da', color: '#721c24', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '.85rem' }}>{error}</div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            {field('Name', 'name', { required: true })}
+                            {field('Generic Name', 'genericName')}
+                            {field('Brand', 'brand')}
+                            {field('Dosage (e.g. 500mg)', 'dosage')}
+                            {field('Strength', 'strength')}
+                            {field('Form (e.g. Tablet)', 'form')}
+                            {field('Route (e.g. Oral)', 'route')}
+                            {field('Manufacturer', 'manufacturer')}
+                            <div style={{ marginBottom: 10 }}>
+                                <label style={labelStyle}>Expiry Date *</label>
+                                <input type="date" style={inputStyle} value={f.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
+                            </div>
+                            <div style={{ marginBottom: 10 }}>
+                                <label style={labelStyle}>Current Stock *</label>
+                                <input type="number" min="0" style={inputStyle} value={f.stockCurrent} onChange={e => setField('stockCurrent', e.target.value)} />
+                            </div>
+                        </div>
+                        {field('Purpose', 'purpose', { textarea: true })}
+                        {field('Instructions', 'instructions', { textarea: true })}
+                        {field('Warnings', 'warnings', { textarea: true })}
+                        {field('Side Effects', 'sideEffects', { textarea: true })}
+                        {field('Contraindications', 'contraindications', { textarea: true })}
+                        {field('Drug Interactions', 'drugInteractions', { textarea: true })}
+                        {field('Pregnancy Notes', 'pregnancy', { textarea: true })}
+                        {field('Storage', 'storage', { textarea: true })}
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, borderTop: '1.5px solid #E8D6CC', paddingTop: 14 }}>
+                    <button className="btn-outline-sm" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-outline-sm" style={{ borderColor: '#b85c2d', background: '#b85c2d', color: '#fff', fontWeight: 700 }} onClick={submit} disabled={saving}>
+                        {saving ? 'Registering…' : '✓ Register & Add to Inventory'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUser, showConfirm, closeConfirm, onStockApproved }) => {
     const [editItem, setEditItem]           = useState(null);
@@ -1882,6 +2137,8 @@ const InventoryTab = ({ inventory, setInventory, setShowAddInventory, currentUse
             </div>
 
             <StockRequestsPanel onApproved={onStockApproved} showConfirm={showConfirm} closeConfirm={closeConfirm} />
+
+            <MedicationFlagsRegistrationPanel onRegistered={onStockApproved} showConfirm={showConfirm} closeConfirm={closeConfirm} />
 
             {viewingProduct && (
                 <BatchDetailsModal

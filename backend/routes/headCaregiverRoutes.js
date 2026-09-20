@@ -18,11 +18,13 @@ const Alert = require('../models/Alert');
 // instead of only existing as a live calculation over "today"'s
 // MedicationLog rows. See the model file for the full design rationale.
 const ComplianceHistory = require('../models/ComplianceHistory');
+const MedicationFlag = require('../models/MedicationFlag');
 const { getStockStatus } = require('../utils/stockStatus');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, headCaregiverOnly } = require('../middleware/authMiddleware');
 const { logAudit } = require('../utils/auditLog');
 const { startOfManilaDay, parseManilaDateTime } = require('../utils/dateHelpers');
 const { isOnDuty } = require('../utils/shiftUtils');
+const { extractMedicationLabel } = require('../services/OpenAIService');
 
 router.use(protect);
 
@@ -1761,6 +1763,126 @@ router.get('/stock-requests', async (req, res) => {
             })),
         });
     } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// UNREGISTERED MEDICATION FLAGS — HC approve/reject gate
+// ─────────────────────────────────────────────────────────────
+// Real HC-exclusive actions, unlike most of this file — gated with
+// headCaregiverOnly in addition to the router-level protect above.
+router.get('/medication-flags', headCaregiverOnly, async (req, res) => {
+    try {
+        const flags = await MedicationFlag.find({ status: 'pending' })
+            .populate('flaggedBy', 'firstName lastName username')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: flags });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+router.put('/medication-flags/:id', headCaregiverOnly, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, hcNote } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid flag ID.' });
+        }
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Status must be 'approved' or 'rejected'." });
+        }
+
+        const existing = await MedicationFlag.findById(id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: 'Medication flag not found.' });
+        }
+        if (existing.status !== 'pending') {
+            return res.status(409).json({ success: false, message: `This flag has already been resolved (${existing.status}).` });
+        }
+
+        if (status === 'rejected') {
+            const updated = await MedicationFlag.findOneAndUpdate(
+                { _id: id, status: 'pending' },
+                { status: 'hc_rejected', hcNote: hcNote || '', hcResolvedBy: req.user._id, hcResolvedAt: new Date() },
+                { new: true }
+            );
+            if (!updated) {
+                return res.status(409).json({ success: false, message: 'This flag has already been resolved.' });
+            }
+
+            try {
+                await Alert.create({
+                    type: 'medication-flag-rejected',
+                    title: 'Medication Flag Rejected',
+                    message: `Your flagged medication (barcode ${existing.barcode}) was not approved by your Head Caregiver.`,
+                    relatedUser: existing.flaggedBy,
+                    details: { medicationFlagId: existing._id },
+                });
+            } catch (notifyErr) {
+                console.error('Failed to notify caregiver of flag rejection:', notifyErr.message);
+            }
+
+            return res.json({ success: true, data: updated, message: 'Medication flag rejected.' });
+        }
+
+        // ── APPROVE — flip status, then best-effort run the photo
+        // extraction and notify Admin. Neither of those can fail the
+        // approval itself. ──
+        const updated = await MedicationFlag.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { status: 'hc_approved', hcNote: hcNote || '', hcResolvedBy: req.user._id, hcResolvedAt: new Date() },
+            { new: true }
+        );
+        if (!updated) {
+            return res.status(409).json({ success: false, message: 'This flag has already been resolved.' });
+        }
+
+        try {
+            const extracted = await extractMedicationLabel(updated.photoUrl);
+            if (extracted) {
+                updated.extractedData = extracted;
+            } else {
+                updated.extractionError = 'Could not extract details from the photo.';
+            }
+            await updated.save();
+        } catch (extractErr) {
+            console.error('Medication label extraction failed:', extractErr.message);
+            updated.extractionError = extractErr.message;
+            await updated.save();
+        }
+
+        try {
+            const admins = await User.find({ role: 'admin' }, { _id: 1 });
+            const recipientIds = admins.map((u) => String(u._id));
+
+            const alert = await Alert.create({
+                type: 'medication-flag-approved',
+                title: 'Medication Awaiting Registration',
+                message: `A medication (barcode ${existing.barcode}) was approved by your Head Caregiver and needs to be registered in Inventory.`,
+                details: { medicationFlagId: existing._id, barcode: existing.barcode },
+            });
+
+            const io = req.app.get('io');
+            if (io && recipientIds.length) {
+                io.to(recipientIds).emit('newAlert', {
+                    _id: alert._id,
+                    type: alert.type,
+                    message: alert.message,
+                    subMessage: '',
+                    details: alert.details,
+                    isRead: false,
+                });
+            }
+        } catch (notifyErr) {
+            console.error('Failed to notify admins of approved medication flag:', notifyErr.message);
+        }
+
+        res.json({ success: true, data: updated, message: 'Medication flag approved and sent to Admin.' });
+    } catch (err) {
+        console.error('Update medication flag error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });

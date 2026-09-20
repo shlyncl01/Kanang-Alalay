@@ -7,7 +7,8 @@ const alertSchema = new mongoose.Schema({
       "OTP", "Booking", "Inventory", "System",
       "side-effect", "low-stock", "medication-administered",
       "delayed-patient", "refusal", "upcoming-medication",
-      "stock-request-approved", "stock-request-rejected", "stock-request-submitted"
+      "stock-request-approved", "stock-request-rejected", "stock-request-submitted",
+      "medication-flag-submitted", "medication-flag-approved", "medication-flag-rejected"
     ],
     required: true
   },

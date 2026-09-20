@@ -1652,6 +1652,91 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     );
 };
 
+// Caregiver-flagged "this barcode isn't in the system" reports, waiting on
+// a Head Caregiver approve/reject decision before Admin ever sees them.
+const MedicationFlagsPanel = ({ doFetch, toast }) => {
+    const [flags, setFlags] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [processingId, setProcessingId] = useState(null);
+
+    const fetchFlags = useCallback(async () => {
+        setLoading(true);
+        const r = await doFetch('/head-caregiver/medication-flags');
+        setFlags(r.success ? (r.data || []) : []);
+        setLoading(false);
+    }, [doFetch]);
+
+    useEffect(() => { fetchFlags(); }, [fetchFlags]);
+
+    const resolve = async (flag, status) => {
+        if (status === 'rejected' && !window.confirm(`Reject the flagged medication (barcode ${flag.barcode})? This cannot be undone.`)) {
+            return;
+        }
+        setProcessingId(flag._id);
+        const r = await doFetch(`/head-caregiver/medication-flags/${flag._id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status }),
+        });
+        setProcessingId(null);
+        if (r.success) {
+            setFlags(prev => prev.filter(f => f._id !== flag._id));
+            toast(status === 'approved' ? 'Approved — sent to Admin for registration.' : 'Medication flag rejected.');
+        } else {
+            toast(r.message || 'Failed to update flag.', 'error');
+        }
+    };
+
+    const flaggerName = (f) => {
+        const u = f.flaggedBy;
+        if (!u) return '—';
+        return `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || '—';
+    };
+
+    return (
+        <div className="card-white mb-18">
+            <div className="card-header">
+                <h5>Unregistered Medication Flags {flags.length > 0 && `(${flags.length})`}</h5>
+                <button className="btn-outline-sm" onClick={fetchFlags}><FaSync className={loading ? 'spin' : ''} /></button>
+            </div>
+            {flags.length === 0 ? (
+                <div className="text-center no-data-italic" style={{ padding: '1.5rem' }}>
+                    {loading ? 'Loading…' : 'No pending medication flags.'}
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 0' }}>
+                    {flags.map(f => (
+                        <div key={f._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 200 }}>
+                            {f.photoUrl && (
+                                <img src={f.photoUrl} alt="Medication packaging" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8, cursor: 'zoom-in' }} onClick={() => window.open(f.photoUrl, '_blank')} />
+                            )}
+                            <div style={{ fontSize: '.85rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
+                            <div style={{ fontSize: '.76rem', color: '#7A5C4E', marginBottom: 8 }}>
+                                Flagged by {flaggerName(f)}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <span
+                                    className="req-action-btn approve"
+                                    onClick={() => { if (processingId !== f._id) resolve(f, 'approved'); }}
+                                    style={processingId === f._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                                >
+                                    Approve
+                                </span>
+                                <span
+                                    className="req-action-btn decline"
+                                    onClick={() => { if (processingId !== f._id) resolve(f, 'rejected'); }}
+                                    style={processingId === f._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                                >
+                                    Decline
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const RequestStockModal = ({ items, onClose, doFetch, toast, onSubmitted }) => {
     const [f, setF] = useState({ productId: '', quantity: '', reason: '' });
     const [errs, setErrs] = useState({});
@@ -2820,6 +2905,8 @@ const HeadCaregiverDashboard = () => {
                         </div>
                     )}
                 </div>
+
+                <MedicationFlagsPanel doFetch={doFetch} toast={toast} />
             </div>
         );
     };
