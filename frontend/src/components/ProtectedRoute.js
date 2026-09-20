@@ -1,9 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-// CompleteProfileModal is built in PART 18D — do not import it here until
-// then. user.needsProfileUpdate is still available to any component that
-// needs it via useAuth(); this route just doesn't render a modal for it yet.
+import CompleteProfileModal from './CompleteProfileModal';
 
 const WEB_ALLOWED_ROLES = ['admin', 'head_caregiver'];
 
@@ -47,9 +45,17 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
         return <Navigate to={fallback} replace />;
     }
 
-    // user.needsProfileUpdate is preserved on the context and still readable
-    // by any component via useAuth() — PART 18D wires the actual modal here.
-    return <>{children}</>;
+    // user.needsProfileUpdate is the single source of truth (no duplicate
+    // showProfileModal state): the dashboard stays mounted and the user
+    // stays logged in underneath, but the non-dismissable overlay blocks
+    // interaction until the backend actually clears the flag (see
+    // CompleteProfileModal.js / PUT /auth/update-profile).
+    return (
+        <>
+            {children}
+            {user.needsProfileUpdate === true && <CompleteProfileModal />}
+        </>
+    );
 };
 
 export default ProtectedRoute;

@@ -1230,25 +1230,67 @@ router.put('/update-phone', protect, async (req, res) => {
         if (!PH_MOBILE_REGEX.test(normalized))
             return res.status(400).json({ success: false, message: 'Please enter a valid Philippine mobile number.' });
 
-        await User.findByIdAndUpdate(req.user._id, { phone: trimmed });
-        res.json({ success: true, message: 'Contact number updated successfully.' });
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        const update = { phone: normalized };
+
+        // PART 18D: changing the number invalidates whatever 18C
+        // verification state existed for the old one. This does NOT touch
+        // /send-phone-otp, /resend-phone-otp, /verify-phone-otp, or
+        // utils/philsms.js — the new number simply has to go through that
+        // same unmodified flow again before it counts as verified.
+        if (normalized !== user.phone) {
+            update.phoneVerified = false;
+            update.phoneOtp = undefined;
+            update.phoneOtpExpires = undefined;
+            update.phoneOtpAttempts = 0;
+            update.phoneOtpResendCount = 0;
+            update.phoneOtpResendWindowStart = undefined;
+            update.phoneOtpLastSentAt = undefined;
+        }
+
+        Object.assign(user, update);
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Contact number updated successfully.',
+            phone: user.phone,
+            phoneVerified: user.phoneVerified,
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error: ' + err.message });
     }
 });
 
 // ── Update profile (first-login profile completion) ──────────────────────────
-// NOTE: this endpoint did not exist anywhere in this file, even though the
-// frontend (AuthContext's updateUser) already POSTs/PUTs to it. Fields mirror
-// what the app already treats as "the profile" elsewhere (Admin's Edit User
-// modal, /profile, register-staff): firstName, lastName, middleName, phone.
+// Fields mirror what the app already treats as "the profile" elsewhere
+// (Admin's Edit User modal, /profile, register-staff): firstName, lastName,
+// middleName, phone — plus, for PART 18D, address and an optional password
+// replacement. address/newPassword/confirmNewPassword are OPTIONAL here so
+// this stays backward-compatible with any other caller that only edits name
+// or phone; they become REQUIRED only in the exact moment this call is what
+// completes a first-login profile (isCompletingFirstLoginProfile below),
+// which is scoped to whether needsProfileUpdate is currently true for this
+// user — it can never affect an already-onboarded user's normal edits.
 router.put('/update-profile', protect, async (req, res) => {
     try {
-        const { firstName, lastName, middleName, phone } = req.body;
+        const { firstName, lastName, middleName, phone, address, newPassword, confirmNewPassword } = req.body;
 
         if (!firstName || !firstName.trim() || !lastName || !lastName.trim()) {
             return res.status(400).json({ success: false, message: 'First and last name are required.' });
         }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+
+        // Captured BEFORE any field is mutated below — this is what actually
+        // scopes every PART 18D-only rule (password required, phone-verified
+        // gate) to just this one completion moment.
+        const isCompletingFirstLoginProfile = user.needsProfileUpdate === true;
 
         const update = {
             firstName: firstName.trim(),
@@ -1263,23 +1305,75 @@ router.put('/update-profile', protect, async (req, res) => {
                 return res.status(400).json({ success: false, message: 'Please enter a valid Philippine mobile number.' });
             }
             update.phone = normalized;
+            // Same invalidation rule as /update-phone: a number change here
+            // (e.g. the frontend skipped the verify step) can't inherit the
+            // old number's verified state.
+            if (normalized !== user.phone) {
+                update.phoneVerified = false;
+            }
         }
 
-        // Completing the profile satisfies both the first-login gate and the
-        // profile-completion requirement, so both flags clear together here —
-        // this is the one place in the app that is allowed to clear
-        // needsProfileUpdate.
-        update.isFirstLogin = false;
-        update.needsProfileUpdate = false;
-
-        const user = await User.findByIdAndUpdate(req.user._id, update, { new: true });
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
+        // Reuses the existing User.address sub-schema — no new model, no
+        // new collection. Missing fields fall back to what's already saved.
+        if (address && typeof address === 'object') {
+            update.address = {
+                street:   address.street   !== undefined ? String(address.street).trim()   : (user.address?.street   || ''),
+                city:     address.city     !== undefined ? String(address.city).trim()     : (user.address?.city     || ''),
+                province: address.province !== undefined ? String(address.province).trim() : (user.address?.province || ''),
+                zipCode:  address.zipCode  !== undefined ? String(address.zipCode).trim()  : (user.address?.zipCode  || ''),
+            };
         }
+
+        // Password replacement: required to complete a first-login profile;
+        // optional otherwise, so a caller that only edits name/phone/address
+        // is unaffected. Reuses the User model's own pre-save bcrypt hook —
+        // no separate hashing mechanism.
+        const wantsPasswordChange = isCompletingFirstLoginProfile || newPassword || confirmNewPassword;
+        if (wantsPasswordChange) {
+            if (!newPassword || !confirmNewPassword) {
+                return res.status(400).json({ success: false, message: 'Please enter and confirm your new password.' });
+            }
+            if (newPassword.length < 6) {
+                return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+            }
+            if (newPassword !== confirmNewPassword) {
+                return res.status(400).json({ success: false, message: 'Passwords do not match.' });
+            }
+            update.password = newPassword; // hashed by the existing pre-save hook below, via user.save()
+        }
+
+        // Backend — not the frontend — decides whether the profile is
+        // actually complete. A phone number that exists but was never
+        // verified through PART 18C's OTP flow blocks completion. This only
+        // ever triggers during the completion moment itself; an
+        // already-onboarded user's unrelated edit is never affected.
+        if (isCompletingFirstLoginProfile) {
+            const finalPhone         = update.phone         !== undefined ? update.phone         : user.phone;
+            const finalPhoneVerified = update.phoneVerified !== undefined ? update.phoneVerified : user.phoneVerified;
+            if (finalPhone && !finalPhoneVerified) {
+                return res.status(400).json({ success: false, message: 'Please verify your phone number before completing your profile.' });
+            }
+
+            // This remains the one place in the app allowed to clear these.
+            update.isFirstLogin = false;
+            update.needsProfileUpdate = false;
+        }
+
+        Object.assign(user, update);
+        await user.save(); // NOT findByIdAndUpdate — must run the password pre-save hashing hook
+
+        logAudit({ user }, {
+            action: isCompletingFirstLoginProfile ? 'PROFILE_COMPLETED' : 'PROFILE_UPDATED',
+            module: 'Login/Account Security',
+            description: `${isCompletingFirstLoginProfile ? 'First-login profile completed' : 'Profile updated'} for ${user.username || user.email}`,
+            targetId: user._id,
+            targetLabel: user.username || user.email,
+            targetModel: 'User',
+        });
 
         res.json({
             success: true,
-            message: 'Profile updated successfully.',
+            message: isCompletingFirstLoginProfile ? 'Profile completed successfully.' : 'Profile updated successfully.',
             user: {
                 id: user._id,
                 staffId: user.staffId,
@@ -1289,6 +1383,8 @@ router.put('/update-profile', protect, async (req, res) => {
                 lastName: user.lastName,
                 middleName: user.middleName,
                 phone: user.phone,
+                phoneVerified: user.phoneVerified,
+                address: user.address,
                 role: user.role,
                 department: user.department,
                 shift: user.shift,
