@@ -2045,6 +2045,16 @@ router.put('/stock-requests/:id', async (req, res) => {
     }
 });
 
+// Medication.dosage is stored as { value: Number, unit: String } (e.g.
+// 500 + "mg"), but the registration form gives a single string like "500mg".
+const parseDosage = (dosage) => {
+    if (dosage && typeof dosage === 'object') return dosage;
+    const text = String(dosage || '').trim();
+    if (!text) return undefined;
+    const match = text.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+    return match ? { value: Number(match[1]), unit: match[2].trim() } : { unit: text };
+};
+
 // ─────────────────────────────────────────────────────────────
 // LIST CAREGIVER-FLAGGED MEDICATIONS AWAITING ADMIN REGISTRATION
 // GET /api/admin/medication-flags
@@ -2160,7 +2170,7 @@ router.put('/medication-flags/:id', adminOnly, async (req, res) => {
             batchNumber,
             genericName, strength, form, route, manufacturer, ndc,
             purpose, instructions, warnings, sideEffects, contraindications, drugInteractions, pregnancy, storage,
-            dosage: typeof dosage === 'string' ? { value: null, unit: dosage } : dosage,
+            dosage: parseDosage(dosage),
             phAvailability: 'available',
             dateOfManufacture: dateOfManufacture || today,
             dateOfPurchase: dateOfPurchase || today,

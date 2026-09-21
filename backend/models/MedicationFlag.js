@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const photoSchema = new mongoose.Schema({
+    url: { type: String, required: true },
+    publicId: { type: String },
+}, { _id: false });
+
 // A caregiver's report that a scanned barcode isn't in the Medication
 // catalog yet, with a photo of the packaging as evidence/reference. Goes
 // through a two-step gate before anything touches real Inventory: Head
@@ -10,8 +15,9 @@ const mongoose = require('mongoose');
 // product doesn't exist yet at all."
 const medicationFlagSchema = new mongoose.Schema({
     barcode: { type: String, required: true, trim: true },
-    photoUrl: { type: String, default: null },
-    photoPublicId: { type: String, default: null, select: false },
+    // Several shots of the same package (front, back, side, expiry print) —
+    // one photo often doesn't capture everything Admin needs to register it.
+    photos: { type: [photoSchema], default: [] },
 
     flaggedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 

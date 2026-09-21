@@ -1586,12 +1586,22 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                     {flags.map(flag => (
                         <div key={flag._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 220 }}>
-                            {flag.photoUrl && (
-                                <img src={flag.photoUrl} alt="Medication packaging" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 8, cursor: 'zoom-in' }} onClick={() => window.open(flag.photoUrl, '_blank')} />
+                            {flag.photos?.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                    {flag.photos.map((p, i) => (
+                                        <img
+                                            key={i}
+                                            src={p.url}
+                                            alt={`Medication packaging ${i + 1}`}
+                                            style={{ width: flag.photos.length === 1 ? '100%' : 'calc(50% - 2px)', height: flag.photos.length === 1 ? 140 : 70, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }}
+                                            onClick={() => window.open(p.url, '_blank')}
+                                        />
+                                    ))}
+                                </div>
                             )}
                             <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
                             <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
-                                {flag.extractedData?.name || (flag.extractionError ? 'Could not auto-read label' : 'Extracting…')}
+                                {flag.extractedData?.name || (flag.extractionError ? 'Auto-read failed' : 'Nothing readable in photos')}
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 <button className="btn-outline-sm" style={{ flex: 1, borderColor: '#b85c2d', color: '#b85c2d', fontWeight: 700 }} onClick={() => setRegistering(flag)}>
@@ -1701,15 +1711,28 @@ const MedicationFlagRegisterModal = ({ flag, onClose, onSaved }) => {
                     <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FaTimes /></button>
                 </div>
 
-                {flag.extractionError && (
+                {(flag.extractionError || !flag.extractedData?.name) && (
                     <div style={{ background: '#fff8e1', color: '#7c5a00', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '.82rem' }}>
-                        Auto-read from the photo didn't fully work — please fill in the fields manually using the photo below as reference.
+                        {flag.extractionError
+                            ? `The photos couldn't be auto-read (${String(flag.extractionError).slice(0, 120)}). `
+                            : "No product name could be read from the photos. "}
+                        Please fill in the fields manually using the photos as reference. Photos of the front of the box (name and strength) work best.
                     </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: flag.photoUrl ? '220px 1fr' : '1fr', gap: 16 }}>
-                    {flag.photoUrl && (
-                        <img src={flag.photoUrl} alt="Medication packaging" style={{ width: '100%', borderRadius: 10, cursor: 'zoom-in', alignSelf: 'flex-start' }} onClick={() => window.open(flag.photoUrl, '_blank')} />
+                <div style={{ display: 'grid', gridTemplateColumns: flag.photos?.length ? '220px 1fr' : '1fr', gap: 16 }}>
+                    {flag.photos?.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: 'flex-start' }}>
+                            {flag.photos.map((p, i) => (
+                                <img
+                                    key={i}
+                                    src={p.url}
+                                    alt={`Medication packaging ${i + 1}`}
+                                    style={{ width: '100%', borderRadius: 10, cursor: 'zoom-in' }}
+                                    onClick={() => window.open(p.url, '_blank')}
+                                />
+                            ))}
+                        </div>
                     )}
                     <div>
                         {error && (

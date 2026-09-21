@@ -170,27 +170,36 @@ router.post('/lookup', protect, async (req, res) => {
 });
 
 // POST /api/medication-scanner/flag — caregiver reports a barcode that
-// isn't in the Medication catalog, with a photo of the packaging as
-// evidence. Goes to Head Caregiver for approval before Admin ever sees it
-// — see MedicationFlag.js for the full status pipeline.
-router.post('/flag', protect, imageUpload.single('photo'), async (req, res) => {
+// isn't in the Medication catalog, with up to MAX_FLAG_PHOTOS photos of the
+// packaging as evidence. Goes to Head Caregiver for approval before Admin
+// ever sees it — see MedicationFlag.js for the full status pipeline.
+const MAX_FLAG_PHOTOS = 5;
+
+router.post('/flag', protect, imageUpload.array('photos', MAX_FLAG_PHOTOS), async (req, res) => {
   try {
     const { barcode } = req.body;
     if (!barcode || !String(barcode).trim()) {
       return res.status(400).json({ success: false, message: 'Barcode is required.' });
     }
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'A photo of the packaging is required.' });
+    if (!req.files?.length) {
+      return res.status(400).json({ success: false, message: 'At least one photo of the packaging is required.' });
     }
 
     const cleanedBarcode = String(barcode).replace(/[\s-]/g, '');
-    const publicId = `flag_${cleanedBarcode}_${Date.now()}`;
-    const uploadResult = await streamUploadFlagPhoto(req.file.buffer, publicId);
+    const stamp = Date.now();
+    const results = await Promise.allSettled(
+      req.files.map((file, i) => streamUploadFlagPhoto(file.buffer, `flag_${cleanedBarcode}_${stamp}_${i}`))
+    );
+    const uploaded = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    if (uploaded.length !== results.length) {
+      // All-or-nothing: don't leave the photos that did upload orphaned in Cloudinary.
+      await Promise.all(uploaded.map((u) => cloudinary.uploader.destroy(u.public_id).catch(() => {})));
+      return res.status(502).json({ success: false, message: 'Failed to upload the photos. Please try again.' });
+    }
 
     const flag = await MedicationFlag.create({
       barcode: cleanedBarcode,
-      photoUrl: uploadResult.secure_url,
-      photoPublicId: uploadResult.public_id,
+      photos: uploaded.map((u) => ({ url: u.secure_url, publicId: u.public_id })),
       flaggedBy: req.user._id,
     });
 

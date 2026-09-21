@@ -1828,30 +1828,30 @@ router.put('/medication-flags/:id', headCaregiverOnly, async (req, res) => {
             return res.json({ success: true, data: updated, message: 'Medication flag rejected.' });
         }
 
-        // ── APPROVE — flip status, then best-effort run the photo
-        // extraction and notify Admin. Neither of those can fail the
-        // approval itself. ──
+        // ── APPROVE — read the photos first (best-effort; a failure is
+        // recorded on the flag and never blocks the approval), then flip
+        // status in the same atomic update. Reading first means Admin can
+        // never open a flag that's approved but still mid-extraction. ──
+        let extractedData = null;
+        let extractionError = null;
+        try {
+            extractedData = await extractMedicationLabel(existing.photos.map((p) => p.url));
+            if (!extractedData) extractionError = 'No photos to read.';
+        } catch (extractErr) {
+            console.error('Medication label extraction failed:', extractErr.message);
+            extractionError = extractErr.message;
+        }
+
         const updated = await MedicationFlag.findOneAndUpdate(
             { _id: id, status: 'pending' },
-            { status: 'hc_approved', hcNote: hcNote || '', hcResolvedBy: req.user._id, hcResolvedAt: new Date() },
+            {
+                status: 'hc_approved', hcNote: hcNote || '', hcResolvedBy: req.user._id, hcResolvedAt: new Date(),
+                extractedData, extractionError,
+            },
             { new: true }
         );
         if (!updated) {
             return res.status(409).json({ success: false, message: 'This flag has already been resolved.' });
-        }
-
-        try {
-            const extracted = await extractMedicationLabel(updated.photoUrl);
-            if (extracted) {
-                updated.extractedData = extracted;
-            } else {
-                updated.extractionError = 'Could not extract details from the photo.';
-            }
-            await updated.save();
-        } catch (extractErr) {
-            console.error('Medication label extraction failed:', extractErr.message);
-            updated.extractionError = extractErr.message;
-            await updated.save();
         }
 
         try {

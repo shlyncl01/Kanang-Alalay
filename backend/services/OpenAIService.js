@@ -92,50 +92,81 @@ const transcribeAudio = async (filePath) => {
   return transcription.text;
 };
 
-// Reads a photo of medication packaging and pulls out whatever's legible,
-// so an Admin registering a caregiver-flagged medication gets a pre-filled
-// form instead of a blank one. Best-effort only — returns null on any
-// failure (bad photo, no image, parse error) rather than throwing, since
-// callers must never let this block the registration flow; a null result
-// just means Admin's form opens blank instead of pre-filled.
-const extractMedicationLabel = async (photoUrl) => {
-  if (!photoUrl) return null;
+// The full gpt-4.1, not the mini used for voice: on blurry real-world label
+// photos gpt-4.1-mini repeatedly invented plausible-looking drug names
+// (e.g. read "Pioglitazone" as "Progesterone") and misread expiry dates,
+// while gpt-4.1 read the same photo correctly every time. A wrong
+// medication name is worse than a blank field, and this runs once per
+// approved flag, so the extra cost is negligible.
+const LABEL_MODEL = 'gpt-4.1';
 
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `Read this medication packaging photo and extract whatever is legible. Return ONLY valid JSON in this exact format:
+const LABEL_PROMPT = `You are reading photos of ONE medication's packaging (different sides/angles of the same package). Extract what is legible, combining what's visible across all photos. Return ONLY valid JSON in this exact format:
 {
-  "name": "medication name or null",
-  "genericName": "generic name or null",
+  "name": "product name as printed: the brand name if there is one, otherwise the generic name, or null",
+  "genericName": "the active ingredient / generic name as printed anywhere on the package (including warnings text), or null",
   "brand": "brand name or null",
   "dosage": "dosage value+unit as a single string, e.g. '500mg', or null",
   "form": "e.g. Tablet, Capsule, Syrup, or null",
   "manufacturer": "manufacturer name or null",
-  "expiryDate": "expiry date in YYYY-MM-DD if printed and legible, otherwise null"
+  "expiryDate": "expiry date as YYYY-MM-DD, or null"
 }
-Use null for any field that isn't clearly visible — never guess or make up a value.`,
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Extract the medication details from this label photo.' },
-            { type: 'image_url', image_url: { url: photoUrl } },
-          ],
-        },
-      ],
-    });
+Rules:
+- Copy spellings exactly as printed. If text is blurry or partly unreadable, return null for that field — never guess, and never "correct" unclear text into a plausible-looking word.
+- expiryDate must come from an expiry marking (EXP / Exp. Date / Use before), never a manufacturing date. If only month and year are printed, use the last day of that month.`;
 
-    const raw = completion.choices?.[0]?.message?.content || '';
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.error('Medication label extraction failed:', error.message);
-    return null;
+// A model-suggested expiry only survives if it's a real full date that
+// hasn't already passed. A past date is far more likely a misread of
+// blurry print than a genuinely expired product being registered, and a
+// wrong suggestion is worse than leaving the field for Admin to fill.
+const sanitizeExpiry = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return date < today ? null : value;
+};
+
+// Reads photos of medication packaging (several shots of the same package)
+// and pulls out whatever's legible, so an Admin registering a
+// caregiver-flagged medication gets a pre-filled form instead of a blank
+// one. Returns null when there are no photos; THROWS on any real failure
+// (API error, unreadable reply) so the caller can record why — callers
+// must catch it, since a failed read should never block the approval.
+const extractMedicationLabel = async (photoUrls) => {
+  const urls = [].concat(photoUrls || []).filter(Boolean);
+  if (!urls.length) return null;
+
+  const completion = await openai.chat.completions.create({
+    model: LABEL_MODEL,
+    messages: [
+      { role: 'system', content: LABEL_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Extract the medication details from these packaging photos.' },
+          ...urls.map((url) => ({ type: 'image_url', image_url: { url, detail: 'high' } })),
+        ],
+      },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content || '';
+  const cleaned = raw.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+
+  let data;
+  try {
+    data = JSON.parse(cleaned);
+  } catch {
+    throw new Error('The AI returned a reply that could not be read.');
   }
+
+  return {
+    ...data,
+    // No separate brand printed (common for generics) — the generic name is the name.
+    name: data.name || data.genericName || null,
+    expiryDate: sanitizeExpiry(data.expiryDate),
+  };
 };
 
 module.exports = { processVoice, transcribeAudio, extractMedicationLabel };

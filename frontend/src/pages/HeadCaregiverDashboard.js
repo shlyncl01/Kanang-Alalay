@@ -1706,8 +1706,18 @@ const MedicationFlagsPanel = ({ doFetch, toast }) => {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 0' }}>
                     {flags.map(f => (
                         <div key={f._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 200 }}>
-                            {f.photoUrl && (
-                                <img src={f.photoUrl} alt="Medication packaging" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginBottom: 8, cursor: 'zoom-in' }} onClick={() => window.open(f.photoUrl, '_blank')} />
+                            {f.photos?.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                    {f.photos.map((p, i) => (
+                                        <img
+                                            key={i}
+                                            src={p.url}
+                                            alt={`Medication packaging ${i + 1}`}
+                                            style={{ width: f.photos.length === 1 ? '100%' : 'calc(50% - 2px)', height: f.photos.length === 1 ? 120 : 60, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }}
+                                            onClick={() => window.open(p.url, '_blank')}
+                                        />
+                                    ))}
+                                </div>
                             )}
                             <div style={{ fontSize: '.85rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
                             <div style={{ fontSize: '.76rem', color: '#7A5C4E', marginBottom: 8 }}>
