@@ -108,11 +108,33 @@ const LABEL_PROMPT = `You are reading photos of ONE medication's packaging (diff
   "dosage": "dosage value+unit as a single string, e.g. '500mg', or null",
   "form": "e.g. Tablet, Capsule, Syrup, or null",
   "manufacturer": "manufacturer name or null",
-  "expiryDate": "expiry date as YYYY-MM-DD, or null"
+  "expiryDate": "expiry date as YYYY-MM-DD, or null",
+  "strength": "amount of active ingredient per unit exactly as printed, e.g. '500 mg' or '500 mg (equivalent to Calcium Carbonate 1,250 mg)', or null",
+  "route": "route of administration ONLY if it is printed (e.g. 'Oral'), otherwise null",
+  "purpose": "the INDICATION / 'used to treat...' text, or null",
+  "instructions": "the DOSAGE AND ADMINISTRATION / directions-for-use text, or null",
+  "warnings": "the WARNINGS / PRECAUTIONS / SPECIAL PRECAUTIONS text, or null",
+  "contraindications": "the CONTRAINDICATIONS text, or null",
+  "sideEffects": "the SIDE EFFECTS / ADVERSE REACTIONS text, or null. A line telling people to REPORT adverse reactions (e.g. 'report to the FDA') is NOT a list of side effects.",
+  "drugInteractions": "the DRUG INTERACTIONS text, or null",
+  "pregnancy": "the pregnancy / lactation statement, or null",
+  "storage": "the storage conditions text, or null"
 }
 Rules:
 - Copy spellings exactly as printed. If text is blurry or partly unreadable, return null for that field — never guess, and never "correct" unclear text into a plausible-looking word.
+- For the long text fields (purpose through storage) copy the printed wording as one passage: join wrapped lines and fix hyphenation across line breaks, but do NOT summarise, translate, reword, or add anything that is not printed. Put each section's text only in its own field. If a section is not on the package, or too blurry to copy reliably, return null for it.
+- Copy medical terms exactly as printed, even if a word looks like a typo or seems wrong for this particular drug. Never replace it with what you would expect the label to say.
 - expiryDate must come from an expiry marking (EXP / Exp. Date / Use before), never a manufacturing date. If only month and year are printed, use the last day of that month.`;
+
+const LONG_TEXT_FIELDS = ['purpose', 'instructions', 'warnings', 'contraindications', 'sideEffects', 'drugInteractions', 'pregnancy', 'storage'];
+
+// Trimmed text or null; a stray array is joined, anything else is dropped.
+const cleanText = (value) => {
+  const text = Array.isArray(value) ? value.join('\n') : value;
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  return trimmed ? trimmed.slice(0, 3000) : null;
+};
 
 // A model-suggested expiry only survives if it's a real full date that
 // hasn't already passed. A past date is far more likely a misread of
@@ -127,16 +149,9 @@ const sanitizeExpiry = (value) => {
   return date < today ? null : value;
 };
 
-// Reads photos of medication packaging (several shots of the same package)
-// and pulls out whatever's legible, so an Admin registering a
-// caregiver-flagged medication gets a pre-filled form instead of a blank
-// one. Returns null when there are no photos; THROWS on any real failure
-// (API error, unreadable reply) so the caller can record why — callers
-// must catch it, since a failed read should never block the approval.
-const extractMedicationLabel = async (photoUrls) => {
-  const urls = [].concat(photoUrls || []).filter(Boolean);
-  if (!urls.length) return null;
-
+// One independent read of the photos. See extractMedicationLabel below for
+// why it's always run twice.
+const readLabelOnce = async (urls) => {
   const completion = await openai.chat.completions.create({
     model: LABEL_MODEL,
     messages: [
@@ -166,7 +181,50 @@ const extractMedicationLabel = async (photoUrls) => {
     // No separate brand printed (common for generics) — the generic name is the name.
     name: data.name || data.genericName || null,
     expiryDate: sanitizeExpiry(data.expiryDate),
+    strength: cleanText(data.strength),
+    route: cleanText(data.route),
+    ...Object.fromEntries(LONG_TEXT_FIELDS.map((field) => [field, cleanText(data[field])])),
   };
+};
+
+// Words only, lower-cased, punctuation/spacing/order ignored — so two reads
+// that differ in nothing but a curly vs straight apostrophe, or the order of
+// a list, still count as the same text, while any changed word does not.
+const wordBag = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean).sort().join(' ');
+
+// A value is only kept if at least two independent reads produced the same
+// words. On blurry photos a section can come and go between reads (the
+// Special Precautions text on one test box showed up in only some of them),
+// and text that can't be reproduced isn't text to trust. Fields that fail
+// this are left blank for Admin to fill in from the photos.
+const consensus = (values) => {
+  const seen = new Map();
+  for (const value of values) {
+    if (value == null) continue;
+    const key = wordBag(value);
+    if (seen.has(key)) return seen.get(key);
+    seen.set(key, value);
+  }
+  return null;
+};
+
+const LABEL_FIELDS = ['name', 'genericName', 'brand', 'dosage', 'form', 'manufacturer', 'expiryDate', 'strength', 'route', ...LONG_TEXT_FIELDS];
+const LABEL_READS = 3;
+
+// Reads photos of medication packaging (several shots of the same package)
+// and pulls out whatever's legible, so an Admin registering a
+// caregiver-flagged medication gets a pre-filled form instead of a blank
+// one. The photos are read LABEL_READS times in parallel and only fields at
+// least two reads agree on are returned. Returns null when there are no
+// photos; THROWS on any real failure (API error, unreadable reply) so the
+// caller can record why — callers must catch it, since a failed read
+// should never block the approval.
+const extractMedicationLabel = async (photoUrls) => {
+  const urls = [].concat(photoUrls || []).filter(Boolean);
+  if (!urls.length) return null;
+
+  const reads = await Promise.all(Array.from({ length: LABEL_READS }, () => readLabelOnce(urls)));
+  return Object.fromEntries(LABEL_FIELDS.map((field) => [field, consensus(reads.map((read) => read[field]))]));
 };
 
 module.exports = { processVoice, transcribeAudio, extractMedicationLabel };

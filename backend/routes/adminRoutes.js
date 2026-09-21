@@ -25,6 +25,7 @@ const Resident = require('../models/Resident');
 const { protect, adminOrHeadCaregiver, adminOnly } = require('../middleware/authMiddleware');
 const { sendEmail, generateOtpTemplate } = require('../models/mailer');
 const { generateRandomPassword, generateUsername } = require('../utils/userHelpers');
+const { extractMedicationLabel } = require('../services/OpenAIService');
 // Part 15 — Audit Trail
 const { logAudit } = require('../utils/auditLog');
 
@@ -2067,6 +2068,50 @@ router.get('/medication-flags', async (req, res) => {
             .sort({ hcResolvedAt: -1 });
         res.json({ success: true, data: flags });
     } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// RE-READ THE PHOTOS OF A FLAG AWAITING REGISTRATION
+// POST /api/admin/medication-flags/:id/reread
+// ─────────────────────────────────────────────────────────────
+// Runs the photo reading again — after the reading itself has improved, or
+// when the first attempt failed or missed sections — without making the
+// caregiver flag it again. The stored reading is only replaced when the new
+// attempt succeeds, so a failed retry never wipes out a good earlier one.
+router.post('/medication-flags/:id/reread', adminOnly, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid flag ID.' });
+        }
+
+        const flag = await MedicationFlag.findById(id);
+        if (!flag) {
+            return res.status(404).json({ success: false, message: 'Medication flag not found.' });
+        }
+        if (flag.status !== 'hc_approved') {
+            return res.status(409).json({ success: false, message: `This flag isn't awaiting Admin registration (currently ${flag.status}).` });
+        }
+
+        try {
+            const extractedData = await extractMedicationLabel(flag.photos.map((p) => p.url));
+            if (extractedData) {
+                flag.extractedData = extractedData;
+                flag.extractionError = null;
+            } else {
+                flag.extractionError = 'No photos to read.';
+            }
+        } catch (extractErr) {
+            console.error('Medication label re-read failed:', extractErr.message);
+            flag.extractionError = extractErr.message;
+        }
+        await flag.save();
+
+        res.json({ success: true, data: { extractedData: flag.extractedData, extractionError: flag.extractionError } });
+    } catch (err) {
+        console.error('Re-read medication flag error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });

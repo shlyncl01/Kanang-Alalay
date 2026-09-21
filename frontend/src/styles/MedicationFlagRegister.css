@@ -3,6 +3,9 @@
    -> fixed footer buttons. */
 
 .mfr-modal {
+    /* Same typography as the rest of the dashboards (see :root in Dashboard.css):
+       DM Sans for text, Playfair Display for the title. */
+    font-family: var(--d-font-body, 'DM Sans', system-ui, sans-serif);
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -30,7 +33,8 @@
 
 .mfr-title {
     margin: 0;
-    font-size: 1.02rem;
+    font-family: var(--d-font-head, 'Playfair Display', Georgia, serif);
+    font-size: clamp(1.02rem, 3vw, 1.2rem);
     font-weight: 700;
     line-height: 1.3;
     color: #fff;
@@ -48,6 +52,7 @@
     border: 1.5px solid rgba(255, 255, 255, .28);
     background: rgba(255, 255, 255, .18);
     color: #fff;
+    font-family: inherit;
     font-size: 1.25rem;
     line-height: 1;
     cursor: pointer;
@@ -169,14 +174,35 @@ textarea.mfr-input {
 }
 
 .mfr-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 14px;
     padding: 10px 14px;
     border-radius: 12px;
     font-size: .82rem;
     line-height: 1.45;
 }
+.mfr-banner-text  { flex: 1; min-width: 0; }
+.mfr-banner-info  { background: #eaf3fb; color: #1c4f7a; }
 .mfr-banner-warn  { background: #fff8e1; color: #7c5a00; }
 .mfr-banner-error { background: #f8d7da; color: #721c24; }
+
+.mfr-banner-btn {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border: 1.5px solid currentColor;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: .76rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.mfr-banner-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .55); }
+.mfr-banner-btn:disabled { opacity: .6; cursor: not-allowed; }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 .mfr-footer {
@@ -192,6 +218,7 @@ textarea.mfr-input {
     border: none;
     border-radius: 999px;
     color: #fff;
+    font-family: inherit;
     font-size: .92rem;
     font-weight: 700;
     cursor: pointer;

@@ -1611,6 +1611,8 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                     flag={registering}
                     apiBaseUrl={API_BASE_URL}
                     onClose={() => setRegistering(null)}
+                    onReread={({ extractedData, extractionError }) =>
+                        setFlags(prev => prev.map(x => x._id === registering._id ? { ...x, extractedData, extractionError } : x))}
                     onSaved={() => {
                         setFlags(prev => prev.filter(f => f._id !== registering._id));
                         setRegistering(null);

@@ -23,6 +23,15 @@ const LONG_FIELDS = [
     { key: 'storage', label: 'Storage' },
 ];
 
+// Every form field the photo reading can fill in.
+const READ_KEYS = [...GRID_FIELDS.map(f => f.key), ...LONG_FIELDS.map(f => f.key), 'expiryDate'];
+
+const fromRead = (read) => {
+    const out = {};
+    READ_KEYS.forEach(k => { out[k] = (read && typeof read[k] === 'string') ? read[k] : ''; });
+    return out;
+};
+
 const Arrow = ({ direction }) => (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d={direction === 'right' ? 'M5 12h14M13 6l6 6-6 6' : 'M19 12H5M11 6l-6 6 6 6'} />
@@ -85,15 +94,13 @@ const PhotoStrip = ({ photos }) => {
 // Admin's final step for a caregiver-flagged medication: review the details
 // read from the photos (pre-filled where possible), add what the photos can't
 // show, and register it into the catalog + Inventory.
-const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved }) => {
-    const d = flag.extractedData || {};
+const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved, onReread }) => {
+    const [read, setRead] = useState(flag.extractedData || null);
+    const [readError, setReadError] = useState(flag.extractionError || null);
+    const [rereading, setRereading] = useState(false);
     const [f, setF] = useState({
-        name: d.name || '', genericName: d.genericName || '', brand: d.brand || '',
-        dosage: d.dosage || '', form: d.form || '', manufacturer: d.manufacturer || '',
-        strength: '', route: '', purpose: '', instructions: '', warnings: '',
-        sideEffects: '', contraindications: '', drugInteractions: '', pregnancy: '', storage: '',
+        ...fromRead(flag.extractedData),
         category: 'medication', unit: 'pcs',
-        expiryDate: d.expiryDate || '',
         stockCurrent: '', stockMinimum: '', stockMaximum: '',
     });
     const [saving, setSaving] = useState(false);
@@ -104,6 +111,33 @@ const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved }) => 
     const authHeaders = () => {
         const token = localStorage.getItem('token');
         return { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) };
+    };
+
+    // Runs the photo reading again on the server and fills in only the fields
+    // that are still empty, so nothing Admin has typed or corrected is lost.
+    const rereadPhotos = async () => {
+        setRereading(true);
+        setError('');
+        try {
+            const res = await fetch(`${apiBaseUrl}/admin/medication-flags/${flag._id}/reread`, { method: 'POST', headers: authHeaders() });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Failed to re-read the photos.');
+
+            const { extractedData, extractionError } = data.data;
+            setRead(extractedData || null);
+            setReadError(extractionError || null);
+            const fresh = fromRead(extractedData);
+            setF(prev => {
+                const next = { ...prev };
+                READ_KEYS.forEach(k => { if (!prev[k] && fresh[k]) next[k] = fresh[k]; });
+                return next;
+            });
+            if (onReread) onReread({ extractedData, extractionError });
+        } catch (e) {
+            setError(e.message || 'Failed to re-read the photos.');
+        } finally {
+            setRereading(false);
+        }
     };
 
     const submit = async () => {
@@ -145,9 +179,16 @@ const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved }) => 
         }
     };
 
-    const readWarning = flag.extractionError
-        ? `The photos couldn't be auto-read (${String(flag.extractionError).slice(0, 120)}). `
-        : (!flag.extractedData?.name ? 'No product name could be read from the photos. ' : null);
+    // What the reading notice says: it failed, it found nothing to name the
+    // medication by, or it filled things in (which still need checking).
+    let notice = null;
+    if (readError) {
+        notice = { tone: 'warn', text: `The photos couldn't be auto-read (${String(readError).slice(0, 120)}). Please fill in the fields manually using the photos as reference. Photos of the front of the box (name and strength) work best.` };
+    } else if (!read?.name) {
+        notice = { tone: 'warn', text: 'No product name could be read from the photos. Please fill in the fields manually using the photos as reference. Photos of the front of the box (name and strength) work best.' };
+    } else {
+        notice = { tone: 'info', text: 'Details were read automatically from the photos. Please check them against the packaging, especially the dosage, warnings and expiry date, before registering. Anything the photos didn’t clearly show is left blank.' };
+    }
 
     const label = (key, text, required) => (
         <label className="mfr-label" htmlFor={`mfr-${key}`}>{text}{required && ' *'}</label>
@@ -164,12 +205,15 @@ const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved }) => 
                 {photos.length > 0 && <PhotoStrip photos={photos} />}
 
                 <div className="mfr-body">
-                    {readWarning && (
-                        <div className="mfr-banner mfr-banner-warn">
-                            {readWarning}Please fill in the fields manually using the photos as reference. Photos of the front of the box (name and strength) work best.
-                        </div>
-                    )}
-                    {error && <div className="mfr-banner mfr-banner-error">{error}</div>}
+                    <div className={`mfr-banner mfr-banner-${notice.tone}`}>
+                        <span className="mfr-banner-text">{notice.text}</span>
+                        {photos.length > 0 && (
+                            <button type="button" className="mfr-banner-btn" onClick={rereadPhotos} disabled={rereading || saving}>
+                                {rereading ? 'Reading…' : 'Re-read photos'}
+                            </button>
+                        )}
+                    </div>
+                    {error && <div className="mfr-banner mfr-banner-error"><span className="mfr-banner-text">{error}</span></div>}
 
                     <div className="mfr-grid">
                         {GRID_FIELDS.map(({ key, label: text, required }) => (
@@ -191,14 +235,20 @@ const MedicationFlagRegisterModal = ({ flag, apiBaseUrl, onClose, onSaved }) => 
                     {LONG_FIELDS.map(({ key, label: text }) => (
                         <div className="mfr-field mfr-field-full" key={key}>
                             {label(key, text)}
-                            <textarea id={`mfr-${key}`} className="mfr-input" rows={2} value={f[key]} onChange={e => setField(key, e.target.value)} />
+                            <textarea
+                                id={`mfr-${key}`}
+                                className="mfr-input"
+                                rows={Math.min(8, Math.max(2, Math.ceil(f[key].length / 80)))}
+                                value={f[key]}
+                                onChange={e => setField(key, e.target.value)}
+                            />
                         </div>
                     ))}
                 </div>
 
                 <div className="mfr-footer">
                     <button type="button" className="mfr-btn mfr-btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
-                    <button type="button" className="mfr-btn mfr-btn-primary" onClick={submit} disabled={saving}>
+                    <button type="button" className="mfr-btn mfr-btn-primary" onClick={submit} disabled={saving || rereading}>
                         {saving ? 'Registering…' : '✓ Register & Add to Inventory'}
                     </button>
                 </div>
