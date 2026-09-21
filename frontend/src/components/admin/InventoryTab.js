@@ -12,6 +12,7 @@ import {
     groupInventoryByProduct, summarizeProductRows, EXPIRING_SOON_DAYS,
 } from '../../utils/inventoryGrouping';
 import MedicationFlagPhotos from '../MedicationFlagPhotos';
+import MedicationFlagRegisterModal from './MedicationFlagRegisterModal';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -1608,6 +1609,7 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
             {registering && (
                 <MedicationFlagRegisterModal
                     flag={registering}
+                    apiBaseUrl={API_BASE_URL}
                     onClose={() => setRegistering(null)}
                     onSaved={() => {
                         setFlags(prev => prev.filter(f => f._id !== registering._id));
@@ -1616,153 +1618,6 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                     }}
                 />
             )}
-        </div>
-    );
-};
-
-const MedicationFlagRegisterModal = ({ flag, onClose, onSaved }) => {
-    const d = flag.extractedData || {};
-    const [f, setF] = useState({
-        name: d.name || '', genericName: d.genericName || '', brand: d.brand || '',
-        dosage: d.dosage || '', form: d.form || '', manufacturer: d.manufacturer || '',
-        strength: '', route: '', purpose: '', instructions: '', warnings: '',
-        sideEffects: '', contraindications: '', drugInteractions: '', pregnancy: '', storage: '',
-        category: 'medication', unit: 'pcs',
-        expiryDate: d.expiryDate || '',
-        stockCurrent: '', stockMinimum: '', stockMaximum: '',
-    });
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState('');
-    const setField = (k, v) => setF(p => ({ ...p, [k]: v }));
-
-    const authHeaders = () => {
-        const token = localStorage.getItem('token');
-        return { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) };
-    };
-
-    const submit = async () => {
-        if (!f.name.trim()) return setError('Medication name is required.');
-        if (!f.expiryDate) return setError('Expiry date is required.');
-        if (f.stockCurrent === '' || Number(f.stockCurrent) < 0) return setError('Current stock quantity is required.');
-
-        setSaving(true);
-        setError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/admin/medication-flags/${flag._id}`, {
-                method: 'PUT',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                    status: 'registered',
-                    name: f.name, genericName: f.genericName, brand: f.brand,
-                    dosage: f.dosage, strength: f.strength, form: f.form, route: f.route,
-                    manufacturer: f.manufacturer,
-                    purpose: f.purpose, instructions: f.instructions, warnings: f.warnings,
-                    sideEffects: f.sideEffects, contraindications: f.contraindications,
-                    drugInteractions: f.drugInteractions, pregnancy: f.pregnancy, storage: f.storage,
-                    category: f.category, unit: f.unit,
-                    expiryDate: f.expiryDate,
-                    stock: {
-                        current: Number(f.stockCurrent),
-                        minimum: f.stockMinimum !== '' ? Number(f.stockMinimum) : undefined,
-                        maximum: f.stockMaximum !== '' ? Number(f.stockMaximum) : undefined,
-                        unit: f.unit,
-                    },
-                }),
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.message || 'Failed to register medication.');
-            onSaved();
-        } catch (e) {
-            setError(e.message || 'Failed to register medication.');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const inputStyle = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #E8D6CC', fontSize: '.88rem' };
-    const labelStyle = { fontSize: '.78rem', fontWeight: 700, color: '#7A5C4E', marginBottom: 4, display: 'block' };
-    const field = (label, key, opts = {}) => (
-        <div style={{ marginBottom: 10, ...opts.wrapStyle }}>
-            <label style={labelStyle}>{label}{opts.required && ' *'}</label>
-            {opts.textarea ? (
-                <textarea rows={2} style={inputStyle} value={f[key]} onChange={e => setField(key, e.target.value)} />
-            ) : (
-                <input type={opts.type || 'text'} style={inputStyle} value={f[key]} onChange={e => setField(key, e.target.value)} />
-            )}
-        </div>
-    );
-
-    return (
-        <div className="modal-overlay">
-            <div className="registration-modal" style={{ maxWidth: 760, width: '95%', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 14, padding: 20 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <h5 style={{ margin: 0 }}>Register Medication — Barcode {flag.barcode}</h5>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}><FaTimes /></button>
-                </div>
-
-                {(flag.extractionError || !flag.extractedData?.name) && (
-                    <div style={{ background: '#fff8e1', color: '#7c5a00', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '.82rem' }}>
-                        {flag.extractionError
-                            ? `The photos couldn't be auto-read (${String(flag.extractionError).slice(0, 120)}). `
-                            : "No product name could be read from the photos. "}
-                        Please fill in the fields manually using the photos as reference. Photos of the front of the box (name and strength) work best.
-                    </div>
-                )}
-
-                <div style={{ display: 'grid', gridTemplateColumns: flag.photos?.length ? '220px 1fr' : '1fr', gap: 16 }}>
-                    {flag.photos?.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: 'flex-start' }}>
-                            {flag.photos.map((p, i) => (
-                                <img
-                                    key={i}
-                                    src={p.url}
-                                    alt={`Medication packaging ${i + 1}`}
-                                    style={{ width: '100%', borderRadius: 10, cursor: 'zoom-in' }}
-                                    onClick={() => window.open(p.url, '_blank')}
-                                />
-                            ))}
-                        </div>
-                    )}
-                    <div>
-                        {error && (
-                            <div style={{ background: '#f8d7da', color: '#721c24', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: '.85rem' }}>{error}</div>
-                        )}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                            {field('Name', 'name', { required: true })}
-                            {field('Generic Name', 'genericName')}
-                            {field('Brand', 'brand')}
-                            {field('Dosage (e.g. 500mg)', 'dosage')}
-                            {field('Strength', 'strength')}
-                            {field('Form (e.g. Tablet)', 'form')}
-                            {field('Route (e.g. Oral)', 'route')}
-                            {field('Manufacturer', 'manufacturer')}
-                            <div style={{ marginBottom: 10 }}>
-                                <label style={labelStyle}>Expiry Date *</label>
-                                <input type="date" style={inputStyle} value={f.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
-                            </div>
-                            <div style={{ marginBottom: 10 }}>
-                                <label style={labelStyle}>Current Stock *</label>
-                                <input type="number" min="0" style={inputStyle} value={f.stockCurrent} onChange={e => setField('stockCurrent', e.target.value)} />
-                            </div>
-                        </div>
-                        {field('Purpose', 'purpose', { textarea: true })}
-                        {field('Instructions', 'instructions', { textarea: true })}
-                        {field('Warnings', 'warnings', { textarea: true })}
-                        {field('Side Effects', 'sideEffects', { textarea: true })}
-                        {field('Contraindications', 'contraindications', { textarea: true })}
-                        {field('Drug Interactions', 'drugInteractions', { textarea: true })}
-                        {field('Pregnancy Notes', 'pregnancy', { textarea: true })}
-                        {field('Storage', 'storage', { textarea: true })}
-                    </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, borderTop: '1.5px solid #E8D6CC', paddingTop: 14 }}>
-                    <button className="btn-outline-sm" onClick={onClose} disabled={saving}>Cancel</button>
-                    <button className="btn-outline-sm" style={{ borderColor: '#b85c2d', background: '#b85c2d', color: '#fff', fontWeight: 700 }} onClick={submit} disabled={saving}>
-                        {saving ? 'Registering…' : '✓ Register & Add to Inventory'}
-                    </button>
-                </div>
-            </div>
         </div>
     );
 };
