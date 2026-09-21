@@ -10,6 +10,7 @@ const User = require('../models/User');
 const Alert = require('../models/Alert');
 const { protect } = require('../middleware/authMiddleware');
 const { logAudit } = require('../utils/auditLog');
+const { isOnDuty } = require('../utils/shiftUtils');
 const imageUpload = require('../middleware/imageUpload');
 const streamifier = require('streamifier');
 const cloudinary = require('../config/cloudinary');
@@ -177,6 +178,16 @@ const MAX_FLAG_PHOTOS = 5;
 
 router.post('/flag', protect, imageUpload.array('photos', MAX_FLAG_PHOTOS), async (req, res) => {
   try {
+    // Off-duty staff can't send reports to the Head Caregiver. Checked before
+    // any Cloudinary upload so a refused report leaves nothing behind.
+    if (!isOnDuty(req.user?.shift)) {
+      return res.status(403).json({
+        success: false,
+        message: 'This action is not available while off duty.',
+        accountStatus: 'off_duty',
+      });
+    }
+
     const { barcode } = req.body;
     if (!barcode || !String(barcode).trim()) {
       return res.status(400).json({ success: false, message: 'Barcode is required.' });
