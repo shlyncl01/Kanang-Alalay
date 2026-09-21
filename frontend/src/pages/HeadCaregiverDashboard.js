@@ -15,6 +15,7 @@ import {
 } from 'react-icons/fa';
 import '../styles/Dashboard.css';
 import '../styles/NurseDashboard.css';
+import MedicationFlagPhotos from '../components/MedicationFlagPhotos';
 import mainLogo from '../assets/mainLogo.png';
 
 const getApiUrl = () => {
@@ -1652,6 +1653,22 @@ const EditScheduleModal = ({ log, onClose, onSaved, doFetch, toast }) => {
     );
 };
 
+// Same look as the filled-Approve / outlined-Decline buttons in the Stock
+// Requests table (Dashboard.css only styles those inside a table cell's
+// `.actions`, so they render as bare text anywhere else).
+const flagActionBtn = (variant, busy) => ({
+    flex: 1,
+    padding: '7px 10px',
+    borderRadius: 6,
+    fontSize: '.82rem',
+    fontWeight: 700,
+    cursor: busy ? 'not-allowed' : 'pointer',
+    opacity: busy ? 0.5 : 1,
+    border: `1.5px solid ${variant === 'approve' ? '#1E7D56' : '#C0392B'}`,
+    background: variant === 'approve' ? '#1E7D56' : '#fff',
+    color: variant === 'approve' ? '#fff' : '#C0392B',
+});
+
 // Caregiver-flagged "this barcode isn't in the system" reports, waiting on
 // a Head Caregiver approve/reject decision before Admin ever sees them.
 const MedicationFlagsPanel = ({ doFetch, toast }) => {
@@ -1703,44 +1720,28 @@ const MedicationFlagsPanel = ({ doFetch, toast }) => {
                     {loading ? 'Loading…' : 'No pending medication flags.'}
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 0' }}>
-                    {flags.map(f => (
-                        <div key={f._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 200 }}>
-                            {f.photos?.length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                                    {f.photos.map((p, i) => (
-                                        <img
-                                            key={i}
-                                            src={p.url}
-                                            alt={`Medication packaging ${i + 1}`}
-                                            style={{ width: f.photos.length === 1 ? '100%' : 'calc(50% - 2px)', height: f.photos.length === 1 ? 120 : 60, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }}
-                                            onClick={() => window.open(p.url, '_blank')}
-                                        />
-                                    ))}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: '4px 0' }}>
+                    {flags.map(f => {
+                        const busy = processingId === f._id;
+                        return (
+                            <div key={f._id} style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff' }}>
+                                <MedicationFlagPhotos photos={f.photos} heroHeight={130} />
+                                <div style={{ fontSize: '.88rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
+                                <div style={{ fontSize: '.76rem', color: '#7A5C4E', margin: '2px 0 10px' }}>
+                                    Flagged by {flaggerName(f)}
+                                    {f.createdAt && <><br />{new Date(f.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</>}
                                 </div>
-                            )}
-                            <div style={{ fontSize: '.85rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
-                            <div style={{ fontSize: '.76rem', color: '#7A5C4E', marginBottom: 8 }}>
-                                Flagged by {flaggerName(f)}
+                                <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                                    <button type="button" disabled={busy} onClick={() => resolve(f, 'approved')} style={flagActionBtn('approve', busy)}>
+                                        Approve
+                                    </button>
+                                    <button type="button" disabled={busy} onClick={() => resolve(f, 'rejected')} style={flagActionBtn('decline', busy)}>
+                                        Decline
+                                    </button>
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                <span
-                                    className="req-action-btn approve"
-                                    onClick={() => { if (processingId !== f._id) resolve(f, 'approved'); }}
-                                    style={processingId === f._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-                                >
-                                    Approve
-                                </span>
-                                <span
-                                    className="req-action-btn decline"
-                                    onClick={() => { if (processingId !== f._id) resolve(f, 'rejected'); }}
-                                    style={processingId === f._id ? { opacity: .5, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
-                                >
-                                    Decline
-                                </span>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

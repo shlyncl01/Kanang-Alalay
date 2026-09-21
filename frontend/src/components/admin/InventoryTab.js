@@ -11,6 +11,7 @@ import { CATEGORY_OPTIONS, CATEGORY_UNITS, getUnitsForCategory } from '../../con
 import {
     groupInventoryByProduct, summarizeProductRows, EXPIRING_SOON_DAYS,
 } from '../../utils/inventoryGrouping';
+import MedicationFlagPhotos from '../MedicationFlagPhotos';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -1583,27 +1584,15 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                     <p style={{ margin: 0 }}>No medications awaiting registration.</p>
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                     {flags.map(flag => (
-                        <div key={flag._id} style={{ border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, width: 220 }}>
-                            {flag.photos?.length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                                    {flag.photos.map((p, i) => (
-                                        <img
-                                            key={i}
-                                            src={p.url}
-                                            alt={`Medication packaging ${i + 1}`}
-                                            style={{ width: flag.photos.length === 1 ? '100%' : 'calc(50% - 2px)', height: flag.photos.length === 1 ? 140 : 70, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }}
-                                            onClick={() => window.open(p.url, '_blank')}
-                                        />
-                                    ))}
-                                </div>
-                            )}
+                        <div key={flag._id} style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff' }}>
+                            <MedicationFlagPhotos photos={flag.photos} heroHeight={140} />
                             <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
                             <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
                                 {flag.extractedData?.name || (flag.extractionError ? 'Auto-read failed' : 'Nothing readable in photos')}
                             </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
                                 <button className="btn-outline-sm" style={{ flex: 1, borderColor: '#b85c2d', color: '#b85c2d', fontWeight: 700 }} onClick={() => setRegistering(flag)}>
                                     Register
                                 </button>
