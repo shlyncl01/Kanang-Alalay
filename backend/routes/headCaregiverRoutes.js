@@ -1785,6 +1785,8 @@ router.get('/medication-flags', headCaregiverOnly, async (req, res) => {
 
 router.put('/medication-flags/:id', headCaregiverOnly, async (req, res) => {
     try {
+        if (!requireOnDuty(req, res)) return;
+
         const { id } = req.params;
         const { status, hcNote } = req.body;
 

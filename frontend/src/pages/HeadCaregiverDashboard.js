@@ -1671,7 +1671,7 @@ const flagActionBtn = (variant, busy) => ({
 
 // Caregiver-flagged "this barcode isn't in the system" reports, waiting on
 // a Head Caregiver approve/reject decision before Admin ever sees them.
-const MedicationFlagsPanel = ({ doFetch, toast }) => {
+const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
     const [flags, setFlags] = useState([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState(null);
@@ -1732,10 +1732,22 @@ const MedicationFlagsPanel = ({ doFetch, toast }) => {
                                     {f.createdAt && <><br />{new Date(f.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</>}
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
-                                    <button type="button" disabled={busy} onClick={() => resolve(f, 'approved')} style={flagActionBtn('approve', busy)}>
+                                    <button
+                                        type="button"
+                                        disabled={busy || !onDuty}
+                                        title={onDuty ? undefined : 'Not available while off duty'}
+                                        onClick={() => resolve(f, 'approved')}
+                                        style={flagActionBtn('approve', busy || !onDuty)}
+                                    >
                                         Approve
                                     </button>
-                                    <button type="button" disabled={busy} onClick={() => resolve(f, 'rejected')} style={flagActionBtn('decline', busy)}>
+                                    <button
+                                        type="button"
+                                        disabled={busy || !onDuty}
+                                        title={onDuty ? undefined : 'Not available while off duty'}
+                                        onClick={() => resolve(f, 'rejected')}
+                                        style={flagActionBtn('decline', busy || !onDuty)}
+                                    >
                                         Decline
                                     </button>
                                 </div>
@@ -2917,7 +2929,7 @@ const HeadCaregiverDashboard = () => {
                     )}
                 </div>
 
-                <MedicationFlagsPanel doFetch={doFetch} toast={toast} />
+                <MedicationFlagsPanel doFetch={doFetch} toast={toast} onDuty={onDuty} />
             </div>
         );
     };
