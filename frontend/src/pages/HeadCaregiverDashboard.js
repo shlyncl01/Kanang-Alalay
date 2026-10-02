@@ -1818,6 +1818,58 @@ const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, read
     );
 };
 
+// One row of flag cards that scrolls sideways. Same pattern as the Admin
+// photo strip: round arrows (mfr-arrow) appear only when more cards are
+// off-screen, and the scroll bar is hidden (mfr-strip).
+const FlagCardRow = ({ count, children }) => {
+    const ref = useRef(null);
+    const [canLeft, setCanLeft] = useState(false);
+    const [canRight, setCanRight] = useState(false);
+
+    const update = useCallback(() => {
+        const el = ref.current;
+        if (!el) return;
+        setCanLeft(el.scrollLeft > 4);
+        setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    }, []);
+
+    useEffect(() => {
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, [update, count]);
+
+    // One card (230px + 14px gap) per press.
+    const scroll = (direction) => {
+        const el = ref.current;
+        if (el) el.scrollBy({ left: direction * 244, behavior: 'smooth' });
+    };
+
+    const arrow = (direction) => (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d={direction === 'right' ? 'M5 12h14M13 6l6 6-6 6' : 'M19 12H5M11 6l-6 6 6 6'} />
+        </svg>
+    );
+
+    return (
+        <div style={{ position: 'relative' }}>
+            <div className="mfr-strip" ref={ref} onScroll={update} style={{ gap: 14, padding: '4px 0' }}>
+                {children}
+            </div>
+            {canLeft && (
+                <button type="button" className="mfr-arrow mfr-arrow-left" style={{ top: 64, left: 6 }} onClick={() => scroll(-1)} aria-label="Show earlier flags">
+                    {arrow('left')}
+                </button>
+            )}
+            {canRight && (
+                <button type="button" className="mfr-arrow mfr-arrow-right" style={{ top: 64, right: 6 }} onClick={() => scroll(1)} aria-label="Show more flags">
+                    {arrow('right')}
+                </button>
+            )}
+        </div>
+    );
+};
+
 // Caregiver-flagged "this barcode isn't in the system" reports, waiting on
 // a Head Caregiver approve/reject decision before Admin ever sees them.
 const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
@@ -1826,8 +1878,6 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
     const [processingId, setProcessingId] = useState(null);
     const [selectedFlag, setSelectedFlag] = useState(null);
     const [readingId, setReadingId] = useState(null);
-    const [page, setPage] = useState(1);
-    const FLAGS_PER = 6;
 
     const fetchFlags = useCallback(async () => {
         setLoading(true);
@@ -1886,10 +1936,6 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
         return `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || '—';
     };
 
-    const flagPages = Math.max(1, Math.ceil(flags.length / FLAGS_PER));
-    const safePage = Math.min(page, flagPages);
-    const pagedFlags = flags.slice((safePage - 1) * FLAGS_PER, safePage * FLAGS_PER);
-
     return (
         <div className="card-white mb-18">
             <div className="card-header">
@@ -1901,8 +1947,8 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                     {loading ? 'Loading…' : 'No pending medication flags.'}
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: '4px 0' }}>
-                    {pagedFlags.map(f => {
+                <FlagCardRow count={flags.length}>
+                    {flags.map(f => {
                         const busy = processingId === f._id;
                         return (
                             <div
@@ -1911,7 +1957,7 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                                 style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff', cursor: 'pointer' }}
                             >
                                 {/* Photo taps keep their own behavior (switch thumbnail / open full size). */}
-                                <div onClick={e => e.stopPropagation()}>
+                                <div onClick={e => e.stopPropagation()} style={{ display: 'flow-root', minHeight: 182 }}>
                                     <MedicationFlagPhotos photos={f.photos} heroHeight={130} />
                                 </div>
                                 <div
@@ -1949,14 +1995,7 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                             </div>
                         );
                     })}
-                </div>
-            )}
-
-            {flagPages > 1 && (
-                <div className="res-page-footer">
-                    <span className="res-page-label">Showing {(safePage - 1) * FLAGS_PER + 1}–{Math.min(safePage * FLAGS_PER, flags.length)} of {flags.length}</span>
-                    <Pagination page={safePage} pages={flagPages} onChange={setPage} />
-                </div>
+                </FlagCardRow>
             )}
 
             {selectedFlag && (
