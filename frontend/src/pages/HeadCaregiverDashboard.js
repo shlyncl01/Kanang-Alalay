@@ -1670,17 +1670,56 @@ const flagActionBtn = (variant, busy) => ({
     color: variant === 'approve' ? '#fff' : '#C0392B',
 });
 
+// Fields the photo reading can fill in, shown read-only to the Head Caregiver
+// (only Admin can correct them, in the Register form). Short ones sit in the
+// two-column grid, long label passages get a full-width row.
+const FLAG_DETAIL_GRID = [
+    ['name', 'Name'], ['genericName', 'Generic Name'], ['brand', 'Brand'],
+    ['dosage', 'Dosage'], ['strength', 'Strength'], ['form', 'Form'],
+    ['route', 'Route'], ['manufacturer', 'Manufacturer'], ['expiryDate', 'Expiry Date'],
+];
+const FLAG_DETAIL_LONG = [
+    ['purpose', 'Purpose'], ['instructions', 'Instructions'], ['warnings', 'Warnings'],
+    ['sideEffects', 'Side Effects'], ['contraindications', 'Contraindications'],
+    ['drugInteractions', 'Drug Interactions'], ['pregnancy', 'Pregnancy Notes'], ['storage', 'Storage'],
+];
+const formatFlagDetail = (key, value) => {
+    if (key !== 'expiryDate') return value;
+    const d = new Date(`${value}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('en-PH', { dateStyle: 'medium' });
+};
+
 // Read-only look at one flagged medication so the Head Caregiver can
-// double-check the submitted photos before approving. Reuses the Admin
-// "Register Medication" popup's shell (mfr-* classes) and the same
-// MedicationFlagPhotos gallery used on the cards. Only shows what a flag
-// actually holds at this stage: caregivers submit photos + barcode; the
-// medicine details are read from the photos after approval.
-const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, onDuty, onResolve, onClose }) => {
+// double-check it before approving. Reuses the Admin "Register Medication"
+// popup's shell (mfr-* classes) and the same MedicationFlagPhotos gallery
+// used on the cards. Caregivers only submit photos + barcode, so the medicine
+// details come from reading the photos on request ("Read details from
+// photos") and are display-only — nothing here is editable.
+const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, reading, onDuty, onResolve, onRead, onClose }) => {
     const approveStyle = flagActionBtn('approve', busy || !onDuty);
     const declineStyle = flagActionBtn('decline', busy || !onDuty);
     const offDutyTitle = onDuty ? undefined : 'Not available while off duty';
     const photoCount = (flag.photos || []).length;
+
+    const read = flag.extractedData || null;
+    const readError = flag.extractionError || null;
+    const gridRows = read ? FLAG_DETAIL_GRID.filter(([k]) => read[k]) : [];
+    const longRows = read ? FLAG_DETAIL_LONG.filter(([k]) => read[k]) : [];
+
+    let notice;
+    let noticeBtn = null;
+    if (read && read.name) {
+        notice = { tone: 'info', text: 'Details were read automatically from the photos and can\u2019t be edited here. Please check them against the packaging before approving. Anything the photos didn\u2019t clearly show is left blank.' };
+    } else if (readError) {
+        notice = { tone: 'warn', text: `The photos couldn't be auto-read (${String(readError).slice(0, 120)}). Use the pictures above to check the packaging yourself.` };
+        noticeBtn = 'Try again';
+    } else if (read) {
+        notice = { tone: 'warn', text: 'No product name could be read from the photos. Use the pictures above to check the packaging yourself. Photos of the front of the box (name and strength) work best.' };
+        noticeBtn = 'Read again';
+    } else {
+        notice = { tone: 'info', text: 'Caregivers submit the barcode and photos only. Tap \u201cRead details from photos\u201d to have the label read automatically, or use the pictures above to check the packaging yourself.' };
+        noticeBtn = 'Read details from photos';
+    }
 
     return (
         <div className="modal-overlay">
@@ -1693,11 +1732,42 @@ const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, onDu
                 <div className="mfr-body">
                     <MedicationFlagPhotos photos={flag.photos} heroHeight={280} />
 
-                    <div className="mfr-banner mfr-banner-info">
-                        <span className="mfr-banner-text">
-                            Caregivers submit the barcode and photos only. Medicine name, strength and expiry date are read from the photos after you approve, so use the pictures above to double-check the packaging.
-                        </span>
+                    <div className={`mfr-banner mfr-banner-${notice.tone}`}>
+                        <span className="mfr-banner-text">{notice.text}</span>
+                        {noticeBtn && photoCount > 0 && (
+                            <button
+                                type="button"
+                                className="mfr-banner-btn"
+                                disabled={reading || busy || !onDuty}
+                                title={offDutyTitle}
+                                onClick={() => onRead(flag)}
+                            >
+                                {reading ? 'Reading…' : noticeBtn}
+                            </button>
+                        )}
                     </div>
+                    {reading && (
+                        <div className="mfr-banner mfr-banner-info">
+                            <span className="mfr-banner-text">Reading the photos — this can take a little while. Please keep this window open.</span>
+                        </div>
+                    )}
+
+                    {gridRows.length > 0 && (
+                        <div className="mfr-grid">
+                            {gridRows.map(([k, label]) => (
+                                <div className="mfr-field" key={k}>
+                                    <div className="mfr-label">{label}</div>
+                                    <div className="mfr-input">{formatFlagDetail(k, read[k])}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {longRows.map(([k, label]) => (
+                        <div className="mfr-field mfr-field-full" key={k}>
+                            <div className="mfr-label">{label}</div>
+                            <div className="mfr-input" style={{ whiteSpace: 'pre-wrap' }}>{read[k]}</div>
+                        </div>
+                    ))}
 
                     <div className="mfr-grid">
                         <div className="mfr-field">
@@ -1755,6 +1825,9 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState(null);
     const [selectedFlag, setSelectedFlag] = useState(null);
+    const [readingId, setReadingId] = useState(null);
+    const [page, setPage] = useState(1);
+    const FLAGS_PER = 6;
 
     const fetchFlags = useCallback(async () => {
         setLoading(true);
@@ -1791,11 +1864,31 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
         if (ok) setSelectedFlag(null);
     };
 
+    // Reads the photos server-side and stores the result on the flag so it
+    // survives refreshes and is reused when the flag is approved.
+    const readDetails = async (flag) => {
+        setReadingId(flag._id);
+        const r = await doFetch(`/head-caregiver/medication-flags/${flag._id}/read-details`, { method: 'POST' });
+        setReadingId(null);
+        if (!r.success) {
+            toast(r.message || 'Failed to read the photos.', 'error');
+            return;
+        }
+        const { extractedData, extractionError } = r.data || {};
+        const patch = { extractedData: extractedData || null, extractionError: extractionError || null };
+        setFlags(prev => prev.map(f => (f._id === flag._id ? { ...f, ...patch } : f)));
+        setSelectedFlag(prev => (prev && prev._id === flag._id ? { ...prev, ...patch } : prev));
+    };
+
     const flaggerName = (f) => {
         const u = f.flaggedBy;
         if (!u) return '—';
         return `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || '—';
     };
+
+    const flagPages = Math.max(1, Math.ceil(flags.length / FLAGS_PER));
+    const safePage = Math.min(page, flagPages);
+    const pagedFlags = flags.slice((safePage - 1) * FLAGS_PER, safePage * FLAGS_PER);
 
     return (
         <div className="card-white mb-18">
@@ -1809,25 +1902,31 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: '4px 0' }}>
-                    {flags.map(f => {
+                    {pagedFlags.map(f => {
                         const busy = processingId === f._id;
                         return (
-                            <div key={f._id} style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff' }}>
-                                <MedicationFlagPhotos photos={f.photos} heroHeight={130} />
-                                <div style={{ fontSize: '.88rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
-                                <div style={{ fontSize: '.76rem', color: '#7A5C4E', margin: '2px 0 10px' }}>
-                                    Flagged by {flaggerName(f)}
-                                    {f.createdAt && <><br />{new Date(f.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</>}
+                            <div
+                                key={f._id}
+                                onClick={() => setSelectedFlag(f)}
+                                style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff', cursor: 'pointer' }}
+                            >
+                                {/* Photo taps keep their own behavior (switch thumbnail / open full size). */}
+                                <div onClick={e => e.stopPropagation()}>
+                                    <MedicationFlagPhotos photos={f.photos} heroHeight={130} />
                                 </div>
-                                <button
-                                    type="button"
-                                    className="btn-outline-sm"
-                                    style={{ width: '100%', justifyContent: 'center', marginTop: 'auto', marginBottom: 8 }}
-                                    onClick={() => setSelectedFlag(f)}
+                                <div
+                                    role="button"
+                                    tabIndex={0}
+                                    title="Tap to view medication details"
+                                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFlag(f); } }}
                                 >
-                                    <FaEye /> View Medication
-                                </button>
-                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <div style={{ fontSize: '.88rem', fontWeight: 700 }}>Barcode: {f.barcode}</div>
+                                    <div style={{ fontSize: '.76rem', color: '#7A5C4E', margin: '2px 0 10px' }}>
+                                        Flagged by {flaggerName(f)}
+                                        {f.createdAt && <><br />{new Date(f.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</>}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }} onClick={e => e.stopPropagation()}>
                                     <button
                                         type="button"
                                         disabled={busy || !onDuty}
@@ -1853,14 +1952,23 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                 </div>
             )}
 
+            {flagPages > 1 && (
+                <div className="res-page-footer">
+                    <span className="res-page-label">Showing {(safePage - 1) * FLAGS_PER + 1}–{Math.min(safePage * FLAGS_PER, flags.length)} of {flags.length}</span>
+                    <Pagination page={safePage} pages={flagPages} onChange={setPage} />
+                </div>
+            )}
+
             {selectedFlag && (
                 <MedicationFlagDetailsModal
                     flag={selectedFlag}
                     flaggerName={flaggerName(selectedFlag)}
                     submittedAt={selectedFlag.createdAt ? new Date(selectedFlag.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : null}
                     busy={processingId === selectedFlag._id}
+                    reading={readingId === selectedFlag._id}
                     onDuty={onDuty}
                     onResolve={resolveFromModal}
+                    onRead={readDetails}
                     onClose={() => setSelectedFlag(null)}
                 />
             )}

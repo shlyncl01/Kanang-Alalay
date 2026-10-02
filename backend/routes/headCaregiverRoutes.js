@@ -1783,6 +1783,59 @@ router.get('/medication-flags', headCaregiverOnly, async (req, res) => {
     }
 });
 
+// POST /api/head-caregiver/medication-flags/:id/read-details
+// Lets the Head Caregiver see what the photos say (name, strength, expiry…)
+// BEFORE deciding. Read-only for them: the reading is produced and saved
+// here, never supplied by the client. A successful reading is reused, so a
+// repeat call (or the later Approve) doesn't pay for the AI read again.
+router.post('/medication-flags/:id/read-details', headCaregiverOnly, async (req, res) => {
+    try {
+        if (!requireOnDuty(req, res)) return;
+
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid flag ID.' });
+        }
+
+        const flag = await MedicationFlag.findById(id);
+        if (!flag) {
+            return res.status(404).json({ success: false, message: 'Medication flag not found.' });
+        }
+        if (flag.status !== 'pending') {
+            return res.status(409).json({ success: false, message: `This flag has already been resolved (${flag.status}).` });
+        }
+
+        if (flag.extractedData && flag.extractedData.name) {
+            return res.json({ success: true, data: { extractedData: flag.extractedData, extractionError: null } });
+        }
+
+        let extractedData = null;
+        let extractionError = null;
+        try {
+            extractedData = await extractMedicationLabel(flag.photos.map((p) => p.url));
+            if (!extractedData) extractionError = 'No photos to read.';
+        } catch (extractErr) {
+            console.error('Medication label read failed:', extractErr.message);
+            extractionError = extractErr.message;
+        }
+
+        // A failed retry never wipes out an earlier partial reading.
+        const updated = await MedicationFlag.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { extractionError, ...(extractedData && { extractedData }) },
+            { new: true }
+        );
+        if (!updated) {
+            return res.status(409).json({ success: false, message: 'This flag has already been resolved.' });
+        }
+
+        res.json({ success: true, data: { extractedData: updated.extractedData, extractionError: updated.extractionError } });
+    } catch (err) {
+        console.error('Read medication flag details error:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 router.put('/medication-flags/:id', headCaregiverOnly, async (req, res) => {
     try {
         if (!requireOnDuty(req, res)) return;
@@ -1834,14 +1887,18 @@ router.put('/medication-flags/:id', headCaregiverOnly, async (req, res) => {
         // recorded on the flag and never blocks the approval), then flip
         // status in the same atomic update. Reading first means Admin can
         // never open a flag that's approved but still mid-extraction. ──
-        let extractedData = null;
+        // If the Head Caregiver already read the details from the modal, reuse
+        // that reading instead of paying for another one.
+        let extractedData = (existing.extractedData && existing.extractedData.name) ? existing.extractedData : null;
         let extractionError = null;
-        try {
-            extractedData = await extractMedicationLabel(existing.photos.map((p) => p.url));
-            if (!extractedData) extractionError = 'No photos to read.';
-        } catch (extractErr) {
-            console.error('Medication label extraction failed:', extractErr.message);
-            extractionError = extractErr.message;
+        if (!extractedData) {
+            try {
+                extractedData = await extractMedicationLabel(existing.photos.map((p) => p.url));
+                if (!extractedData) extractionError = 'No photos to read.';
+            } catch (extractErr) {
+                console.error('Medication label extraction failed:', extractErr.message);
+                extractionError = extractErr.message;
+            }
         }
 
         const updated = await MedicationFlag.findOneAndUpdate(
