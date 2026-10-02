@@ -12,6 +12,7 @@ import {
     groupInventoryByProduct, summarizeProductRows, EXPIRING_SOON_DAYS,
 } from '../../utils/inventoryGrouping';
 import MedicationFlagPhotos from '../MedicationFlagPhotos';
+import MedicationFlagCardRow from '../MedicationFlagCardRow';
 import MedicationFlagRegisterModal from './MedicationFlagRegisterModal';
 
 const API_BASE_URL =
@@ -1585,10 +1586,13 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                     <p style={{ margin: 0 }}>No medications awaiting registration.</p>
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                <MedicationFlagCardRow count={flags.length} step={244} gap={14} arrowTop={69}>
                     {flags.map(flag => (
                         <div key={flag._id} style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff' }}>
-                            <MedicationFlagPhotos photos={flag.photos} heroHeight={140} />
+                            {/* Same photo-area height on every card so barcodes line up with or without thumbnails. */}
+                            <div style={{ display: 'flow-root', minHeight: 192 }}>
+                                <MedicationFlagPhotos photos={flag.photos} heroHeight={140} />
+                            </div>
                             <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
                             <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
                                 {flag.extractedData?.name || (flag.extractionError ? 'Auto-read failed' : 'Nothing readable in photos')}
@@ -1603,7 +1607,7 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                             </div>
                         </div>
                     ))}
-                </div>
+                </MedicationFlagCardRow>
             )}
 
             {registering && (

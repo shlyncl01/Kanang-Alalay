@@ -16,6 +16,7 @@ import {
 import '../styles/Dashboard.css';
 import '../styles/NurseDashboard.css';
 import MedicationFlagPhotos from '../components/MedicationFlagPhotos';
+import MedicationFlagCardRow from '../components/MedicationFlagCardRow';
 import '../styles/MedicationFlagRegister.css';
 import mainLogo from '../assets/mainLogo.png';
 
@@ -1818,58 +1819,6 @@ const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, read
     );
 };
 
-// One row of flag cards that scrolls sideways. Same pattern as the Admin
-// photo strip: round arrows (mfr-arrow) appear only when more cards are
-// off-screen, and the scroll bar is hidden (mfr-strip).
-const FlagCardRow = ({ count, children }) => {
-    const ref = useRef(null);
-    const [canLeft, setCanLeft] = useState(false);
-    const [canRight, setCanRight] = useState(false);
-
-    const update = useCallback(() => {
-        const el = ref.current;
-        if (!el) return;
-        setCanLeft(el.scrollLeft > 4);
-        setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-    }, []);
-
-    useEffect(() => {
-        update();
-        window.addEventListener('resize', update);
-        return () => window.removeEventListener('resize', update);
-    }, [update, count]);
-
-    // One card (230px + 14px gap) per press.
-    const scroll = (direction) => {
-        const el = ref.current;
-        if (el) el.scrollBy({ left: direction * 244, behavior: 'smooth' });
-    };
-
-    const arrow = (direction) => (
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d={direction === 'right' ? 'M5 12h14M13 6l6 6-6 6' : 'M19 12H5M11 6l-6 6 6 6'} />
-        </svg>
-    );
-
-    return (
-        <div style={{ position: 'relative' }}>
-            <div className="mfr-strip" ref={ref} onScroll={update} style={{ gap: 14, padding: '4px 0' }}>
-                {children}
-            </div>
-            {canLeft && (
-                <button type="button" className="mfr-arrow mfr-arrow-left" style={{ top: 64, left: 6 }} onClick={() => scroll(-1)} aria-label="Show earlier flags">
-                    {arrow('left')}
-                </button>
-            )}
-            {canRight && (
-                <button type="button" className="mfr-arrow mfr-arrow-right" style={{ top: 64, right: 6 }} onClick={() => scroll(1)} aria-label="Show more flags">
-                    {arrow('right')}
-                </button>
-            )}
-        </div>
-    );
-};
-
 // Caregiver-flagged "this barcode isn't in the system" reports, waiting on
 // a Head Caregiver approve/reject decision before Admin ever sees them.
 const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
@@ -1947,7 +1896,7 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                     {loading ? 'Loading…' : 'No pending medication flags.'}
                 </div>
             ) : (
-                <FlagCardRow count={flags.length}>
+                <MedicationFlagCardRow count={flags.length}>
                     {flags.map(f => {
                         const busy = processingId === f._id;
                         return (
@@ -1995,7 +1944,7 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                             </div>
                         );
                     })}
-                </FlagCardRow>
+                </MedicationFlagCardRow>
             )}
 
             {selectedFlag && (

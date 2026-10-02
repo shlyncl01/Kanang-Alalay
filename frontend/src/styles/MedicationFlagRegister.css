@@ -86,7 +86,7 @@
     cursor: zoom-in;
 }
 
-/* Round black arrow that appears when more photos are off-screen. The strip
+/* Round brand-orange arrow that appears when more photos are off-screen. The strip
    is 136px tall starting 18px below the wrapper's top, so its centre is 86px
    down; the arrow is 36px, hence top: 68px. */
 .mfr-arrow {
@@ -100,12 +100,12 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: #111;
+    background: #b85c2d;
     color: #fff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
     cursor: pointer;
 }
-.mfr-arrow:hover { background: #333; }
+.mfr-arrow:hover { background: #7d3a06; }
 .mfr-arrow-left  { left: 30px; }
 .mfr-arrow-right { right: 30px; }
 
