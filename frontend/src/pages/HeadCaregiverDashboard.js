@@ -16,6 +16,7 @@ import {
 import '../styles/Dashboard.css';
 import '../styles/NurseDashboard.css';
 import MedicationFlagPhotos from '../components/MedicationFlagPhotos';
+import '../styles/MedicationFlagRegister.css';
 import mainLogo from '../assets/mainLogo.png';
 
 const getApiUrl = () => {
@@ -1669,12 +1670,91 @@ const flagActionBtn = (variant, busy) => ({
     color: variant === 'approve' ? '#fff' : '#C0392B',
 });
 
+// Read-only look at one flagged medication so the Head Caregiver can
+// double-check the submitted photos before approving. Reuses the Admin
+// "Register Medication" popup's shell (mfr-* classes) and the same
+// MedicationFlagPhotos gallery used on the cards. Only shows what a flag
+// actually holds at this stage: caregivers submit photos + barcode; the
+// medicine details are read from the photos after approval.
+const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, onDuty, onResolve, onClose }) => {
+    const approveStyle = flagActionBtn('approve', busy || !onDuty);
+    const declineStyle = flagActionBtn('decline', busy || !onDuty);
+    const offDutyTitle = onDuty ? undefined : 'Not available while off duty';
+    const photoCount = (flag.photos || []).length;
+
+    return (
+        <div className="modal-overlay">
+            <div className="mfr-modal" role="dialog" aria-modal="true" aria-label="Medication details">
+                <div className="mfr-header">
+                    <h5 className="mfr-title">Medication Details — Barcode {flag.barcode}</h5>
+                    <button type="button" className="mfr-close" onClick={onClose} aria-label="Close">&times;</button>
+                </div>
+
+                <div className="mfr-body">
+                    <MedicationFlagPhotos photos={flag.photos} heroHeight={280} />
+
+                    <div className="mfr-banner mfr-banner-info">
+                        <span className="mfr-banner-text">
+                            Caregivers submit the barcode and photos only. Medicine name, strength and expiry date are read from the photos after you approve, so use the pictures above to double-check the packaging.
+                        </span>
+                    </div>
+
+                    <div className="mfr-grid">
+                        <div className="mfr-field">
+                            <div className="mfr-label">Barcode</div>
+                            <div className="mfr-input">{flag.barcode}</div>
+                        </div>
+                        <div className="mfr-field">
+                            <div className="mfr-label">Photos Submitted</div>
+                            <div className="mfr-input">{photoCount}</div>
+                        </div>
+                        <div className="mfr-field">
+                            <div className="mfr-label">Flagged By</div>
+                            <div className="mfr-input">{flaggerName}</div>
+                        </div>
+                        {submittedAt && (
+                            <div className="mfr-field">
+                                <div className="mfr-label">Submitted</div>
+                                <div className="mfr-input">{submittedAt}</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mfr-footer">
+                    <button
+                        type="button"
+                        className="mfr-btn"
+                        disabled={busy || !onDuty}
+                        title={offDutyTitle}
+                        onClick={() => onResolve(flag, 'rejected')}
+                        style={{ background: declineStyle.background, color: declineStyle.color, border: declineStyle.border }}
+                    >
+                        Decline
+                    </button>
+                    <button
+                        type="button"
+                        className="mfr-btn"
+                        disabled={busy || !onDuty}
+                        title={offDutyTitle}
+                        onClick={() => onResolve(flag, 'approved')}
+                        style={{ background: approveStyle.background, color: approveStyle.color, border: approveStyle.border }}
+                    >
+                        Approve
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // Caregiver-flagged "this barcode isn't in the system" reports, waiting on
 // a Head Caregiver approve/reject decision before Admin ever sees them.
 const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
     const [flags, setFlags] = useState([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState(null);
+    const [selectedFlag, setSelectedFlag] = useState(null);
 
     const fetchFlags = useCallback(async () => {
         setLoading(true);
@@ -1687,7 +1767,7 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
 
     const resolve = async (flag, status) => {
         if (status === 'rejected' && !window.confirm(`Reject the flagged medication (barcode ${flag.barcode})? This cannot be undone.`)) {
-            return;
+            return false;
         }
         setProcessingId(flag._id);
         const r = await doFetch(`/head-caregiver/medication-flags/${flag._id}`, {
@@ -1701,6 +1781,14 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
         } else {
             toast(r.message || 'Failed to update flag.', 'error');
         }
+        return !!r.success;
+    };
+
+    // Used by the details modal: same resolve() (and Decline confirm) as the
+    // card buttons, then close the modal once the flag has been resolved.
+    const resolveFromModal = async (flag, status) => {
+        const ok = await resolve(flag, status);
+        if (ok) setSelectedFlag(null);
     };
 
     const flaggerName = (f) => {
@@ -1731,7 +1819,15 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                                     Flagged by {flaggerName(f)}
                                     {f.createdAt && <><br />{new Date(f.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</>}
                                 </div>
-                                <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                                <button
+                                    type="button"
+                                    className="btn-outline-sm"
+                                    style={{ width: '100%', justifyContent: 'center', marginTop: 'auto', marginBottom: 8 }}
+                                    onClick={() => setSelectedFlag(f)}
+                                >
+                                    <FaEye /> View Medication
+                                </button>
+                                <div style={{ display: 'flex', gap: 8 }}>
                                     <button
                                         type="button"
                                         disabled={busy || !onDuty}
@@ -1755,6 +1851,18 @@ const MedicationFlagsPanel = ({ doFetch, toast, onDuty }) => {
                         );
                     })}
                 </div>
+            )}
+
+            {selectedFlag && (
+                <MedicationFlagDetailsModal
+                    flag={selectedFlag}
+                    flaggerName={flaggerName(selectedFlag)}
+                    submittedAt={selectedFlag.createdAt ? new Date(selectedFlag.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : null}
+                    busy={processingId === selectedFlag._id}
+                    onDuty={onDuty}
+                    onResolve={resolveFromModal}
+                    onClose={() => setSelectedFlag(null)}
+                />
             )}
         </div>
     );
