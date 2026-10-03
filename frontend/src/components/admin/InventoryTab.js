@@ -14,6 +14,7 @@ import {
 import MedicationFlagPhotos from '../MedicationFlagPhotos';
 import MedicationFlagCardRow from '../MedicationFlagCardRow';
 import MedicationFlagRegisterModal from './MedicationFlagRegisterModal';
+import MedicationFlagViewModal from './MedicationFlagViewModal';
 
 const API_BASE_URL =
     process.env.REACT_APP_API_URL ||
@@ -1511,6 +1512,7 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [registering, setRegistering] = useState(null); // the flag being registered, or null
+    const [viewing, setViewing] = useState(null); // the flag open in the read-only view popup, or null
 
     const authHeaders = () => {
         const token = localStorage.getItem('token');
@@ -1588,16 +1590,27 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
             ) : (
                 <MedicationFlagCardRow count={flags.length} step={244} gap={14} arrowTop={69}>
                     {flags.map(flag => (
-                        <div key={flag._id} style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff' }}>
-                            {/* Same photo-area height on every card so barcodes line up with or without thumbnails. */}
-                            <div style={{ display: 'flow-root', minHeight: 192 }}>
+                        <div
+                            key={flag._id}
+                            onClick={() => setViewing(flag)}
+                            style={{ flex: '0 0 230px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', border: '1.5px solid #E8D6CC', borderRadius: 10, padding: 12, background: '#fff', cursor: 'pointer' }}
+                        >
+                            {/* Photo taps keep their own behavior; same photo-area height on every card so barcodes line up. */}
+                            <div onClick={e => e.stopPropagation()} style={{ display: 'flow-root', minHeight: 192 }}>
                                 <MedicationFlagPhotos photos={flag.photos} heroHeight={140} />
                             </div>
-                            <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
-                            <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
-                                {flag.extractedData?.name || (flag.extractionError ? 'Auto-read failed' : 'Nothing readable in photos')}
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                title="Tap to view medication details"
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewing(flag); } }}
+                            >
+                                <div style={{ fontSize: '.85rem', fontWeight: 700, marginBottom: 2 }}>Barcode: {flag.barcode}</div>
+                                <div style={{ fontSize: '.78rem', color: '#7A5C4E', marginBottom: 8 }}>
+                                    {flag.extractedData?.name || (flag.extractionError ? 'Auto-read failed' : 'Nothing readable in photos')}
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }} onClick={e => e.stopPropagation()}>
                                 <button className="btn-outline-sm" style={{ flex: 1, borderColor: '#b85c2d', color: '#b85c2d', fontWeight: 700 }} onClick={() => setRegistering(flag)}>
                                     Register
                                 </button>
@@ -1608,6 +1621,15 @@ const MedicationFlagsRegistrationPanel = ({ onRegistered, showConfirm, closeConf
                         </div>
                     ))}
                 </MedicationFlagCardRow>
+            )}
+
+            {viewing && (
+                <MedicationFlagViewModal
+                    flag={viewing}
+                    onClose={() => setViewing(null)}
+                    onRegister={(f) => { setViewing(null); setRegistering(f); }}
+                    onReject={(f) => { setViewing(null); rejectFlag(f); }}
+                />
             )}
 
             {registering && (

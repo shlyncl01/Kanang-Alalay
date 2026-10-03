@@ -17,6 +17,7 @@ import '../styles/Dashboard.css';
 import '../styles/NurseDashboard.css';
 import MedicationFlagPhotos from '../components/MedicationFlagPhotos';
 import MedicationFlagCardRow from '../components/MedicationFlagCardRow';
+import MedicationFlagDetailFields from '../components/MedicationFlagDetailFields';
 import '../styles/MedicationFlagRegister.css';
 import mainLogo from '../assets/mainLogo.png';
 
@@ -1671,25 +1672,6 @@ const flagActionBtn = (variant, busy) => ({
     color: variant === 'approve' ? '#fff' : '#C0392B',
 });
 
-// Fields the photo reading can fill in, shown read-only to the Head Caregiver
-// (only Admin can correct them, in the Register form). Short ones sit in the
-// two-column grid, long label passages get a full-width row.
-const FLAG_DETAIL_GRID = [
-    ['name', 'Name'], ['genericName', 'Generic Name'], ['brand', 'Brand'],
-    ['dosage', 'Dosage'], ['strength', 'Strength'], ['form', 'Form'],
-    ['route', 'Route'], ['manufacturer', 'Manufacturer'], ['expiryDate', 'Expiry Date'],
-];
-const FLAG_DETAIL_LONG = [
-    ['purpose', 'Purpose'], ['instructions', 'Instructions'], ['warnings', 'Warnings'],
-    ['sideEffects', 'Side Effects'], ['contraindications', 'Contraindications'],
-    ['drugInteractions', 'Drug Interactions'], ['pregnancy', 'Pregnancy Notes'], ['storage', 'Storage'],
-];
-const formatFlagDetail = (key, value) => {
-    if (key !== 'expiryDate') return value;
-    const d = new Date(`${value}T00:00:00`);
-    return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('en-PH', { dateStyle: 'medium' });
-};
-
 // Read-only look at one flagged medication so the Head Caregiver can
 // double-check it before approving. Reuses the Admin "Register Medication"
 // popup's shell (mfr-* classes) and the same MedicationFlagPhotos gallery
@@ -1704,8 +1686,6 @@ const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, read
 
     const read = flag.extractedData || null;
     const readError = flag.extractionError || null;
-    const gridRows = read ? FLAG_DETAIL_GRID.filter(([k]) => read[k]) : [];
-    const longRows = read ? FLAG_DETAIL_LONG.filter(([k]) => read[k]) : [];
 
     let notice;
     let noticeBtn = null;
@@ -1753,22 +1733,7 @@ const MedicationFlagDetailsModal = ({ flag, flaggerName, submittedAt, busy, read
                         </div>
                     )}
 
-                    {gridRows.length > 0 && (
-                        <div className="mfr-grid">
-                            {gridRows.map(([k, label]) => (
-                                <div className="mfr-field" key={k}>
-                                    <div className="mfr-label">{label}</div>
-                                    <div className="mfr-input">{formatFlagDetail(k, read[k])}</div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {longRows.map(([k, label]) => (
-                        <div className="mfr-field mfr-field-full" key={k}>
-                            <div className="mfr-label">{label}</div>
-                            <div className="mfr-input" style={{ whiteSpace: 'pre-wrap' }}>{read[k]}</div>
-                        </div>
-                    ))}
+                    <MedicationFlagDetailFields read={read} />
 
                     <div className="mfr-grid">
                         <div className="mfr-field">
